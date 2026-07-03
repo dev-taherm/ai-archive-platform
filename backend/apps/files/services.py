@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 import uuid
-from typing import Any
 
 from core.application.dtos.file_dto import FileOperationDTO, FileRecordDTO, ScanResultDTO
 from core.application.use_cases.file_use_cases import FileUseCases
@@ -25,14 +24,12 @@ class FileService:
         patterns: list[str] | None = None,
         ignore_patterns: list[str] | None = None,
     ) -> ScanResultDTO:
-        """Scan a folder for files and register them in the archive."""
-        import asyncio
-        result = asyncio.run(self._file_use_cases.scan_folder(
+        result = self._file_use_cases.scan_folder(
             folder_path,
             recursive=recursive,
             patterns=patterns,
             ignore_patterns=ignore_patterns,
-        ))
+        )
         logger.info(
             "Folder scanned: %s — %d new files, %d skipped",
             folder_path,
@@ -42,9 +39,7 @@ class FileService:
         return result
 
     def get_file(self, file_id: uuid.UUID) -> FileRecordDTO:
-        """Retrieve a file record by ID."""
-        import asyncio
-        return asyncio.run(self._file_use_cases.get_file(file_id))
+        return self._file_use_cases.get_file(file_id)
 
     def list_files(
         self,
@@ -52,9 +47,7 @@ class FileService:
         offset: int = 0,
         limit: int = 100,
     ) -> list[FileRecordDTO]:
-        """List all file records with pagination."""
-        import asyncio
-        return asyncio.run(self._file_use_cases.list_files(offset=offset, limit=limit))
+        return self._file_use_cases.list_files(offset=offset, limit=limit)
 
     def delete_file(
         self,
@@ -62,9 +55,7 @@ class FileService:
         *,
         user_id: uuid.UUID | None = None,
     ) -> FileOperationDTO:
-        """Delete a file from the archive and storage."""
-        import asyncio
-        result = asyncio.run(self._file_use_cases.delete_file(file_id))
+        result = self._file_use_cases.delete_file(file_id)
         if result.success:
             logger.info("File deleted: %s", file_id)
         else:
@@ -78,9 +69,7 @@ class FileService:
         *,
         user_id: uuid.UUID | None = None,
     ) -> FileOperationDTO:
-        """Rename a file within the archive."""
-        import asyncio
-        return asyncio.run(self._file_use_cases.rename_file(file_id, new_name))
+        return self._file_use_cases.rename_file(file_id, new_name)
 
     def move_file(
         self,
@@ -89,9 +78,7 @@ class FileService:
         *,
         user_id: uuid.UUID | None = None,
     ) -> FileOperationDTO:
-        """Move a file to a different folder."""
-        import asyncio
-        return asyncio.run(self._file_use_cases.move_file(file_id, destination_folder))
+        return self._file_use_cases.move_file(file_id, destination_folder)
 
     def copy_file(
         self,
@@ -100,6 +87,4 @@ class FileService:
         *,
         user_id: uuid.UUID | None = None,
     ) -> FileOperationDTO:
-        """Copy a file to a different folder."""
-        import asyncio
-        return asyncio.run(self._file_use_cases.copy_file(file_id, destination_folder))
+        return self._file_use_cases.copy_file(file_id, destination_folder)

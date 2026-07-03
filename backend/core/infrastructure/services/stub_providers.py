@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 class StubLLMProvider(LLMProvider):
     """Stub LLM provider that returns mock responses when no real provider is configured."""
 
-    async def classify(
+    def classify(
         self,
         text: str,
         *,
@@ -22,7 +22,7 @@ class StubLLMProvider(LLMProvider):
         logger.warning("Using stub LLM provider - classify returns mock result")
         return ("unknown", 0.0)
 
-    async def extract(
+    def extract(
         self,
         text: str,
         *,
@@ -32,7 +32,7 @@ class StubLLMProvider(LLMProvider):
         logger.warning("Using stub LLM provider - extract returns empty dict")
         return {field: "" for field in fields}
 
-    async def summarize(
+    def summarize(
         self,
         text: str,
         *,
@@ -42,7 +42,7 @@ class StubLLMProvider(LLMProvider):
         logger.warning("Using stub LLM provider - summarize returns placeholder")
         return f"[Summary requires LLM provider configuration. Text length: {len(text)} chars]"
 
-    async def chat(
+    def chat(
         self,
         messages: list[dict[str, str]],
         *,
@@ -61,11 +61,11 @@ class StubEmbeddingProvider(EmbeddingProvider):
     def dimension(self) -> int:
         return 1536
 
-    async def embed_text(self, text: str) -> list[float]:
+    def embed_text(self, text: str) -> list[float]:
         logger.warning("Using stub embedding provider - returns zero vector")
         return [0.0] * self.dimension
 
-    async def embed_documents(self, texts: list[str]) -> list[list[float]]:
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
         logger.warning("Using stub embedding provider - returns zero vectors")
         return [[0.0] * self.dimension for _ in texts]
 
@@ -73,7 +73,7 @@ class StubEmbeddingProvider(EmbeddingProvider):
 class StubOCRProvider(OCRProvider):
     """Stub OCR provider that returns placeholder text when no real provider is configured."""
 
-    async def extract_text(
+    def extract_text(
         self,
         content: bytes,
         *,
@@ -83,11 +83,11 @@ class StubOCRProvider(OCRProvider):
         logger.warning("Using stub OCR provider - extract_text returns placeholder")
         return f"[OCR requires PaddleOCR configuration. Content type: {content_type}]"
 
-    async def detect_language(self, text: str) -> Language:
+    def detect_language(self, text: str) -> Language:
         logger.warning("Using stub OCR provider - detect_language returns unknown")
         return Language.UNKNOWN
 
-    async def get_confidence(self, text: str) -> Confidence:
+    def get_confidence(self, text: str) -> Confidence:
         logger.warning("Using stub OCR provider - get_confidence returns 0.0")
         return Confidence(value=0.0)
 
@@ -98,7 +98,7 @@ class StubStorageBackend(StorageBackend):
     def __init__(self) -> None:
         self._storage: dict[str, bytes] = {}
 
-    async def save(
+    def save(
         self,
         content: bytes,
         path: str,
@@ -109,16 +109,16 @@ class StubStorageBackend(StorageBackend):
         self._storage[path] = content
         return path
 
-    async def retrieve(self, path: str) -> bytes:
+    def retrieve(self, path: str) -> bytes:
         return self._storage.get(path, b"")
 
-    async def delete(self, path: str) -> bool:
+    def delete(self, path: str) -> bool:
         if path in self._storage:
             del self._storage[path]
             return True
         return False
 
-    async def list(
+    def list(
         self,
         prefix: str = "",
         *,
@@ -126,8 +126,8 @@ class StubStorageBackend(StorageBackend):
     ) -> Sequence[str]:
         return [k for k in self._storage if k.startswith(prefix)][:limit]
 
-    async def get_url(self, path: str, *, expires_in: int = 3600) -> str:
+    def get_url(self, path: str, *, expires_in: int = 3600) -> str:
         return f"file://{path}"
 
-    async def exists(self, path: str) -> bool:
+    def exists(self, path: str) -> bool:
         return path in self._storage

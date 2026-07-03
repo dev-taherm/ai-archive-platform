@@ -26,9 +26,7 @@ class SearchService:
         *,
         user_id: uuid.UUID | None = None,
     ) -> SearchResponseDTO:
-        """Execute a search using the specified strategy."""
-        import asyncio
-        result = asyncio.run(self._search_use_cases.search(query_dto))
+        result = self._search_use_cases.search(query_dto)
         logger.info(
             "Search: query=%s type=%s results=%d time=%.1fms",
             query_dto.query[:50],
@@ -47,14 +45,12 @@ class SearchService:
         filters: SearchFiltersDTO | None = None,
         user_id: uuid.UUID | None = None,
     ) -> list[SearchResultDTO]:
-        """Search by semantic similarity using embeddings."""
-        import asyncio
-        return asyncio.run(self._search_use_cases.semantic_search(
+        return self._search_use_cases.semantic_search(
             query,
             max_results=max_results,
             offset=offset,
             filters=filters,
-        ))
+        )
 
     def keyword_search(
         self,
@@ -65,14 +61,12 @@ class SearchService:
         filters: SearchFiltersDTO | None = None,
         user_id: uuid.UUID | None = None,
     ) -> list[SearchResultDTO]:
-        """Search by keyword matching within document chunks."""
-        import asyncio
-        return asyncio.run(self._search_use_cases.keyword_search(
+        return self._search_use_cases.keyword_search(
             query,
             max_results=max_results,
             offset=offset,
             filters=filters,
-        ))
+        )
 
     def hybrid_search(
         self,
@@ -85,13 +79,11 @@ class SearchService:
         keyword_weight: float = 0.3,
         user_id: uuid.UUID | None = None,
     ) -> list[SearchResultDTO]:
-        """Combine semantic and keyword search with weighted scoring."""
-        import asyncio
-        return asyncio.run(self._search_use_cases.hybrid_search(
+        return self._search_use_cases.hybrid_search(
             query,
             max_results=max_results,
             offset=offset,
             filters=filters,
             semantic_weight=semantic_weight,
             keyword_weight=keyword_weight,
-        ))
+        )

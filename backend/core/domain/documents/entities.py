@@ -76,9 +76,9 @@ class DocumentChunk(BaseEntity):
                 )
             )
             index += 1
-            start = end - overlap
-            if start >= len(text):
+            if end >= len(text):
                 break
+            start = end - overlap
         return chunks
 
 

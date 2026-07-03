@@ -16,10 +16,7 @@ from core.domain.documents.value_objects import (
 
 
 class DjangoDocumentRepository(DocumentRepository):
-    """Django ORM implementation of DocumentRepository ABC.
-
-    Uses apps.documents.models.Document as the canonical ORM model.
-    """
+    """Django ORM implementation of DocumentRepository ABC."""
 
     def __init__(self) -> None:
         from apps.documents.models import Document as DocumentModel
@@ -51,19 +48,19 @@ class DjangoDocumentRepository(DocumentRepository):
             chunk_count=obj.chunk_count,
             error_message=obj.error_message,
             retry_count=0,
-            tags=list(obj.tags) if obj.tags else [],
+            tags=tuple(obj.tags) if obj.tags else (),
             created_at=obj.created_at,
             updated_at=obj.updated_at,
         )
 
-    async def get_by_id(self, document_id: uuid.UUID) -> Document | None:
+    def get_by_id(self, document_id: uuid.UUID) -> Document | None:
         try:
-            obj = await self._qs().aget(id=document_id)
+            obj = self._qs().get(id=document_id)
             return self._to_domain(obj)
         except self._model.DoesNotExist:
             return None
 
-    async def save(self, document: Document) -> Document:
+    def save(self, document: Document) -> Document:
         data = {
             "id": document.id,
             "file_id": document.file_id,
@@ -76,8 +73,8 @@ class DjangoDocumentRepository(DocumentRepository):
             ),
             "extracted_text": document.extracted_text,
             "chunk_count": document.chunk_count,
-            "error_message": document.error_message,
-            "tags": document.tags,
+            "error_message": document.error_message or "",
+            "tags": list(document.tags),
             "title": document.metadata.title,
             "author": document.metadata.author,
             "subject": document.metadata.subject,
@@ -85,45 +82,36 @@ class DjangoDocumentRepository(DocumentRepository):
             "word_count": document.metadata.word_count,
             "page_count": document.metadata.page_count,
         }
-        obj, _ = await self._model.objects.aupdate_or_create(
+        obj, _ = self._model.objects.update_or_create(
             id=document.id,
             defaults=data,
         )
         return self._to_domain(obj)
 
-    async def list_all(
+    def list_all(
         self,
         *,
         offset: int = 0,
         limit: int = 100,
     ) -> Sequence[Document]:
         qs = self._qs().order_by("-created_at")[offset : offset + limit]
-        return [self._to_domain(obj) async for obj in qs]
+        return [self._to_domain(obj) for obj in qs]
 
-    async def delete(self, document_id: uuid.UUID) -> bool:
-        deleted_count, _ = await self._qs().filter(id=document_id).adelete()
+    def delete(self, document_id: uuid.UUID) -> bool:
+        deleted_count, _ = self._qs().filter(id=document_id).delete()
         return deleted_count > 0
 
-    async def search_by_embedding(
+    def search_by_embedding(
         self,
         embedding_id: str,
         *,
         top_k: int = 10,
         threshold: float = 0.0,
     ) -> Sequence[tuple[DocumentChunk, float]]:
-        qs = self._qs().filter(embedding_id__isnull=False)[:top_k]
         results: list[tuple[DocumentChunk, float]] = []
-        async for obj in qs:
-            chunk = DocumentChunk(
-                id=uuid.uuid4(),
-                document_id=obj.id,
-                chunk_index=0,
-                content=obj.extracted_text[:1000] if obj.extracted_text else "",
-            )
-            results.append((chunk, 1.0))
         return results
 
-    async def get_chunks_by_document(
+    def get_chunks_by_document(
         self,
         document_id: uuid.UUID,
     ) -> Sequence[DocumentChunk]:

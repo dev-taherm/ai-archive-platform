@@ -25,9 +25,7 @@ class DocumentService:
         *,
         user_id: uuid.UUID | None = None,
     ) -> DocumentDTO:
-        """Run the full document processing pipeline for a file."""
-        import asyncio
-        result = asyncio.run(self._document_use_cases.process_document(file_id))
+        result = self._document_use_cases.process_document(file_id)
         logger.info(
             "Document processed: file_id=%s doc_id=%s type=%s chunks=%d",
             file_id,
@@ -38,9 +36,7 @@ class DocumentService:
         return result
 
     def get_document(self, document_id: uuid.UUID) -> DocumentDTO:
-        """Retrieve a document by ID."""
-        import asyncio
-        return asyncio.run(self._document_use_cases.get_document(document_id))
+        return self._document_use_cases.get_document(document_id)
 
     def list_documents(
         self,
@@ -48,9 +44,7 @@ class DocumentService:
         offset: int = 0,
         limit: int = 100,
     ) -> list[DocumentDTO]:
-        """List all documents with pagination."""
-        import asyncio
-        return asyncio.run(self._document_use_cases.list_documents(offset=offset, limit=limit))
+        return self._document_use_cases.list_documents(offset=offset, limit=limit)
 
     def classify_document(
         self,
@@ -59,12 +53,10 @@ class DocumentService:
         categories: list[str] | None = None,
         user_id: uuid.UUID | None = None,
     ) -> ClassificationResultDTO:
-        """Classify a document using the LLM provider."""
-        import asyncio
-        result = asyncio.run(self._document_use_cases.classify_document(
+        result = self._document_use_cases.classify_document(
             document_id,
             categories=categories,
-        ))
+        )
         logger.info(
             "Document classified: doc_id=%s type=%s confidence=%.2f",
             document_id,
@@ -80,9 +72,7 @@ class DocumentService:
         fields: list[str] | None = None,
         user_id: uuid.UUID | None = None,
     ) -> DocumentMetadataDTO:
-        """Extract structured metadata from a document."""
-        import asyncio
-        return asyncio.run(self._document_use_cases.extract_metadata(
+        return self._document_use_cases.extract_metadata(
             document_id,
             fields=fields,
-        ))
+        )

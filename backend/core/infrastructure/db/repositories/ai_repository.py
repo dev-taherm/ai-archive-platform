@@ -9,10 +9,7 @@ from core.application.interfaces.repositories import AITaskRepository
 
 
 class DjangoAITaskRepository(AITaskRepository):
-    """Django ORM implementation of AITaskRepository ABC.
-
-    Uses apps.ai.models.AITask as the canonical ORM model.
-    """
+    """Django ORM implementation of AITaskRepository ABC."""
 
     def __init__(self) -> None:
         from apps.ai.models import AITask as AITaskModel
@@ -21,9 +18,9 @@ class DjangoAITaskRepository(AITaskRepository):
     def _qs(self) -> QuerySet:
         return self._model.objects.all()
 
-    async def get_by_id(self, task_id: uuid.UUID) -> dict[str, Any] | None:
+    def get_by_id(self, task_id: uuid.UUID) -> dict[str, Any] | None:
         try:
-            obj = await self._qs().aget(id=task_id)
+            obj = self._qs().get(id=task_id)
             return {
                 "id": str(obj.id),
                 "task_type": obj.task_type,
@@ -42,11 +39,11 @@ class DjangoAITaskRepository(AITaskRepository):
         except self._model.DoesNotExist:
             return None
 
-    async def save(self, task: dict[str, Any]) -> dict[str, Any]:
+    def save(self, task: dict[str, Any]) -> dict[str, Any]:
         task_id = task.get("id")
         if task_id:
             try:
-                obj = await self._qs().aget(id=task_id)
+                obj = self._qs().get(id=task_id)
                 for field in (
                     "task_type", "status", "document_id", "user_id",
                     "input_preview", "result", "error_message",
@@ -74,7 +71,7 @@ class DjangoAITaskRepository(AITaskRepository):
         task["id"] = str(obj.id)
         return task
 
-    async def list_pending(
+    def list_pending(
         self,
         *,
         task_type: str | None = None,
@@ -85,7 +82,7 @@ class DjangoAITaskRepository(AITaskRepository):
             qs = qs.filter(task_type=task_type)
         qs = qs[:limit]
         results: list[dict[str, Any]] = []
-        async for obj in qs:
+        for obj in qs:
             results.append({
                 "id": str(obj.id),
                 "task_type": obj.task_type,
@@ -99,7 +96,7 @@ class DjangoAITaskRepository(AITaskRepository):
 class DjangoEmbeddingRepository:
     """Placeholder for embedding repository - uses pgvector via EmbeddingService."""
 
-    async def save(
+    def save(
         self,
         vector_id: str,
         embedding: list[float],
@@ -107,7 +104,7 @@ class DjangoEmbeddingRepository:
     ) -> str:
         return vector_id
 
-    async def search_similar(
+    def search_similar(
         self,
         query_embedding: list[float],
         *,
@@ -117,8 +114,45 @@ class DjangoEmbeddingRepository:
     ) -> Sequence[tuple[str, float, dict[str, Any]]]:
         return []
 
-    async def delete(self, vector_id: str) -> bool:
+    def delete(self, vector_id: str) -> bool:
         return False
 
-    async def delete_by_metadata(self, filter_metadata: dict[str, Any]) -> int:
+    def delete_by_metadata(self, filter_metadata: dict[str, Any]) -> int:
         return 0
+
+
+class DjangoAuditLogRepository:
+    """Django ORM implementation of AuditLogRepository ABC."""
+
+    def __init__(self) -> None:
+        pass
+
+    def save(self, log_entry: dict[str, Any]) -> None:
+        import logging
+        logger = logging.getLogger("audit")
+        logger.info(
+            "AUDIT: %s %s/%s by user=%s",
+            log_entry.get("action", ""),
+            log_entry.get("resource_type", ""),
+            log_entry.get("resource_id", ""),
+            log_entry.get("user_id", "system"),
+        )
+
+    def list_by_user(
+        self,
+        user_id: uuid.UUID,
+        *,
+        offset: int = 0,
+        limit: int = 100,
+    ) -> Sequence[dict[str, Any]]:
+        return []
+
+    def list_by_resource(
+        self,
+        resource_type: str,
+        resource_id: uuid.UUID,
+        *,
+        offset: int = 0,
+        limit: int = 100,
+    ) -> Sequence[dict[str, Any]]:
+        return []

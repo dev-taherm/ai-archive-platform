@@ -12,10 +12,7 @@ from core.domain.files.value_objects import FileSize, FilePath, FileStatus, Hash
 
 
 class DjangoFileRepository(FileRepository):
-    """Django ORM implementation of FileRepository ABC.
-
-    Uses apps.files.models.FileRecord as the canonical ORM model.
-    """
+    """Django ORM implementation of FileRepository ABC."""
 
     def __init__(self) -> None:
         from apps.files.models import FileRecord as FileRecordModel
@@ -25,8 +22,6 @@ class DjangoFileRepository(FileRepository):
         return self._model.objects.all()
 
     def _to_domain(self, obj: Any) -> FileRecord:
-        """Convert an ORM model instance to a domain FileRecord entity."""
-        # Build a hash from the content_hash field (format: "algorithm:digest" or plain digest)
         raw_hash = obj.content_hash or ""
         if ":" in raw_hash:
             algo, digest = raw_hash.split(":", 1)
@@ -44,7 +39,7 @@ class DjangoFileRepository(FileRepository):
             ),
             status=FileStatus(obj.status),
             checksum=Hash(algorithm="sha256", digest=obj.checksum) if obj.checksum else None,
-            tags=list(obj.tags) if obj.tags else [],
+            tags=tuple(obj.tags) if obj.tags else (),
             metadata=dict(obj.metadata) if obj.metadata else {},
             duplicate_group_id=obj.duplicate_group_id,
             created_at=obj.created_at,
@@ -52,7 +47,6 @@ class DjangoFileRepository(FileRepository):
         )
 
     def _from_domain(self, entity: FileRecord) -> dict[str, Any]:
-        """Convert a domain FileRecord entity to a dict for ORM save."""
         return {
             "id": entity.id,
             "path": entity.path.raw,
@@ -61,44 +55,44 @@ class DjangoFileRepository(FileRepository):
             "content_hash": entity.fingerprint.content_hash.canonical,
             "status": entity.status.value,
             "checksum": entity.checksum.digest if entity.checksum else "",
-            "tags": entity.tags,
+            "tags": list(entity.tags),
             "metadata": entity.metadata,
             "duplicate_group_id": entity.duplicate_group_id,
         }
 
-    async def get_by_id(self, file_id: uuid.UUID) -> FileRecord | None:
+    def get_by_id(self, file_id: uuid.UUID) -> FileRecord | None:
         try:
-            obj = await self._qs().aget(id=file_id)
+            obj = self._qs().get(id=file_id)
             return self._to_domain(obj)
         except self._model.DoesNotExist:
             return None
 
-    async def save(self, file_record: FileRecord) -> FileRecord:
+    def save(self, file_record: FileRecord) -> FileRecord:
         data = self._from_domain(file_record)
-        obj, _ = await self._model.objects.aupdate_or_create(
+        obj, _ = self._model.objects.update_or_create(
             id=file_record.id,
             defaults=data,
         )
         return self._to_domain(obj)
 
-    async def list_all(
+    def list_all(
         self,
         *,
         offset: int = 0,
         limit: int = 100,
     ) -> Sequence[FileRecord]:
         qs = self._qs().order_by("-created_at")[offset : offset + limit]
-        return [self._to_domain(obj) async for obj in qs]
+        return [self._to_domain(obj) for obj in qs]
 
-    async def delete(self, file_id: uuid.UUID) -> bool:
-        deleted_count, _ = await self._qs().filter(id=file_id).adelete()
+    def delete(self, file_id: uuid.UUID) -> bool:
+        deleted_count, _ = self._qs().filter(id=file_id).delete()
         return deleted_count > 0
 
-    async def get_by_fingerprint(self, fingerprint_hash: Hash) -> Sequence[FileRecord]:
+    def get_by_fingerprint(self, fingerprint_hash: Hash) -> Sequence[FileRecord]:
         qs = self._qs().filter(content_hash=fingerprint_hash.canonical)
-        return [self._to_domain(obj) async for obj in qs]
+        return [self._to_domain(obj) for obj in qs]
 
-    async def find_duplicates(self) -> Sequence[dict[str, Any]]:
+    def find_duplicates(self) -> Sequence[dict[str, Any]]:
         from django.db.models import Count
         dup_qs = (
             self._qs()
@@ -108,9 +102,9 @@ class DjangoFileRepository(FileRepository):
             .exclude(content_hash="")
         )
         results: list[dict[str, Any]] = []
-        async for group in dup_qs:
+        for group in dup_qs:
             files_qs = self._qs().filter(content_hash=group["content_hash"])
-            files = [self._to_domain(obj) async for obj in files_qs]
+            files = [self._to_domain(obj) for obj in files_qs]
             results.append({
                 "fingerprint_hash": group["content_hash"],
                 "file_count": group["cnt"],

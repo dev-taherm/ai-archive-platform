@@ -28,18 +28,12 @@ class DocumentSerializer(serializers.Serializer):
     file_id = serializers.UUIDField(read_only=True)
     doc_type = serializers.CharField(read_only=True)
     processing_status = serializers.CharField(read_only=True)
-    title = serializers.CharField(read_only=True, source="metadata.title", default="")
-    author = serializers.CharField(read_only=True, source="metadata.author", default="")
-    subject = serializers.CharField(
-        read_only=True, source="metadata.subject", default=""
-    )
-    language = serializers.CharField(
-        read_only=True, source="metadata.language", default="unknown"
-    )
+    title = serializers.CharField(read_only=True, default="")
+    author = serializers.CharField(read_only=True, default="")
+    subject = serializers.CharField(read_only=True, default="")
+    language = serializers.CharField(read_only=True, default="unknown")
     word_count = serializers.IntegerField(read_only=True, default=0)
-    page_count = serializers.IntegerField(
-        read_only=True, source="metadata.page_count", default=0
-    )
+    page_count = serializers.IntegerField(read_only=True, default=0)
     chunk_count = serializers.IntegerField(read_only=True, default=0)
     classification_confidence = serializers.FloatField(
         read_only=True, allow_null=True

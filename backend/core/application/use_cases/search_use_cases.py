@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 import uuid
 from typing import Any
 
@@ -35,8 +36,7 @@ class SearchUseCases:
         self._file_repository = file_repository
         self._embedding_provider = embedding_provider
 
-    async def search(self, query_dto: SearchQueryDTO) -> SearchResponseDTO:
-        """Execute a search using the specified strategy."""
+    def search(self, query_dto: SearchQueryDTO) -> SearchResponseDTO:
         if not query_dto.query.strip():
             return SearchResponseDTO(
                 query=query_dto.query,
@@ -46,26 +46,24 @@ class SearchUseCases:
                 search_type=query_dto.search_type,
             )
 
-        import time
-
         start = time.monotonic()
 
         if query_dto.search_type == "semantic":
-            results = await self.semantic_search(
+            results = self.semantic_search(
                 query_dto.query,
                 max_results=query_dto.max_results,
                 offset=query_dto.offset,
                 filters=query_dto.filters,
             )
         elif query_dto.search_type == "keyword":
-            results = await self.keyword_search(
+            results = self.keyword_search(
                 query_dto.query,
                 max_results=query_dto.max_results,
                 offset=query_dto.offset,
                 filters=query_dto.filters,
             )
         else:
-            results = await self.hybrid_search(
+            results = self.hybrid_search(
                 query_dto.query,
                 max_results=query_dto.max_results,
                 offset=query_dto.offset,
@@ -83,7 +81,7 @@ class SearchUseCases:
             applied_filters=query_dto.filters,
         )
 
-    async def semantic_search(
+    def semantic_search(
         self,
         query: str,
         *,
@@ -91,14 +89,13 @@ class SearchUseCases:
         offset: int = 0,
         filters: SearchFiltersDTO | None = None,
     ) -> list[SearchResultDTO]:
-        """Search by semantic similarity using embeddings."""
-        query_embedding = await self._embedding_provider.embed_text(query)
+        query_embedding = self._embedding_provider.embed_text(query)
 
         filter_meta: dict[str, Any] | None = None
         if filters:
             filter_meta = self._build_filter_metadata(filters)
 
-        similar_chunks = await self._embedding_repository.search_similar(
+        similar_chunks = self._embedding_repository.search_similar(
             query_embedding,
             top_k=max_results + offset,
             threshold=filters.min_score if filters else 0.0,
@@ -131,7 +128,7 @@ class SearchUseCases:
 
         return results
 
-    async def keyword_search(
+    def keyword_search(
         self,
         query: str,
         *,
@@ -139,11 +136,10 @@ class SearchUseCases:
         offset: int = 0,
         filters: SearchFiltersDTO | None = None,
     ) -> list[SearchResultDTO]:
-        """Search by keyword matching within document chunks."""
         query_lower = query.lower()
         query_tokens = set(query_lower.split())
 
-        documents = await self._document_repository.list_all(offset=0, limit=10000)
+        documents = self._document_repository.list_all(offset=0, limit=10000)
         results: list[SearchResultDTO] = []
 
         for doc in documents:
@@ -194,7 +190,7 @@ class SearchUseCases:
 
         return results[offset : offset + max_results]
 
-    async def hybrid_search(
+    def hybrid_search(
         self,
         query: str,
         *,
@@ -204,14 +200,13 @@ class SearchUseCases:
         semantic_weight: float = 0.7,
         keyword_weight: float = 0.3,
     ) -> list[SearchResultDTO]:
-        """Combine semantic and keyword search with weighted scoring."""
-        semantic_results = await self.semantic_search(
+        semantic_results = self.semantic_search(
             query,
             max_results=max_results * 2,
             offset=0,
             filters=filters,
         )
-        keyword_results = await self.keyword_search(
+        keyword_results = self.keyword_search(
             query,
             max_results=max_results * 2,
             offset=0,
@@ -257,7 +252,6 @@ class SearchUseCases:
 
     @staticmethod
     def _extract_snippet(text: str, query: str, context_chars: int = 150) -> str:
-        """Extract a relevant snippet around the query occurrence."""
         lower_text = text.lower()
         idx = lower_text.find(query)
         if idx == -1:
@@ -273,7 +267,6 @@ class SearchUseCases:
 
     @staticmethod
     def _build_filter_metadata(filters: SearchFiltersDTO) -> dict[str, Any]:
-        """Convert search filters to metadata dict for embedding repository."""
         meta: dict[str, Any] = {}
         if filters.doc_types:
             meta["doc_type"] = {"$in": list(filters.doc_types)}

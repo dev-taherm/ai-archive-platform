@@ -1,19 +1,17 @@
 from __future__ import annotations
 
-import asyncio
 import fnmatch
 import hashlib
 import logging
 import mimetypes
-import os
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Any, AsyncIterator, Callable
+from typing import Any, Callable
 
 from core.application.interfaces.services import FileScanner
 
 logger = logging.getLogger(__name__)
 
-# Default patterns to ignore
 DEFAULT_IGNORE_PATTERNS: list[str] = [
     ".git",
     ".svn",
@@ -31,31 +29,24 @@ DEFAULT_IGNORE_PATTERNS: list[str] = [
 
 
 class FileScannerService(FileScanner):
-    """Local filesystem implementation of FileScanner ABC.
-
-    Recursively scans directories, computes file metadata and fingerprints,
-    and supports optional glob-based filtering.
-    """
+    """Local filesystem implementation of FileScanner ABC."""
 
     def __init__(self) -> None:
         self._watching: dict[str, bool] = {}
         self._callbacks: dict[str, Callable | None] = {}
 
     def _should_ignore(self, name: str, ignore_patterns: list[str]) -> bool:
-        """Check if a filename or directory name matches any ignore pattern."""
         for pattern in ignore_patterns:
             if fnmatch.fnmatch(name, pattern):
                 return True
         return False
 
     def _matches_patterns(self, name: str, patterns: list[str] | None) -> bool:
-        """Check if a filename matches any of the include patterns."""
         if not patterns:
             return True
         return any(fnmatch.fnmatch(name, p) for p in patterns)
 
     def _compute_fingerprint(self, filepath: str) -> dict[str, str]:
-        """Compute a SHA-256 content hash and detect magic bytes."""
         sha256 = hashlib.sha256()
         magic_bytes = b""
         with open(filepath, "rb") as f:
@@ -78,15 +69,14 @@ class FileScannerService(FileScanner):
             "mime_type": mime_type or "application/octet-stream",
         }
 
-    async def scan_folder(
+    def scan_folder(
         self,
         path: str,
         *,
         recursive: bool = True,
         patterns: list[str] | None = None,
         ignore_patterns: list[str] | None = None,
-    ) -> AsyncIterator[dict[str, Any]]:
-        """Scan a folder and yield file metadata for each discovered file."""
+    ) -> Iterator[dict[str, Any]]:
         root = Path(path).resolve()
         if not root.exists():
             logger.warning("Scan target does not exist: %s", path)
@@ -99,36 +89,25 @@ class FileScannerService(FileScanner):
         if ignore_patterns:
             effective_ignore.extend(ignore_patterns)
 
-        loop = asyncio.get_event_loop()
-
         if recursive:
-            entries = await loop.run_in_executor(
-                None,
-                lambda: sorted(root.rglob("*"), key=lambda p: (p.is_file(), p.name)),
-            )
+            entries = sorted(root.rglob("*"), key=lambda p: (p.is_file(), p.name))
         else:
-            entries = await loop.run_in_executor(
-                None,
-                lambda: sorted(root.iterdir(), key=lambda p: (p.is_file(), p.name)),
-            )
+            entries = sorted(root.iterdir(), key=lambda p: (p.is_file(), p.name))
 
         for entry in entries:
             if entry.name in effective_ignore or self._should_ignore(entry.name, effective_ignore):
                 continue
 
-            # Skip directories in non-recursive mode or if entry is a dir
             if entry.is_dir():
                 if not recursive:
                     continue
-                continue  # skip directories in recursive mode too
+                continue
 
             if not self._matches_patterns(entry.name, patterns):
                 continue
 
-            stat = await loop.run_in_executor(None, entry.stat)
-            fingerprint = await loop.run_in_executor(
-                None, self._compute_fingerprint, str(entry)
-            )
+            stat = entry.stat()
+            fingerprint = self._compute_fingerprint(str(entry))
 
             yield {
                 "path": str(entry),
@@ -145,28 +124,19 @@ class FileScannerService(FileScanner):
                 "mime_type": fingerprint["mime_type"],
             }
 
-    async def watch_folder(
+    def watch_folder(
         self,
         path: str,
         *,
         recursive: bool = True,
         callback: Callable | None = None,
     ) -> None:
-        """Begin watching a folder for changes.
-
-        NOTE: This is a simplified polling-based watcher. For production,
-        consider using watchdog (pip install watchdog) for OS-native events.
-        """
         resolved = str(Path(path).resolve())
         self._watching[resolved] = True
         self._callbacks[resolved] = callback
         logger.info("Started watching folder: %s", resolved)
 
-        # In a real implementation this would start an event loop or thread
-        # that monitors the directory for file system events and invokes
-        # the callback with (event_type, filepath) tuples.
-
-    async def stop_watching(self, path: str) -> None:
+    def stop_watching(self, path: str) -> None:
         resolved = str(Path(path).resolve())
         self._watching.pop(resolved, None)
         self._callbacks.pop(resolved, None)

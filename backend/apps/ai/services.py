@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import logging
 import uuid
+import uuid as _uuid
+from datetime import datetime, timezone
 from typing import Any
 
 from core.application.dtos.ai_dto import AIResultDTO, ClassificationDTO, EmbeddingDTO
@@ -24,13 +26,11 @@ class AIService:
         system_prompt: str | None = None,
         user_id: uuid.UUID | None = None,
     ) -> ClassificationDTO:
-        """Classify text content using the LLM provider."""
-        import asyncio
-        result = asyncio.run(self._ai_use_cases.classify(
+        result = self._ai_use_cases.classify(
             text,
             categories=categories,
             system_prompt=system_prompt,
-        ))
+        )
         logger.info(
             "Classification: label=%s confidence=%.2f user=%s",
             result.predicted_label,
@@ -47,13 +47,11 @@ class AIService:
         system_prompt: str | None = None,
         user_id: uuid.UUID | None = None,
     ) -> dict[str, Any]:
-        """Extract structured data from text using the LLM provider."""
-        import asyncio
-        return asyncio.run(self._ai_use_cases.extract(
+        return self._ai_use_cases.extract(
             text,
             fields=fields,
             system_prompt=system_prompt,
-        ))
+        )
 
     def summarize(
         self,
@@ -63,13 +61,11 @@ class AIService:
         system_prompt: str | None = None,
         user_id: uuid.UUID | None = None,
     ) -> str:
-        """Generate a summary of the given text."""
-        import asyncio
-        return asyncio.run(self._ai_use_cases.summarize(
+        return self._ai_use_cases.summarize(
             text,
             max_tokens=max_tokens,
             system_prompt=system_prompt,
-        ))
+        )
 
     def generate_embeddings(
         self,
@@ -77,9 +73,7 @@ class AIService:
         *,
         user_id: uuid.UUID | None = None,
     ) -> list[EmbeddingDTO]:
-        """Generate and store embeddings for a document's text content."""
-        import asyncio
-        results = asyncio.run(self._ai_use_cases.generate_embeddings(document_id))
+        results = self._ai_use_cases.generate_embeddings(document_id)
         logger.info(
             "Embeddings generated: doc_id=%s count=%d",
             document_id,
@@ -92,14 +86,12 @@ class AIService:
         user_id: uuid.UUID | None = None,
         title: str = "",
     ) -> dict[str, Any]:
-        """Create a new chat session."""
-        import uuid as _uuid
         session_id = _uuid.uuid4()
         return {
             "id": str(session_id),
             "user_id": str(user_id) if user_id else None,
             "title": title or f"Chat {session_id}",
-            "created_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
         }
 
     def get_chat_history(
@@ -107,7 +99,6 @@ class AIService:
         session_id: uuid.UUID,
         limit: int = 50,
     ) -> list[dict[str, Any]]:
-        """Get chat history for a session."""
         return []
 
     def send_chat_message(
@@ -116,10 +107,9 @@ class AIService:
         message: str,
         user_id: uuid.UUID | None = None,
     ) -> dict[str, Any]:
-        """Send a message in a chat session."""
         return {
             "session_id": str(session_id),
             "user_message": message,
             "assistant_message": "Chat functionality requires LLM provider configuration.",
-            "created_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
         }

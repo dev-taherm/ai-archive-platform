@@ -30,6 +30,7 @@ class DocumentsConfig(AppConfig):
                 StubLLMProvider,
                 StubOCRProvider,
             )
+            from core.infrastructure.services.document_reader import DocumentReader
 
             llm_provider = StubLLMProvider()
             ocr_provider = StubOCRProvider()
@@ -40,6 +41,7 @@ class DocumentsConfig(AppConfig):
                 embedding_repository=DjangoEmbeddingRepository(),
                 ocr_provider=ocr_provider,
                 llm_provider=llm_provider,
+                document_reader=DocumentReader(),
             )
             self._document_service = DocumentService(use_cases)
         return self._document_service

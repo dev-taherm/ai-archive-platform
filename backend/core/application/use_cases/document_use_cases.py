@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from pathlib import Path
 from typing import Any
 
 from core.application.dtos.document_dto import (
@@ -37,16 +38,17 @@ class DocumentUseCases:
         embedding_repository: EmbeddingRepository,
         ocr_provider: OCRProvider,
         llm_provider: LLMProvider,
+        document_reader: Any = None,
     ) -> None:
         self._document_repository = document_repository
         self._file_repository = file_repository
         self._embedding_repository = embedding_repository
         self._ocr_provider = ocr_provider
         self._llm_provider = llm_provider
+        self._document_reader = document_reader
 
-    async def process_document(self, file_id: uuid.UUID) -> DocumentDTO:
-        """Full document processing pipeline: extract, classify, embed."""
-        file_record = await self._file_repository.get_by_id(file_id)
+    def process_document(self, file_id: uuid.UUID) -> DocumentDTO:
+        file_record = self._file_repository.get_by_id(file_id)
         if file_record is None:
             raise EntityNotFound("FileRecord", str(file_id))
 
@@ -54,17 +56,45 @@ class DocumentUseCases:
         document.start_processing()
 
         try:
-            content = await self._ocr_provider.extract_text(
-                b"",
-                content_type=file_record.mime_type.value,
-            )
+            extracted_text = ""
+            page_count = 0
+            doc_metadata: dict[str, Any] = {}
 
-            language = await self._ocr_provider.detect_language(content)
-            confidence = await self._ocr_provider.get_confidence(content)
+            if self._document_reader is not None:
+                file_path = file_record.path.normalized
+                try:
+                    result = self._document_reader.read(file_path)
+                    extracted_text = result.text
+                    page_count = result.page_count
+                    doc_metadata = result.metadata
+                except Exception as e:
+                    logger.warning("DocumentReader failed for %s: %s", file_path, e)
+
+            if not extracted_text:
+                extracted_text = self._ocr_provider.extract_text(
+                    b"",
+                    content_type=file_record.mime_type.value,
+                )
+
+            from core.domain.documents.value_objects import Language as LangValue
+
+            lang_value = LangValue.UNKNOWN
+            try:
+                detected_lang = self._ocr_provider.detect_language(extracted_text)
+                lang_value = detected_lang
+            except Exception:
+                pass
+
+            title = doc_metadata.get("title", "")
+            author = doc_metadata.get("author", "")
+            subject = doc_metadata.get("subject", "")
+
+            if not title:
+                title = Path(file_record.path.normalized).stem
 
             categories = [dt.value for dt in DocumentType]
-            predicted_type_str, type_confidence = await self._llm_provider.classify(
-                content[:2000],
+            predicted_type_str, type_confidence = self._llm_provider.classify(
+                extracted_text[:2000] if extracted_text else "",
                 categories=categories,
                 system_prompt="Classify this document by type.",
             )
@@ -76,18 +106,12 @@ class DocumentUseCases:
             doc_type_confidence = Confidence(value=type_confidence)
             document.mark_classified(predicted_type, doc_type_confidence)
 
-            extracted_metadata = await self._llm_provider.extract(
-                content[:3000],
-                fields=["title", "author", "subject", "keywords", "page_count"],
-            )
-
             metadata = DocumentMetadata(
-                title=extracted_metadata.get("title", ""),
-                author=extracted_metadata.get("author", ""),
-                subject=extracted_metadata.get("subject", ""),
-                keywords=tuple(extracted_metadata.get("keywords", [])),
-                page_count=int(extracted_metadata.get("page_count", 0)),
-                language=language,
+                title=title,
+                author=author,
+                subject=subject,
+                page_count=page_count,
+                language=lang_value,
             )
 
             document = Document(
@@ -97,69 +121,50 @@ class DocumentUseCases:
                 processing_status=ProcessingStatus.INDEXING,
                 metadata=metadata,
                 classification_confidence=doc_type_confidence,
-                extracted_text=content,
+                extracted_text=extracted_text,
                 created_at=document.created_at,
                 updated_at=document.updated_at,
             )
 
             chunks = DocumentChunk.from_text(
                 document_id=document.id,
-                text=content,
+                text=extracted_text,
             )
 
-            chunk_count = 0
-            for chunk in chunks:
-                embedding = await self._ocr_provider.extract_text(
-                    chunk.content.encode(),
-                    content_type="text/plain",
-                )
-                saved_chunk = await self._document_repository.save(
-                    Document(
-                        id=chunk.id,
-                        file_id=file_id,
-                        processing_status=ProcessingStatus.COMPLETED,
-                        extracted_text=chunk.content,
-                        created_at=chunk.created_at,
-                        updated_at=chunk.updated_at,
-                    )
-                )
-                chunk_count += 1
+            chunk_count = len(chunks)
 
             document.mark_indexed(chunk_count)
-            saved = await self._document_repository.save(document)
+            saved = self._document_repository.save(document)
 
             return DocumentDTO.from_entity(saved)
 
         except Exception as e:
             document.mark_failed(str(e))
-            await self._document_repository.save(document)
+            self._document_repository.save(document)
             logger.exception("Document processing failed for file_id=%s", file_id)
             raise
 
-    async def get_document(self, document_id: uuid.UUID) -> DocumentDTO:
-        """Retrieve a document by ID."""
-        document = await self._document_repository.get_by_id(document_id)
+    def get_document(self, document_id: uuid.UUID) -> DocumentDTO:
+        document = self._document_repository.get_by_id(document_id)
         if document is None:
             raise EntityNotFound("Document", str(document_id))
         return DocumentDTO.from_entity(document)
 
-    async def list_documents(
+    def list_documents(
         self,
         *,
         offset: int = 0,
         limit: int = 100,
     ) -> list[DocumentDTO]:
-        """List all documents with pagination."""
-        documents = await self._document_repository.list_all(offset=offset, limit=limit)
+        documents = self._document_repository.list_all(offset=offset, limit=limit)
         return [DocumentDTO.from_entity(d) for d in documents]
 
-    async def classify_document(
+    def classify_document(
         self,
         document_id: uuid.UUID,
         categories: list[str] | None = None,
     ) -> ClassificationResultDTO:
-        """Classify a document using the LLM provider."""
-        document = await self._document_repository.get_by_id(document_id)
+        document = self._document_repository.get_by_id(document_id)
         if document is None:
             raise EntityNotFound("Document", str(document_id))
 
@@ -169,7 +174,7 @@ class DocumentUseCases:
         if categories is None:
             categories = [dt.value for dt in DocumentType]
 
-        predicted_label, confidence = await self._llm_provider.classify(
+        predicted_label, confidence = self._llm_provider.classify(
             document.extracted_text[:2000],
             categories=categories,
         )
@@ -181,13 +186,12 @@ class DocumentUseCases:
             all_scores={predicted_label: confidence},
         )
 
-    async def extract_metadata(
+    def extract_metadata(
         self,
         document_id: uuid.UUID,
         fields: list[str] | None = None,
     ) -> DocumentMetadataDTO:
-        """Extract structured metadata from a document."""
-        document = await self._document_repository.get_by_id(document_id)
+        document = self._document_repository.get_by_id(document_id)
         if document is None:
             raise EntityNotFound("Document", str(document_id))
 
@@ -197,7 +201,7 @@ class DocumentUseCases:
         if fields is None:
             fields = ["title", "author", "subject", "keywords", "page_count", "word_count"]
 
-        extracted = await self._llm_provider.extract(
+        extracted = self._llm_provider.extract(
             document.extracted_text[:3000],
             fields=fields,
         )

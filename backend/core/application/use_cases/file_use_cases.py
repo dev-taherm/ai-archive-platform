@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-import hashlib
 import logging
 import time
 import uuid
 from pathlib import PurePosixPath
-from typing import AsyncIterator
 
 from core.application.dtos.file_dto import FileOperationDTO, FileRecordDTO, ScanResultDTO
 from core.application.interfaces.repositories import FileRepository
@@ -30,7 +28,7 @@ class FileUseCases:
         self._storage_backend = storage_backend
         self._file_scanner = file_scanner
 
-    async def scan_folder(
+    def scan_folder(
         self,
         folder_path: str,
         *,
@@ -38,7 +36,6 @@ class FileUseCases:
         patterns: list[str] | None = None,
         ignore_patterns: list[str] | None = None,
     ) -> ScanResultDTO:
-        """Scan a folder for files and register them in the archive."""
         total_found = 0
         scanned = 0
         new_files = 0
@@ -49,7 +46,7 @@ class FileUseCases:
 
         start_time = time.monotonic()
 
-        async for file_info in self._file_scanner.scan_folder(
+        for file_info in self._file_scanner.scan_folder(
             folder_path,
             recursive=recursive,
             patterns=patterns,
@@ -62,7 +59,6 @@ class FileUseCases:
                 mime_value = file_info.get("mime_type", "application/octet-stream")
                 content_hash_str = file_info.get("content_hash", "")
 
-                # Parse the content hash (format: "sha256:hexdigest")
                 if ":" in content_hash_str:
                     algo, digest = content_hash_str.split(":", 1)
                 else:
@@ -71,13 +67,11 @@ class FileUseCases:
                 content_hash = Hash(algorithm=algo, digest=digest)
                 file_size_obj = FileSize(bytes=file_size)
 
-                # Check for duplicates by fingerprint
-                existing = await self._file_repository.get_by_fingerprint(content_hash)
+                existing = self._file_repository.get_by_fingerprint(content_hash)
                 if existing:
                     skipped += 1
                     continue
 
-                # Create domain entity
                 record = FileRecord(
                     path=FilePath(raw=file_path),
                     mime_type=MimeType(value=mime_value),
@@ -90,7 +84,7 @@ class FileUseCases:
                     status=FileStatus.PENDING,
                 )
 
-                saved = await self._file_repository.save(record)
+                saved = self._file_repository.save(record)
                 file_ids.append(saved.id)
                 new_files += 1
                 scanned += 1
@@ -114,37 +108,34 @@ class FileUseCases:
             file_ids=tuple(file_ids),
         )
 
-    async def get_file(self, file_id: uuid.UUID) -> FileRecordDTO:
-        """Retrieve a file record by ID."""
-        record = await self._file_repository.get_by_id(file_id)
+    def get_file(self, file_id: uuid.UUID) -> FileRecordDTO:
+        record = self._file_repository.get_by_id(file_id)
         if record is None:
             raise EntityNotFound("FileRecord", str(file_id))
         return FileRecordDTO.from_entity(record)
 
-    async def list_files(
+    def list_files(
         self,
         *,
         offset: int = 0,
         limit: int = 100,
     ) -> list[FileRecordDTO]:
-        """List all file records with pagination."""
-        records = await self._file_repository.list_all(offset=offset, limit=limit)
+        records = self._file_repository.list_all(offset=offset, limit=limit)
         return [FileRecordDTO.from_entity(r) for r in records]
 
-    async def delete_file(self, file_id: uuid.UUID) -> FileOperationDTO:
-        """Delete a file from the archive and storage."""
-        record = await self._file_repository.get_by_id(file_id)
+    def delete_file(self, file_id: uuid.UUID) -> FileOperationDTO:
+        record = self._file_repository.get_by_id(file_id)
         if record is None:
             raise EntityNotFound("FileRecord", str(file_id))
 
         source_path = record.path.normalized
 
         try:
-            await self._storage_backend.delete(source_path)
+            self._storage_backend.delete(source_path)
         except Exception as e:
             logger.warning("Failed to delete from storage: %s", e)
 
-        deleted = await self._file_repository.delete(file_id)
+        deleted = self._file_repository.delete(file_id)
         if not deleted:
             return FileOperationDTO.failure_result(
                 operation="delete",
@@ -159,13 +150,12 @@ class FileUseCases:
             source_path=source_path,
         )
 
-    async def rename_file(
+    def rename_file(
         self,
         file_id: uuid.UUID,
         new_name: str,
     ) -> FileOperationDTO:
-        """Rename a file within the archive."""
-        record = await self._file_repository.get_by_id(file_id)
+        record = self._file_repository.get_by_id(file_id)
         if record is None:
             raise EntityNotFound("FileRecord", str(file_id))
 
@@ -177,9 +167,9 @@ class FileUseCases:
         new_full_path = str(parent / new_name)
 
         try:
-            old_content = await self._storage_backend.retrieve(old_path)
-            await self._storage_backend.save(new_full_path, old_content)
-            await self._storage_backend.delete(old_path)
+            old_content = self._storage_backend.retrieve(old_path)
+            self._storage_backend.save(new_full_path, old_content)
+            self._storage_backend.delete(old_path)
         except Exception as e:
             logger.exception("Failed to rename file in storage")
             return FileOperationDTO.failure_result(
@@ -205,7 +195,7 @@ class FileUseCases:
             updated_at=record.updated_at,
         )
         updated = updated.with_updated_timestamp()
-        await self._file_repository.save(updated)
+        self._file_repository.save(updated)
 
         return FileOperationDTO.success_result(
             operation="rename",
@@ -214,13 +204,12 @@ class FileUseCases:
             destination_path=new_full_path,
         )
 
-    async def move_file(
+    def move_file(
         self,
         file_id: uuid.UUID,
         destination_folder: str,
     ) -> FileOperationDTO:
-        """Move a file to a different folder."""
-        record = await self._file_repository.get_by_id(file_id)
+        record = self._file_repository.get_by_id(file_id)
         if record is None:
             raise EntityNotFound("FileRecord", str(file_id))
 
@@ -229,9 +218,9 @@ class FileUseCases:
         new_full_path = str(PurePosixPath(destination_folder) / filename)
 
         try:
-            old_content = await self._storage_backend.retrieve(old_path)
-            await self._storage_backend.save(new_full_path, old_content)
-            await self._storage_backend.delete(old_path)
+            old_content = self._storage_backend.retrieve(old_path)
+            self._storage_backend.save(new_full_path, old_content)
+            self._storage_backend.delete(old_path)
         except Exception as e:
             logger.exception("Failed to move file in storage")
             return FileOperationDTO.failure_result(
@@ -257,7 +246,7 @@ class FileUseCases:
             updated_at=record.updated_at,
         )
         updated = updated.with_updated_timestamp()
-        await self._file_repository.save(updated)
+        self._file_repository.save(updated)
 
         return FileOperationDTO.success_result(
             operation="move",
@@ -266,13 +255,12 @@ class FileUseCases:
             destination_path=new_full_path,
         )
 
-    async def copy_file(
+    def copy_file(
         self,
         file_id: uuid.UUID,
         destination_folder: str,
     ) -> FileOperationDTO:
-        """Copy a file to a different folder."""
-        record = await self._file_repository.get_by_id(file_id)
+        record = self._file_repository.get_by_id(file_id)
         if record is None:
             raise EntityNotFound("FileRecord", str(file_id))
 
@@ -281,8 +269,8 @@ class FileUseCases:
         dest_full_path = str(PurePosixPath(destination_folder) / filename)
 
         try:
-            content = await self._storage_backend.retrieve(source_path)
-            await self._storage_backend.save(dest_full_path, content)
+            content = self._storage_backend.retrieve(source_path)
+            self._storage_backend.save(dest_full_path, content)
         except Exception as e:
             logger.exception("Failed to copy file in storage")
             return FileOperationDTO.failure_result(
@@ -309,7 +297,7 @@ class FileUseCases:
             tags=list(record.tags),
             metadata=dict(record.metadata),
         )
-        saved_copy = await self._file_repository.save(copy_record)
+        saved_copy = self._file_repository.save(copy_record)
 
         return FileOperationDTO.success_result(
             operation="copy",

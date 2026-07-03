@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, AsyncIterator, Sequence
+from collections.abc import Iterator
+from typing import Any, Sequence
 from uuid import UUID
 
 from core.domain.documents.value_objects import Confidence, Language, DocumentType
@@ -11,7 +12,7 @@ class StorageBackend(ABC):
     """Abstract interface for file storage operations."""
 
     @abstractmethod
-    async def save(
+    def save(
         self,
         content: bytes,
         path: str,
@@ -22,15 +23,15 @@ class StorageBackend(ABC):
         """Store content at the given path. Returns the storage key."""
 
     @abstractmethod
-    async def retrieve(self, path: str) -> bytes:
+    def retrieve(self, path: str) -> bytes:
         """Retrieve content from storage by path."""
 
     @abstractmethod
-    async def delete(self, path: str) -> bool:
+    def delete(self, path: str) -> bool:
         """Delete content from storage. Returns True if deleted."""
 
     @abstractmethod
-    async def list(
+    def list(
         self,
         prefix: str = "",
         *,
@@ -39,11 +40,11 @@ class StorageBackend(ABC):
         """List storage keys matching the prefix."""
 
     @abstractmethod
-    async def get_url(self, path: str, *, expires_in: int = 3600) -> str:
+    def get_url(self, path: str, *, expires_in: int = 3600) -> str:
         """Generate a pre-signed URL for the given path."""
 
     @abstractmethod
-    async def exists(self, path: str) -> bool:
+    def exists(self, path: str) -> bool:
         """Check whether content exists at the given path."""
 
 
@@ -51,7 +52,7 @@ class OCRProvider(ABC):
     """Abstract interface for OCR text extraction."""
 
     @abstractmethod
-    async def extract_text(
+    def extract_text(
         self,
         content: bytes,
         *,
@@ -61,11 +62,11 @@ class OCRProvider(ABC):
         """Extract text content from a document or image via OCR."""
 
     @abstractmethod
-    async def detect_language(self, text: str) -> Language:
+    def detect_language(self, text: str) -> Language:
         """Detect the primary language of the given text."""
 
     @abstractmethod
-    async def get_confidence(self, text: str) -> Confidence:
+    def get_confidence(self, text: str) -> Confidence:
         """Return the confidence score of the OCR extraction."""
 
 
@@ -73,7 +74,7 @@ class LLMProvider(ABC):
     """Abstract interface for large language model operations."""
 
     @abstractmethod
-    async def classify(
+    def classify(
         self,
         text: str,
         *,
@@ -86,7 +87,7 @@ class LLMProvider(ABC):
         """
 
     @abstractmethod
-    async def extract(
+    def extract(
         self,
         text: str,
         *,
@@ -96,7 +97,7 @@ class LLMProvider(ABC):
         """Extract structured data fields from text."""
 
     @abstractmethod
-    async def summarize(
+    def summarize(
         self,
         text: str,
         *,
@@ -106,7 +107,7 @@ class LLMProvider(ABC):
         """Generate a concise summary of the given text."""
 
     @abstractmethod
-    async def chat(
+    def chat(
         self,
         messages: list[dict[str, str]],
         *,
@@ -121,11 +122,11 @@ class EmbeddingProvider(ABC):
     """Abstract interface for text embedding generation."""
 
     @abstractmethod
-    async def embed_text(self, text: str) -> list[float]:
+    def embed_text(self, text: str) -> list[float]:
         """Generate an embedding vector for a single text."""
 
     @abstractmethod
-    async def embed_documents(self, texts: list[str]) -> list[list[float]]:
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
         """Generate embedding vectors for multiple texts.
 
         Implementations may batch requests for efficiency.
@@ -141,18 +142,18 @@ class FileScanner(ABC):
     """Abstract interface for filesystem scanning and watching."""
 
     @abstractmethod
-    async def scan_folder(
+    def scan_folder(
         self,
         path: str,
         *,
         recursive: bool = True,
         patterns: list[str] | None = None,
         ignore_patterns: list[str] | None = None,
-    ) -> AsyncIterator[dict[str, Any]]:
+    ) -> Iterator[dict[str, Any]]:
         """Scan a folder and yield file metadata for each discovered file."""
 
     @abstractmethod
-    async def watch_folder(
+    def watch_folder(
         self,
         path: str,
         *,
@@ -165,7 +166,7 @@ class FileScanner(ABC):
         """
 
     @abstractmethod
-    async def stop_watching(self, path: str) -> None:
+    def stop_watching(self, path: str) -> None:
         """Stop watching a folder for changes."""
 
     @abstractmethod

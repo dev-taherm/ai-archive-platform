@@ -37,21 +37,20 @@ class AIUseCases:
         self._llm_provider = llm_provider
         self._embedding_provider = embedding_provider
 
-    async def classify(
+    def classify(
         self,
         text: str,
         *,
         categories: list[str] | None = None,
         system_prompt: str | None = None,
     ) -> ClassificationDTO:
-        """Classify text content using the LLM provider."""
         if not text.strip():
             raise ValidationException("Text to classify cannot be empty")
 
         if categories is None:
             categories = [dt.value for dt in DocumentType]
 
-        predicted_label, confidence = await self._llm_provider.classify(
+        predicted_label, confidence = self._llm_provider.classify(
             text[:4000],
             categories=categories,
             system_prompt=system_prompt,
@@ -61,58 +60,55 @@ class AIUseCases:
             input_text=text[:200],
             predicted_label=predicted_label,
             confidence=confidence,
-            all_scores={predicted_label: confidence},
+            all_labels={predicted_label: confidence},
         )
 
-    async def extract(
+    def extract(
         self,
         text: str,
         *,
         fields: list[str],
         system_prompt: str | None = None,
     ) -> dict[str, Any]:
-        """Extract structured data from text using the LLM provider."""
         if not text.strip():
             raise ValidationException("Text for extraction cannot be empty")
         if not fields:
             raise ValidationException("At least one field must be specified for extraction")
 
-        result = await self._llm_provider.extract(
+        result = self._llm_provider.extract(
             text[:4000],
             fields=fields,
             system_prompt=system_prompt,
         )
         return result
 
-    async def summarize(
+    def summarize(
         self,
         text: str,
         *,
         max_tokens: int = 500,
         system_prompt: str | None = None,
     ) -> str:
-        """Generate a summary of the given text."""
         if not text.strip():
             raise ValidationException("Text to summarize cannot be empty")
 
-        summary = await self._llm_provider.summarize(
+        summary = self._llm_provider.summarize(
             text,
             max_tokens=max_tokens,
             system_prompt=system_prompt,
         )
         return summary
 
-    async def generate_embeddings(
+    def generate_embeddings(
         self,
         document_id: uuid.UUID,
         *,
         chunk_size: int = 1000,
         overlap: int = 200,
     ) -> list[EmbeddingDTO]:
-        """Generate and store embeddings for a document's text content."""
         from core.domain.documents.entities import DocumentChunk
 
-        document = await self._document_repository.get_by_id(document_id)
+        document = self._document_repository.get_by_id(document_id)
         if document is None:
             raise EntityNotFound("Document", str(document_id))
 
@@ -130,11 +126,11 @@ class AIUseCases:
             return []
 
         texts = [chunk.content for chunk in chunks]
-        embeddings = await self._embedding_provider.embed_documents(texts)
+        embeddings = self._embedding_provider.embed_documents(texts)
 
         results: list[EmbeddingDTO] = []
         for chunk, embedding in zip(chunks, embeddings):
-            vector_id = await self._embedding_repository.save(
+            vector_id = self._embedding_repository.save(
                 vector_id=f"doc_{document_id}_chunk_{chunk.chunk_index}",
                 embedding=embedding,
                 metadata={
