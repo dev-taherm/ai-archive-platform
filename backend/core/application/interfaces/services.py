@@ -69,6 +69,19 @@ class OCRProvider(ABC):
     def get_confidence(self, text: str) -> Confidence:
         """Return the confidence score of the OCR extraction."""
 
+    def extract_with_boxes(
+        self,
+        content: bytes,
+        *,
+        content_type: str,
+    ) -> list[dict[str, Any]]:
+        """Extract text with bounding boxes and confidence scores.
+
+        Returns list of dicts with keys: bbox, text, confidence.
+        Default implementation returns empty list.
+        """
+        return []
+
 
 class LLMProvider(ABC):
     """Abstract interface for large language model operations."""
@@ -117,6 +130,19 @@ class LLMProvider(ABC):
     ) -> str:
         """Have a conversational exchange with the LLM."""
 
+    def extract_entities(
+        self,
+        text: str,
+        *,
+        entity_types: list[str] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Extract named entities from text.
+
+        Returns list of dicts with keys: name, type, context.
+        Default implementation returns empty list.
+        """
+        return []
+
 
 class EmbeddingProvider(ABC):
     """Abstract interface for text embedding generation."""
@@ -136,6 +162,11 @@ class EmbeddingProvider(ABC):
     @abstractmethod
     def dimension(self) -> int:
         """Return the dimensionality of the embedding vectors."""
+
+    @property
+    def model_name(self) -> str:
+        """Return the name of the embedding model."""
+        return "unknown"
 
 
 class FileScanner(ABC):

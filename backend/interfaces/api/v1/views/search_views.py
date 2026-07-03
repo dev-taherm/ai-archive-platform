@@ -123,3 +123,76 @@ class SearchView(viewsets.GenericViewSet):
             return Response(
                 {"detail": e.message}, status=status.HTTP_400_BAD_REQUEST
             )
+
+    @action(detail=False, methods=["get", "post"], url_path="quick-search")
+    def quick_search(self, request):
+        """Lightweight search using the HybridSearchService directly.
+
+        GET: /api/v1/search/quick-search/?q=query&top_k=5
+        POST: {"query": "search text", "top_k": 5, "document_id": "optional-uuid"}
+        """
+        if request.method == "GET":
+            query = request.query_params.get("q", "")
+            top_k = int(request.query_params.get("top_k", 10))
+            document_id = request.query_params.get("document_id")
+        else:
+            query = request.data.get("query", "")
+            top_k = request.data.get("top_k", 10)
+            document_id = request.data.get("document_id")
+
+        if not query:
+            return Response(
+                {"detail": "Query is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            from core.infrastructure.services.hybrid_search import HybridSearchService
+            from core.infrastructure.services.vector_store import VectorStore
+
+            vector_store = VectorStore()
+            search_service = HybridSearchService(vector_store=vector_store)
+
+            # Generate query embedding if provider available
+            query_embedding = None
+            try:
+                from django.apps import apps
+                ai_config = apps.get_app_config("ai")
+                query_embedding = ai_config.embedding_provider.embed_text(query)
+            except Exception:
+                pass
+
+            results = search_service.search(
+                query=query,
+                query_embedding=query_embedding,
+                top_k=top_k,
+                document_id=document_id,
+                use_semantic=query_embedding is not None,
+                use_keyword=True,
+            )
+
+            return Response(
+                {
+                    "query": query,
+                    "results": [
+                        {
+                            "id": r.id,
+                            "text": r.text,
+                            "score": r.score,
+                            "document_id": r.document_id,
+                            "chunk_index": r.chunk_index,
+                            "match_type": r.match_type,
+                            "metadata": r.metadata,
+                        }
+                        for r in results
+                    ],
+                    "total_count": len(results),
+                },
+                status=status.HTTP_200_OK,
+            )
+        except Exception as e:
+            logger.exception("Quick search failed: %s", e)
+            return Response(
+                {"detail": f"Search failed: {e}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )

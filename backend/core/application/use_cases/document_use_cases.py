@@ -63,10 +63,17 @@ class DocumentUseCases:
             if self._document_reader is not None:
                 file_path = file_record.path.normalized
                 try:
-                    result = self._document_reader.read(file_path)
-                    extracted_text = result.text
-                    page_count = result.page_count
-                    doc_metadata = result.metadata
+                    # Support both new ParserRouter (parse) and old DocumentReader (read)
+                    if hasattr(self._document_reader, 'parse'):
+                        result = self._document_reader.parse(file_path)
+                        extracted_text = result.markdown
+                        page_count = result.page_count
+                        doc_metadata = result.metadata
+                    elif hasattr(self._document_reader, 'read'):
+                        result = self._document_reader.read(file_path)
+                        extracted_text = result.text
+                        page_count = result.page_count
+                        doc_metadata = result.metadata
                 except Exception as e:
                     logger.warning("DocumentReader failed for %s: %s", file_path, e)
 

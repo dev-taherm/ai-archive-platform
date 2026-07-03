@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import uuid as _uuid
 
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
@@ -96,6 +97,70 @@ class DocumentViewSet(viewsets.GenericViewSet):
             return Response(
                 {"detail": e.message}, status=status.HTTP_400_BAD_REQUEST
             )
+
+    @action(detail=False, methods=["post"], url_path="process-pipeline")
+    def process_pipeline(self, request):
+        """Process a document through the full LangGraph pipeline.
+
+        Accepts: {"file_id": "uuid"}
+        Returns: Full pipeline results with classification, entities, summary, chunks, embeddings.
+        """
+        file_id_str = request.data.get("file_id")
+        if not file_id_str:
+            return Response(
+                {"detail": "file_id is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            file_id = _uuid.UUID(str(file_id_str))
+        except ValueError:
+            return Response(
+                {"detail": "Invalid file_id."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Look up file record to get path and mime type
+        from core.infrastructure.db.repositories.file_repository import DjangoFileRepository
+        file_repo = DjangoFileRepository()
+        file_record = file_repo.get_by_id(file_id)
+
+        if not file_record:
+            return Response(
+                {"detail": "File not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        from core.infrastructure.pipelines.document_pipeline import run_document_pipeline
+        try:
+            result = run_document_pipeline(
+                file_id=str(file_id),
+                file_path=str(file_record.path.normalized),
+                mime_type=file_record.mime_type.value,
+            )
+        except Exception as e:
+            logger.exception("Pipeline failed: %s", e)
+            return Response(
+                {"detail": f"Pipeline failed: {e}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        return Response(
+            {
+                "status": result.get("status"),
+                "document_id": result.get("document_id"),
+                "parse_method": result.get("parse_method"),
+                "classification": result.get("classification"),
+                "classification_confidence": result.get("classification_confidence"),
+                "entities": result.get("entities", []),
+                "summary": result.get("summary"),
+                "chunk_count": result.get("chunk_count"),
+                "embedding_count": len(result.get("embedding_ids", [])),
+                "processing_log": result.get("processing_log", []),
+                "error": result.get("error"),
+            },
+            status=status.HTTP_201_CREATED,
+        )
 
     @action(detail=True, methods=["get"])
     def metadata(self, request, pk=None):
