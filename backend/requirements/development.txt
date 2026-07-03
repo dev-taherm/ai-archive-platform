@@ -1,0 +1,26 @@
+# =============================================================================
+# AI Archive Platform - Development Dependencies
+# =============================================================================
+# Inherits all production base dependencies
+-r base.txt
+
+# Testing
+pytest
+pytest-django
+pytest-cov
+pytest-asyncio
+factory-boy
+
+# Code formatting and linting
+black
+ruff
+
+# Type checking
+mypy
+django-stubs
+
+# Git hooks
+pre-commit
+
+# Debugging
+django-debug-toolbar

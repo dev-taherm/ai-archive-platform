@@ -1,0 +1,14 @@
+# =============================================================================
+# AI Archive Platform - Production Dependencies
+# =============================================================================
+# Inherits all base dependencies
+-r base.txt
+
+# Error tracking
+sentry-sdk
+
+# Caching
+django-redis
+
+# Connection pooling
+psycopg-pool

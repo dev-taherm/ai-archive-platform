@@ -1,0 +1,47 @@
+# =============================================================================
+# AI Archive Platform - Base Python Dependencies
+# =============================================================================
+# Core framework and API
+Django>=5.0
+djangorestframework>=3.15
+djangorestframework-simplejwt>=5.3
+django-cors-headers>=4.3
+django-filter>=24.0
+drf-spectacular>=0.27
+
+# Task queue and scheduling
+django-celery-beat>=2.6
+django-celery-results>=2.5
+celery[redis]>=5.3
+redis>=5.0
+
+# Database
+psycopg[binary]>=3.1
+pgvector>=0.3
+
+# Data validation and serialization
+pydantic>=2.5
+
+# LLM and AI
+langchain>=0.3
+langchain-openai>=0.2
+langchain-google-genai>=2.0
+langchain-ollama>=0.2
+langgraph>=0.2
+openai>=1.50
+
+# Document processing
+pymupdf>=1.24
+pdfplumber>=0.11
+python-docx>=1.1
+openpyxl>=3.1
+Pillow>=10.0
+opencv-python-headless>=4.9
+
+# File system and utilities
+watchdog>=4.0
+python-magic>=0.4
+hashlib-additional>=1.0
+
+# WSGI server
+gunicorn>=22.0

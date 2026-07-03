@@ -1,0 +1,104 @@
+# =============================================================================
+# AI Archive Platform - Docker Compose (Development Overrides)
+# =============================================================================
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml down
+#
+# Provides hot reload, debug ports, and relaxed resource limits.
+
+services:
+  # ---------------------------------------------------------------------------
+  # PostgreSQL - expose debug port
+  # ---------------------------------------------------------------------------
+  postgres:
+    ports:
+      - "5433:5432"
+
+  # ---------------------------------------------------------------------------
+  # Redis - expose debug port
+  # ---------------------------------------------------------------------------
+  redis:
+    ports:
+      - "6380:6379"
+
+  # ---------------------------------------------------------------------------
+  # Django web - hot reload and debug toolbar
+  # ---------------------------------------------------------------------------
+  web:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+      target: development
+    command: python manage.py runserver 0.0.0.0:8000
+    environment:
+      DJANGO_DEBUG: "true"
+      DJANGO_ALLOWED_HOSTS: "*"
+      CELERY_TASK_ALWAYS_EAGER: "true"
+    volumes:
+      - ../backend:/app
+      - ../staticfiles:/app/staticfiles
+      - ../media:/app/media
+    ports:
+      - "8000:8000"
+      - "8080:8080"  # Django Debug Toolbar
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  # ---------------------------------------------------------------------------
+  # Celery worker - hot reload, single worker
+  # ---------------------------------------------------------------------------
+  worker:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+      target: development
+    command: watchmedo auto-restart --directory=/app --pattern="*.py" --recursive -- celery -A config worker -l debug -c 2 -Q default,document_processing,llm_processing
+    environment:
+      DJANGO_DEBUG: "true"
+      CELERY_TASK_ALWAYS_EAGER: "true"
+    volumes:
+      - ../backend:/app
+      - ../media:/app/media
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  # ---------------------------------------------------------------------------
+  # Celery beat - development scheduler
+  # ---------------------------------------------------------------------------
+  beat:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+      target: development
+    command: celery -A config beat -l debug --scheduler django_celery_results.schedulers:DatabaseScheduler
+    environment:
+      DJANGO_DEBUG: "true"
+      CELERY_TASK_ALWAYS_EAGER: "true"
+
+  # ---------------------------------------------------------------------------
+  # Next.js frontend - hot reload, debug port
+  # ---------------------------------------------------------------------------
+  frontend:
+    build:
+      context: ..
+      dockerfile: frontend/Dockerfile
+      target: development
+    command: npm run dev
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000/api
+      NEXT_PUBLIC_WS_URL: ws://localhost:8000/ws
+    volumes:
+      - ../frontend/src:/app/src
+      - ../frontend/public:/app/public
+      - ../frontend/package.json:/app/package.json
+      - ../frontend/next.config.js:/app/next.config.js
+    ports:
+      - "3000:3000"
+      - "9229:9229"  # Node.js debug port
