@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 
+from django.conf import settings
 from django.contrib import admin
 from django.db import models
 
@@ -44,3 +45,51 @@ class FileRecord(models.Model):
 
     def __str__(self) -> str:
         return self.path
+
+
+class AuditLog(models.Model):
+    """Tracks all user and system actions for compliance and debugging."""
+
+    class ActionType(models.TextChoices):
+        CREATE = "create", "Create"
+        READ = "read", "Read"
+        UPDATE = "update", "Update"
+        DELETE = "delete", "Delete"
+        UPLOAD = "upload", "Upload"
+        DOWNLOAD = "download", "Download"
+        SCAN = "scan", "Scan"
+        PROCESS = "process", "Process"
+        CLASSIFY = "classify", "Classify"
+        SEARCH = "search", "Search"
+        LOGIN = "login", "Login"
+        LOGOUT = "logout", "Logout"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="audit_logs",
+    )
+    action = models.CharField(max_length=20, choices=ActionType.choices)
+    resource_type = models.CharField(max_length=100, blank=True, default="")
+    resource_id = models.CharField(max_length=100, blank=True, default="")
+    details = models.JSONField(default=dict, blank=True)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "files_auditlog"
+        verbose_name = "Audit Log"
+        verbose_name_plural = "Audit Logs"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["user", "created_at"], name="idx_auditlog_user_time"),
+            models.Index(fields=["action"], name="idx_auditlog_action"),
+            models.Index(fields=["resource_type", "resource_id"], name="idx_auditlog_resource"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.action} {self.resource_type}/{self.resource_id}"

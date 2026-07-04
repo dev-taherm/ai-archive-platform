@@ -50,3 +50,29 @@ class AITask(models.Model):
 
     def __str__(self) -> str:
         return f"AITask({self.task_type}) [{self.status}]"
+
+
+class Embedding(models.Model):
+    """Django model for storing embedding vectors with metadata."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    vector_id = models.CharField(max_length=255, unique=True, db_index=True)
+    embedding = models.JSONField(default=list)
+    metadata = models.JSONField(default=dict, blank=True)
+    document_id = models.UUIDField(null=True, blank=True, db_index=True)
+    file_id = models.UUIDField(null=True, blank=True, db_index=True)
+    chunk_index = models.IntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "embeddings"
+        verbose_name = "Embedding"
+        verbose_name_plural = "Embeddings"
+        indexes = [
+            models.Index(fields=["document_id"], name="idx_embedding_document"),
+            models.Index(fields=["file_id"], name="idx_embedding_file"),
+        ]
+
+    def __str__(self) -> str:
+        return f"Embedding({self.vector_id})"

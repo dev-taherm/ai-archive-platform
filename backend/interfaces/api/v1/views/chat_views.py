@@ -36,9 +36,9 @@ class ChatViewSet(viewsets.GenericViewSet):
         return ChatSessionSerializer
 
     @property
-    def _ai_service(self):
+    def _chat_service(self):
         from django.apps import apps
-        return apps.get_app_config("ai").ai_service
+        return apps.get_app_config("chat").chat_service
 
     @action(detail=False, methods=["get", "post"], url_path="sessions")
     def sessions(self, request):
@@ -60,7 +60,7 @@ class ChatViewSet(viewsets.GenericViewSet):
         serializer.is_valid(raise_exception=True)
 
         try:
-            session = self._ai_service.create_chat_session(
+            session = self._chat_service.create_chat_session(
                 user_id=request.user.pk,
                 title=serializer.validated_data.get("title", ""),
             )
@@ -94,7 +94,7 @@ class ChatViewSet(viewsets.GenericViewSet):
             )
 
         try:
-            messages = self._ai_service.get_chat_history(
+            messages = self._chat_service.get_chat_history(
                 session_uuid,
                 limit=int(request.query_params.get("limit", 50)),
             )
@@ -121,7 +121,7 @@ class ChatViewSet(viewsets.GenericViewSet):
         serializer.is_valid(raise_exception=True)
 
         try:
-            response = self._ai_service.send_chat_message(
+            response = self._chat_service.send_chat_message(
                 session_id=session_uuid,
                 message=serializer.validated_data["message"],
                 user_id=request.user.pk if request.user.is_authenticated else None,

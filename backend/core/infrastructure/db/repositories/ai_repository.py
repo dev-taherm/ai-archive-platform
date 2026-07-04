@@ -124,18 +124,16 @@ class DjangoEmbeddingRepository:
 class DjangoAuditLogRepository:
     """Django ORM implementation of AuditLogRepository ABC."""
 
-    def __init__(self) -> None:
-        pass
-
     def save(self, log_entry: dict[str, Any]) -> None:
-        import logging
-        logger = logging.getLogger("audit")
-        logger.info(
-            "AUDIT: %s %s/%s by user=%s",
-            log_entry.get("action", ""),
-            log_entry.get("resource_type", ""),
-            log_entry.get("resource_id", ""),
-            log_entry.get("user_id", "system"),
+        from apps.files.models import AuditLog
+        AuditLog.objects.create(
+            user_id=log_entry.get("user_id"),
+            action=log_entry.get("action", ""),
+            resource_type=log_entry.get("resource_type", ""),
+            resource_id=str(log_entry.get("resource_id", "")),
+            details=log_entry.get("details", {}),
+            ip_address=log_entry.get("ip_address"),
+            user_agent=log_entry.get("user_agent", ""),
         )
 
     def list_by_user(
@@ -145,7 +143,20 @@ class DjangoAuditLogRepository:
         offset: int = 0,
         limit: int = 100,
     ) -> Sequence[dict[str, Any]]:
-        return []
+        from apps.files.models import AuditLog
+        logs = AuditLog.objects.filter(user_id=user_id).order_by("-created_at")[offset:offset + limit]
+        return [
+            {
+                "id": str(log.id),
+                "user_id": str(log.user_id),
+                "action": log.action,
+                "resource_type": log.resource_type,
+                "resource_id": log.resource_id,
+                "details": log.details,
+                "created_at": log.created_at.isoformat(),
+            }
+            for log in logs
+        ]
 
     def list_by_resource(
         self,
@@ -155,4 +166,20 @@ class DjangoAuditLogRepository:
         offset: int = 0,
         limit: int = 100,
     ) -> Sequence[dict[str, Any]]:
-        return []
+        from apps.files.models import AuditLog
+        logs = AuditLog.objects.filter(
+            resource_type=resource_type,
+            resource_id=str(resource_id),
+        ).order_by("-created_at")[offset:offset + limit]
+        return [
+            {
+                "id": str(log.id),
+                "user_id": str(log.user_id),
+                "action": log.action,
+                "resource_type": log.resource_type,
+                "resource_id": log.resource_id,
+                "details": log.details,
+                "created_at": log.created_at.isoformat(),
+            }
+            for log in logs
+        ]
