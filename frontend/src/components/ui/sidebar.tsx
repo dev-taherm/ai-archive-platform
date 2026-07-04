@@ -10,6 +10,7 @@ import {
   Settings,
   Archive,
   ChevronLeft,
+  MessageSquare,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/stores/ui-store";
@@ -34,6 +35,11 @@ const navItems = [
     label: "Search",
     href: "/search",
     icon: Search,
+  },
+  {
+    label: "Chat",
+    href: "/chat",
+    icon: MessageSquare,
   },
   {
     label: "Settings",
