@@ -14,6 +14,8 @@ from interfaces.api.v1.views.ai_views import AIView
 from interfaces.api.v1.views.chat_views import ChatViewSet
 from interfaces.api.v1.views.dashboard_views import DashboardView
 from interfaces.api.v1.views.workflow_views import WorkflowViewSet
+from interfaces.api.v1.views.ocr_views import OcrJobViewSet
+from interfaces.api.v1.views.report_views import ReportView
 from interfaces.api.v1.views.provider_views import ProviderConfigViewSet
 from apps.apikeys.views import ApiKeyViewSet
 
@@ -27,13 +29,18 @@ router.register(r"ai", AIView, basename="ai")
 router.register(r"chat", ChatViewSet, basename="chat")
 router.register(r"dashboard", DashboardView, basename="dashboard")
 router.register(r"workflows", WorkflowViewSet, basename="workflow")
+router.register(r"ocr", OcrJobViewSet, basename="ocr")
+router.register(r"reports", ReportView, basename="report")
 router.register(r"search", SearchView, basename="search")
 router.register(r"providers", ProviderConfigViewSet, basename="provider")
 router.register(r"api-keys", ApiKeyViewSet, basename="api-key")
 
+# Custom URL patterns for non-standard REST paths the frontend expects
 urlpatterns = [
     path("auth/login", LoginView.as_view(), name="login"),
     path("auth/register", RegisterView.as_view({"post": "create"}), name="register"),
     path("auth/logout", LogoutView.as_view({"post": "create"}), name="logout"),
+    path("ocr/jobs", OcrJobViewSet.as_view({"get": "list"}), name="ocr-jobs-list"),
+    path("reports/summary", ReportView.as_view({"get": "summary"}), name="report-summary"),
     path("", include(router.urls)),
 ]

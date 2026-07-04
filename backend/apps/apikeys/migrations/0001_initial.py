@@ -1,5 +1,6 @@
 import uuid
 
+from django.conf import settings
 from django.db import migrations, models
 
 
@@ -8,7 +9,7 @@ class Migration(migrations.Migration):
     initial = True
 
     dependencies = [
-        migrations.swappable_dependency("auth.User"),
+        migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
     operations = [
@@ -61,7 +62,7 @@ class Migration(migrations.Migration):
                     models.ForeignKey(
                         on_delete=models.CASCADE,
                         related_name="api_keys",
-                        to="auth.user",
+                        to=settings.AUTH_USER_MODEL,
                     ),
                 ),
             ],

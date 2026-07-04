@@ -32,13 +32,13 @@ const statusVariant: Record<string, "default" | "secondary" | "destructive" | "s
 export default function DocumentsPage() {
   const [search, setSearch] = useState("");
 
-  const { data: documents = [], isLoading } = useQuery<Document[]>({
+  const { data: documents = [], isLoading } = useQuery({
     queryKey: ["documents", search],
     queryFn: async () => {
-      const response = await api.get<Document[]>("/documents", {
+      const response = await api.get("/documents", {
         params: { q: search || undefined },
       });
-      return response.data;
+      return Array.isArray(response.data) ? response.data : response.data.results || [];
     },
   });
 

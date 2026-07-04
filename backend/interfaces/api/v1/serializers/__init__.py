@@ -37,6 +37,15 @@ from interfaces.api.v1.serializers.workflow_serializers import (
     WorkflowSerializer,
     WorkflowStepSerializer,
 )
+from interfaces.api.v1.serializers.ocr_serializers import (
+    OcrJobSerializer,
+    OcrJobCreateSerializer,
+)
+from interfaces.api.v1.serializers.report_serializers import (
+    ReportSerializer,
+    ReportSummarySerializer,
+    ReportCreateSerializer,
+)
 
 __all__ = [
     "LoginSerializer",
@@ -62,4 +71,9 @@ __all__ = [
     "ActivitySerializer",
     "WorkflowSerializer",
     "WorkflowStepSerializer",
+    "OcrJobSerializer",
+    "OcrJobCreateSerializer",
+    "ReportSerializer",
+    "ReportSummarySerializer",
+    "ReportCreateSerializer",
 ]

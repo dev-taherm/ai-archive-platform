@@ -3,6 +3,17 @@ import { persist } from "zustand/middleware";
 import { createCookieStorage } from "@/lib/cookie-storage";
 import type { User, AuthTokens } from "@/types/api";
 
+function setCookie(name: string, value: string, days: number = 7) {
+  if (typeof document === "undefined") return;
+  const expires = new Date(Date.now() + days * 864e5).toUTCString();
+  document.cookie = `${name}=${encodeURIComponent(value)}; expires=${expires}; path=/; SameSite=Lax`;
+}
+
+function removeCookie(name: string) {
+  if (typeof document === "undefined") return;
+  document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`;
+}
+
 interface AuthState {
   user: User | null;
   accessToken: string | null;
@@ -25,24 +36,33 @@ export const useAuthStore = create<AuthState>()(
 
       setUser: (user) => set({ user }),
 
-      setTokens: (accessToken, refreshToken) =>
-        set({ accessToken, refreshToken }),
+      setTokens: (accessToken, refreshToken) => {
+        setCookie("accessToken", accessToken);
+        setCookie("refreshToken", refreshToken);
+        set({ accessToken, refreshToken });
+      },
 
-      login: (tokens) =>
+      login: (tokens) => {
+        setCookie("accessToken", tokens.access);
+        setCookie("refreshToken", tokens.refresh);
         set({
           user: tokens.user,
           accessToken: tokens.access,
           refreshToken: tokens.refresh,
           isAuthenticated: true,
-        }),
+        });
+      },
 
-      logout: () =>
+      logout: () => {
+        removeCookie("accessToken");
+        removeCookie("refreshToken");
         set({
           user: null,
           accessToken: null,
           refreshToken: null,
           isAuthenticated: false,
-        }),
+        });
+      },
     }),
     {
       name: "auth-storage",

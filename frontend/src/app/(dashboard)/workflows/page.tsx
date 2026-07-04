@@ -73,8 +73,8 @@ export default function WorkflowsPage() {
   const { data: workflows = [], isLoading } = useQuery<Workflow[]>({
     queryKey: ["workflows"],
     queryFn: async () => {
-      const res = await api.get<Workflow[]>("/workflows");
-      return res.data;
+      const res = await api.get("/workflows");
+      return Array.isArray(res.data) ? res.data : res.data.results || [];
     },
   });
 

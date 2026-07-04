@@ -85,8 +85,8 @@ export default function FilesPage() {
   const { data: files = [], isLoading } = useQuery({
     queryKey: ["files"],
     queryFn: async () => {
-      const res = await api.get<FileRecord[]>("/files");
-      return res.data;
+      const res = await api.get("/files");
+      return Array.isArray(res.data) ? res.data : res.data.results || [];
     },
   });
 

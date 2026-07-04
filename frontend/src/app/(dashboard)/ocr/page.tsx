@@ -65,8 +65,8 @@ export default function OcrPage() {
   const { data: jobs = [], isLoading } = useQuery<OcrJob[]>({
     queryKey: ["ocr-jobs"],
     queryFn: async () => {
-      const res = await api.get<OcrJob[]>("/ocr/jobs");
-      return res.data;
+      const res = await api.get("/ocr/jobs");
+      return Array.isArray(res.data) ? res.data : res.data.results || [];
     },
   });
 

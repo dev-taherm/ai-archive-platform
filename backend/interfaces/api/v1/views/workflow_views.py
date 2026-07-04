@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import uuid as _uuid
 
+from django.db.models import Count, Max, OuterRef, Subquery
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -37,17 +38,45 @@ class WorkflowViewSet(viewsets.GenericViewSet):
             return WorkflowRunCreateSerializer
         return WorkflowSerializer
 
+    def _get_annotated_queryset(self):
+        from apps.workflows.models import Workflow, WorkflowRun
+
+        last_run_subquery = WorkflowRun.objects.filter(
+            workflow=OuterRef("pk")
+        ).order_by("-created_at")
+
+        return Workflow.objects.annotate(
+            run_count=Count("runs"),
+            last_run_at=Subquery(last_run_subquery.values("started_at")[:1]),
+        ).order_by("-created_at")
+
+    def _attach_last_run(self, workflows):
+        """Attach _last_run attribute for status computation."""
+        from apps.workflows.models import WorkflowRun
+
+        workflow_ids = [w.id for w in workflows]
+        if not workflow_ids:
+            return
+
+        last_runs = {}
+        for run in WorkflowRun.objects.filter(
+            workflow_id__in=workflow_ids
+        ).order_by("workflow_id", "-created_at"):
+            if run.workflow_id not in last_runs:
+                last_runs[run.workflow_id] = run
+
+        for wf in workflows:
+            wf._last_run = last_runs.get(wf.id)
+
     def _get_service(self):
         from apps.workflows.services import WorkflowService
 
         return WorkflowService
 
     def list(self, request):
-        service = self._get_service()
-        workflows = service.list_workflows(
-            offset=int(request.query_params.get("offset", 0)),
-            limit=int(request.query_params.get("limit", 100)),
-        )
+        qs = self._get_annotated_queryset()
+        workflows = list(qs[:100])
+        self._attach_last_run(workflows)
         serializer = WorkflowSerializer(workflows, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -68,6 +97,7 @@ class WorkflowViewSet(viewsets.GenericViewSet):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
+        self._attach_last_run([workflow])
         return Response(
             WorkflowSerializer(workflow).data,
             status=status.HTTP_200_OK,
@@ -115,24 +145,20 @@ class WorkflowViewSet(viewsets.GenericViewSet):
         serializer.is_valid(raise_exception=True)
         validated = serializer.validated_data
 
-        update_fields = {}
         if "name" in validated:
             workflow.name = validated["name"]
-            update_fields["name"] = True
         if "description" in validated:
             workflow.description = validated["description"]
-            update_fields["description"] = True
         if "steps" in validated:
             workflow.steps = validated["steps"]
-            update_fields["steps"] = True
         if "trigger_type" in validated:
             workflow.trigger_type = validated["trigger_type"]
-            update_fields["trigger_type"] = True
         if "is_active" in validated:
             workflow.is_active = validated["is_active"]
-            update_fields["is_active"] = True
 
         workflow.save()
+
+        self._attach_last_run([workflow])
         return Response(
             WorkflowSerializer(workflow).data,
             status=status.HTTP_200_OK,
@@ -203,7 +229,6 @@ class WorkflowViewSet(viewsets.GenericViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
-        # Dispatch async workflow execution
         try:
             from apps.workflows.tasks import execute_full_workflow
 
@@ -247,5 +272,32 @@ class WorkflowViewSet(viewsets.GenericViewSet):
                 "run_count": workflow.runs.count() if hasattr(workflow, "runs") else 0,
                 "runs": WorkflowRunSerializer(run_history, many=True).data,
             },
+            status=status.HTTP_200_OK,
+        )
+
+    @action(detail=True, methods=["post"], url_path="pause")
+    def pause(self, request, pk=None):
+        try:
+            workflow_id = _uuid.UUID(str(pk))
+        except ValueError:
+            return Response(
+                {"detail": "Invalid workflow ID."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        service = self._get_service()
+        workflow = service.get_workflow(workflow_id)
+        if workflow is None:
+            return Response(
+                {"detail": "Workflow not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        workflow.is_active = False
+        workflow.save(update_fields=["is_active"])
+
+        self._attach_last_run([workflow])
+        return Response(
+            WorkflowSerializer(workflow).data,
             status=status.HTTP_200_OK,
         )
