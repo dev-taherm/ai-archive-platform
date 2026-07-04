@@ -11,6 +11,10 @@ import {
   Archive,
   ChevronLeft,
   MessageSquare,
+  Scan,
+  ScanText,
+  BarChart3,
+  GitBranch,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/stores/ui-store";
@@ -32,9 +36,29 @@ const navItems = [
     icon: FileText,
   },
   {
+    label: "Scan",
+    href: "/scan",
+    icon: Scan,
+  },
+  {
+    label: "OCR",
+    href: "/ocr",
+    icon: ScanText,
+  },
+  {
     label: "Search",
     href: "/search",
     icon: Search,
+  },
+  {
+    label: "Workflows",
+    href: "/workflows",
+    icon: GitBranch,
+  },
+  {
+    label: "Reports",
+    href: "/reports",
+    icon: BarChart3,
   },
   {
     label: "Chat",

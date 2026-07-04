@@ -16,35 +16,31 @@ logger = logging.getLogger(__name__)
 
 def _get_llm_provider():
     """Get the default LLM provider from database config."""
-    try:
-        from apps.ai.models import ProviderConfig
-        from core.infrastructure.services.llm_factory import LLMFactory
-        from core.domain.ai.value_objects import ModelConfig, AIProvider
+    from apps.ai.models import ProviderConfig
+    from core.infrastructure.services.llm_factory import LLMFactory
+    from core.domain.ai.value_objects import ModelConfig, AIProvider
 
-        config = (
-            ProviderConfig.objects.filter(
-                is_active=True, capabilities__contains=["llm"]
-            )
-            .order_by("-is_default")
-            .first()
+    config = (
+        ProviderConfig.objects.filter(
+            is_active=True, capabilities__contains=["llm"]
         )
+        .order_by("-is_default")
+        .first()
+    )
 
-        if not config:
-            return None
-
-        model_config = ModelConfig(
-            provider=AIProvider(config.provider_type),
-            model_name=config.model_name,
-        )
-        return LLMFactory.create(
-            config.provider_type,
-            model_config,
-            api_key=config.api_key or None,
-            base_url=config.base_url or None,
-        )
-    except Exception:
-        logger.debug("Could not load LLM provider from config")
+    if not config:
         return None
+
+    model_config = ModelConfig(
+        provider=AIProvider(config.provider_type),
+        model_name=config.model_name,
+    )
+    return LLMFactory.create(
+        config.provider_type,
+        model_config,
+        api_key=config.api_key or None,
+        base_url=config.base_url or None,
+    )
 
 
 def _get_hybrid_search():
@@ -157,20 +153,32 @@ class ChatService:
         )
 
     def _retrieve_context(self, query: str) -> str:
-        """Retrieve relevant document chunks for RAG context."""
+        """Retrieve relevant document chunks for RAG context.
+
+        Tries semantic + keyword search first. Falls back to keyword-only
+        search when embedding provider is unavailable or fails.
+        """
         try:
             search = _get_hybrid_search()
-            embedding_provider = _get_embedding_provider()
 
-            if not search or not embedding_provider:
+            if not search:
                 return ""
 
-            query_embedding = embedding_provider.embed_text(query)
+            query_embedding = None
+            embedding_provider = _get_embedding_provider()
+            if embedding_provider:
+                try:
+                    query_embedding = embedding_provider.embed_text(query)
+                except Exception as e:
+                    logger.warning(
+                        "Embedding failed, falling back to keyword search: %s", e
+                    )
+
             results = search.search(
                 query,
                 query_embedding=query_embedding,
                 top_k=5,
-                threshold=0.3,
+                threshold=0.0 if query_embedding is None else 0.3,
             )
 
             if not results:
@@ -187,7 +195,15 @@ class ChatService:
 
     def _generate_response(self, message: str, context: str) -> str:
         """Generate AI response using LLM with optional RAG context."""
-        llm = _get_llm_provider()
+        try:
+            llm = _get_llm_provider()
+        except Exception as e:
+            logger.exception("Failed to load LLM provider")
+            return (
+                f"Failed to load AI provider: {type(e).__name__}: {e}\n\n"
+                "Please check your AI provider configuration in Settings."
+            )
+
         if llm is None:
             if context:
                 return (
@@ -217,8 +233,15 @@ class ChatService:
         messages = [{"role": "user", "content": message}]
 
         try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
+            loop = None
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    loop = None
+            except RuntimeError:
+                loop = None
+
+            if loop is None:
                 import concurrent.futures
 
                 with concurrent.futures.ThreadPoolExecutor() as pool:
@@ -232,7 +255,7 @@ class ChatService:
                         ),
                     ).result(timeout=60)
             else:
-                response = asyncio.run(
+                response = loop.run_until_complete(
                     llm.chat(
                         messages,
                         system_prompt=system_prompt,
@@ -241,11 +264,14 @@ class ChatService:
                     )
                 )
             return response
-        except Exception:
+        except Exception as e:
             logger.exception("LLM chat failed")
+            error_type = type(e).__name__
+            error_msg = str(e)
             return (
-                "I encountered an error while generating a response. "
-                "Please check your AI provider configuration and try again."
+                f"AI provider error ({error_type}): {error_msg}\n\n"
+                "Please verify your AI provider settings (API key, base URL, "
+                "model name) are correct."
             )
 
     def get_history(

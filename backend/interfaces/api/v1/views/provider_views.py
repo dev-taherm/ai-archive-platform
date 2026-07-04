@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import logging
+import time
 
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
@@ -213,3 +215,101 @@ class ProviderConfigViewSet(viewsets.GenericViewSet):
                 }
             )
         return Response(data)
+
+    @action(detail=True, methods=["post"], url_path="test")
+    def test_provider(self, request, pk=None):
+        """Test a specific provider by sending a simple prompt."""
+        ProviderConfig = self._get_model()
+        try:
+            provider = ProviderConfig.objects.get(id=pk)
+        except ProviderConfig.DoesNotExist:
+            return Response(
+                {"detail": "Not found"}, status=status.HTTP_404_NOT_FOUND
+            )
+
+        if not provider.api_key and provider.provider_type != "ollama":
+            return Response(
+                {
+                    "success": False,
+                    "detail": "No API key configured for this provider.",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        start_time = time.monotonic()
+        try:
+            from core.infrastructure.services.llm_factory import LLMFactory
+            from core.domain.ai.value_objects import ModelConfig, AIProvider
+
+            model_config = ModelConfig(
+                provider=AIProvider(provider.provider_type),
+                model_name=provider.model_name,
+            )
+            llm = LLMFactory.create(
+                provider.provider_type,
+                model_config,
+                api_key=provider.api_key or None,
+                base_url=provider.base_url or None,
+            )
+
+            loop = None
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    loop = None
+            except RuntimeError:
+                loop = None
+
+            if loop is None:
+                import concurrent.futures
+
+                with concurrent.futures.ThreadPoolExecutor() as pool:
+                    response = pool.submit(
+                        asyncio.run,
+                        llm.chat(
+                            [{"role": "user", "content": "Say hello in one word."}],
+                            temperature=0.0,
+                            max_tokens=20,
+                        ),
+                    ).result(timeout=30)
+            else:
+                response = loop.run_until_complete(
+                    llm.chat(
+                        [{"role": "user", "content": "Say hello in one word."}],
+                        temperature=0.0,
+                        max_tokens=20,
+                    )
+                )
+
+            elapsed_ms = round((time.monotonic() - start_time) * 1000, 1)
+            return Response(
+                {
+                    "success": True,
+                    "detail": f"Provider responded successfully in {elapsed_ms}ms.",
+                    "response_preview": response[:200] if response else "",
+                    "latency_ms": elapsed_ms,
+                    "provider_type": provider.provider_type,
+                    "model_name": provider.model_name,
+                }
+            )
+        except ImportError as e:
+            return Response(
+                {
+                    "success": False,
+                    "detail": f"Missing package: {e}",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except Exception as e:
+            elapsed_ms = round((time.monotonic() - start_time) * 1000, 1)
+            logger.exception("Provider test failed for %s", provider.name)
+            return Response(
+                {
+                    "success": False,
+                    "detail": f"{type(e).__name__}: {e}",
+                    "latency_ms": elapsed_ms,
+                    "provider_type": provider.provider_type,
+                    "model_name": provider.model_name,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )

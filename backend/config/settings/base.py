@@ -5,7 +5,12 @@ from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
+from dotenv import load_dotenv
+
 BASE_DIR: Path = Path(__file__).resolve().parent.parent.parent
+
+# Load .env file from project root so all env vars are available
+load_dotenv(BASE_DIR.parent / ".env")
 
 SECRET_KEY: str = os.environ.get(
     "DJANGO_SECRET_KEY", "django-insecure-change-me-in-production-!!"
