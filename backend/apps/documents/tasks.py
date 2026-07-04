@@ -1,93 +1,80 @@
 from __future__ import annotations
 
 import logging
-import uuid
 
 from celery import shared_task
 
 logger = logging.getLogger(__name__)
 
 
-@shared_task(name="documents.process_document_task")
-def process_document_task(file_id: str) -> dict[str, object]:
-    """Celery task to process a document through the full pipeline."""
-    import asyncio
+@shared_task(name="documents.batch_process_documents")
+def batch_process_documents(file_ids: list[str], user_id: str | None = None) -> dict[str, object]:
+    """Batch process multiple documents using Celery chord.
 
-    from apps.documents.services import DocumentService
-    from core.application.use_cases.document_use_cases import DocumentUseCases
+    Returns summary of results. Individual document processing
+    is dispatched as parallel subtasks.
+    """
+    from apps.documents.tasks import process_document_task
 
-    async def _run() -> dict[str, object]:
-        from core.infrastructure.db.repositories.document_repository import (
-            DjangoDocumentRepository,
-        )
-        from core.infrastructure.db.repositories.embedding_repository import (
-            PgvectorEmbeddingRepository,
-        )
-        from core.infrastructure.db.repositories.file_repository import (
-            DjangoFileRepository,
-        )
-        from core.infrastructure.services.llm_provider import OpenAIProvider
-        from core.infrastructure.services.ocr_provider import TesseractOCRProvider
+    task_ids: list[str] = []
+    for fid in file_ids:
+        result = process_document_task.delay(fid)
+        task_ids.append(result.id)
 
-        doc_repo = DjangoDocumentRepository()
-        file_repo = DjangoFileRepository()
-        emb_repo = PgvectorEmbeddingRepository()
-        ocr = TesseractOCRProvider()
-        llm = OpenAIProvider()
-        use_cases = DocumentUseCases(doc_repo, file_repo, emb_repo, ocr, llm)
-        service = DocumentService(use_cases)
-
-        result = await service.process_document(uuid.UUID(file_id))
-        return {
-            "document_id": str(result.id),
-            "doc_type": result.doc_type,
-            "status": result.processing_status,
-            "chunk_count": result.chunk_count,
-        }
-
-    return asyncio.run(_run())
+    return {
+        "batch_size": len(file_ids),
+        "task_ids": task_ids,
+        "status": "dispatched",
+    }
 
 
-@shared_task(name="documents.classify_document_task")
-def classify_document_task(
-    document_id: str,
+@shared_task(name="documents.batch_classify_documents")
+def batch_classify_documents(
+    document_ids: list[str],
     categories: list[str] | None = None,
+    user_id: str | None = None,
 ) -> dict[str, object]:
-    """Celery task to classify a document."""
-    import asyncio
+    """Classify multiple documents in parallel."""
+    from apps.documents.tasks import classify_document_task
 
-    from apps.documents.services import DocumentService
-    from core.application.use_cases.document_use_cases import DocumentUseCases
+    task_ids: list[str] = []
+    for doc_id in document_ids:
+        result = classify_document_task.delay(doc_id, categories=categories)
+        task_ids.append(result.id)
 
-    async def _run() -> dict[str, object]:
-        from core.infrastructure.db.repositories.document_repository import (
-            DjangoDocumentRepository,
-        )
-        from core.infrastructure.db.repositories.embedding_repository import (
-            PgvectorEmbeddingRepository,
-        )
-        from core.infrastructure.db.repositories.file_repository import (
-            DjangoFileRepository,
-        )
-        from core.infrastructure.services.llm_provider import OpenAIProvider
-        from core.infrastructure.services.ocr_provider import TesseractOCRProvider
+    return {
+        "batch_size": len(document_ids),
+        "task_ids": task_ids,
+        "status": "dispatched",
+    }
 
-        doc_repo = DjangoDocumentRepository()
-        file_repo = DjangoFileRepository()
-        emb_repo = PgvectorEmbeddingRepository()
-        ocr = TesseractOCRProvider()
-        llm = OpenAIProvider()
-        use_cases = DocumentUseCases(doc_repo, file_repo, emb_repo, ocr, llm)
-        service = DocumentService(use_cases)
 
-        result = await service.classify_document(
-            uuid.UUID(document_id),
-            categories=categories,
-        )
-        return {
-            "document_id": str(result.document_id),
-            "predicted_type": result.predicted_type,
-            "confidence": result.confidence,
-        }
+@shared_task(name="documents.batch_index_documents")
+def batch_index_documents(document_ids: list[str], user_id: str | None = None) -> dict[str, object]:
+    """Generate embeddings for multiple documents in parallel."""
+    from apps.ai.tasks import generate_embeddings_task
 
-    return asyncio.run(_run())
+    task_ids: list[str] = []
+    for doc_id in document_ids:
+        result = generate_embeddings_task.delay(doc_id, user_id=user_id)
+        task_ids.append(result.id)
+
+    return {
+        "batch_size": len(document_ids),
+        "task_ids": task_ids,
+        "status": "dispatched",
+    }
+
+
+@shared_task(name="documents.reprocess_failed")
+def reprocess_failed(user_id: str | None = None) -> dict[str, object]:
+    """Reprocess all documents with 'failed' status."""
+    from apps.documents.models import Document
+
+    failed_docs = Document.objects.filter(processing_status="failed")
+    doc_ids = [str(doc.id) for doc in failed_docs]
+
+    if not doc_ids:
+        return {"batch_size": 0, "status": "no_failed_documents"}
+
+    return batch_process_documents(doc_ids, user_id=user_id)

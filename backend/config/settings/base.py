@@ -31,6 +31,7 @@ INSTALLED_APPS: list[str] = [
     "django_celery_beat",
     "django_celery_results",
     "pgvector",
+    "channels",
     # Local apps
     "apps.accounts.apps.AccountsConfig",
     "apps.files.apps.FilesConfig",
@@ -74,6 +75,19 @@ TEMPLATES: list[dict[str, Any]] = [
 ]
 
 WSGI_APPLICATION: str = "config.wsgi.application"
+ASGI_APPLICATION: str = "config.asgi.application"
+
+# ---------------------------------------------------------------------------
+# Channels (WebSocket)
+# ---------------------------------------------------------------------------
+CHANNEL_LAYERS: dict[str, Any] = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [os.environ.get("REDIS_URL", "redis://localhost:6379/0")],
+        },
+    },
+}
 
 # ---------------------------------------------------------------------------
 # Database

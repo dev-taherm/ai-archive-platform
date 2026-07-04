@@ -9,7 +9,6 @@ from rest_framework.response import Response
 
 from core.domain.common.exceptions import DomainException
 from interfaces.api.v1.serializers.document_serializers import (
-    DocumentChunkSerializer,
     DocumentClassifySerializer,
     DocumentExtractSerializer,
     DocumentMetadataSerializer,
@@ -245,4 +244,112 @@ class DocumentViewSet(viewsets.GenericViewSet):
         except DomainException as e:
             return Response(
                 {"detail": e.message}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+    @action(detail=False, methods=["post"], url_path="batch-process")
+    def batch_process(self, request):
+        """Batch process multiple documents.
+
+        Accepts: {"file_ids": ["uuid1", "uuid2", ...]}
+        Returns: Batch task summary with individual task IDs.
+        """
+        file_ids = request.data.get("file_ids", [])
+        if not file_ids:
+            return Response(
+                {"detail": "file_ids is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        from apps.documents.tasks import batch_process_documents
+
+        try:
+            result = batch_process_documents(
+                file_ids,
+                user_id=str(request.user.pk) if request.user.is_authenticated else None,
+            )
+            return Response(result, status=status.HTTP_202_ACCEPTED)
+        except Exception as e:
+            logger.exception("Batch processing failed: %s", e)
+            return Response(
+                {"detail": f"Batch processing failed: {e}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    @action(detail=False, methods=["post"], url_path="batch-classify")
+    def batch_classify(self, request):
+        """Classify multiple documents.
+
+        Accepts: {"document_ids": ["uuid1", ...], "categories": ["optional"]}
+        Returns: Batch task summary with individual task IDs.
+        """
+        document_ids = request.data.get("document_ids", [])
+        if not document_ids:
+            return Response(
+                {"detail": "document_ids is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        from apps.documents.tasks import batch_classify_documents
+
+        try:
+            result = batch_classify_documents(
+                document_ids,
+                categories=request.data.get("categories"),
+                user_id=str(request.user.pk) if request.user.is_authenticated else None,
+            )
+            return Response(result, status=status.HTTP_202_ACCEPTED)
+        except Exception as e:
+            logger.exception("Batch classification failed: %s", e)
+            return Response(
+                {"detail": f"Batch classification failed: {e}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    @action(detail=False, methods=["post"], url_path="batch-index")
+    def batch_index(self, request):
+        """Generate embeddings for multiple documents.
+
+        Accepts: {"document_ids": ["uuid1", ...]}
+        Returns: Batch task summary with individual task IDs.
+        """
+        document_ids = request.data.get("document_ids", [])
+        if not document_ids:
+            return Response(
+                {"detail": "document_ids is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        from apps.documents.tasks import batch_index_documents
+
+        try:
+            result = batch_index_documents(
+                document_ids,
+                user_id=str(request.user.pk) if request.user.is_authenticated else None,
+            )
+            return Response(result, status=status.HTTP_202_ACCEPTED)
+        except Exception as e:
+            logger.exception("Batch indexing failed: %s", e)
+            return Response(
+                {"detail": f"Batch indexing failed: {e}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    @action(detail=False, methods=["post"], url_path="reprocess-failed")
+    def reprocess_failed(self, request):
+        """Reprocess all failed documents.
+
+        Returns: Batch task summary.
+        """
+        from apps.documents.tasks import reprocess_failed
+
+        try:
+            result = reprocess_failed(
+                user_id=str(request.user.pk) if request.user.is_authenticated else None,
+            )
+            return Response(result, status=status.HTTP_202_ACCEPTED)
+        except Exception as e:
+            logger.exception("Reprocess failed: %s", e)
+            return Response(
+                {"detail": f"Reprocess failed: {e}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
