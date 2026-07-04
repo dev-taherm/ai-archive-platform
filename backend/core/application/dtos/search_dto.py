@@ -7,6 +7,20 @@ from typing import Any
 
 
 @dataclass(frozen=True)
+class SearchFiltersDTO:
+    """Data transfer object for search filtering criteria."""
+
+    doc_types: tuple[str, ...] = ()
+    languages: tuple[str, ...] = ()
+    tags: tuple[str, ...] = ()
+    date_from: datetime | None = None
+    date_to: datetime | None = None
+    min_score: float = 0.0
+    file_extensions: tuple[str, ...] = ()
+    exclude_duplicates: bool = True
+
+
+@dataclass(frozen=True)
 class SearchQueryDTO:
     """Data transfer object for search query parameters."""
 
@@ -34,20 +48,6 @@ class SearchResultDTO:
     match_source: str = ""
     highlights: tuple[str, ...] = ()
     metadata: dict[str, Any] = field(default_factory=dict)
-
-
-@dataclass(frozen=True)
-class SearchFiltersDTO:
-    """Data transfer object for search filtering criteria."""
-
-    doc_types: tuple[str, ...] = ()
-    languages: tuple[str, ...] = ()
-    tags: tuple[str, ...] = ()
-    date_from: datetime | None = None
-    date_to: datetime | None = None
-    min_score: float = 0.0
-    file_extensions: tuple[str, ...] = ()
-    exclude_duplicates: bool = True
 
 
 @dataclass(frozen=True)
