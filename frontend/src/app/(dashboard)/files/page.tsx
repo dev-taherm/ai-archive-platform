@@ -34,6 +34,9 @@ import {
   FileSpreadsheet,
   FileCode,
   RefreshCw,
+  Download,
+  Eye,
+  X,
 } from "lucide-react";
 import { formatBytes, formatDateTime } from "@/lib/utils";
 import { ScanModal } from "@/components/features/files/scan-modal";
@@ -62,6 +65,22 @@ export default function FilesPage() {
   const [showScan, setShowScan] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
   const [actionMenu, setActionMenu] = useState<string | null>(null);
+  const [previewFile, setPreviewFile] = useState<FileRecord | null>(null);
+
+  const isPreviewable = (mime: string) =>
+    mime.startsWith("image/") ||
+    mime.startsWith("text/") ||
+    mime === "application/pdf";
+
+  const handleDownload = (fileId: string) => {
+    const a = document.createElement("a");
+    a.href = `/api/v1/files/${fileId}/download/`;
+    a.download = "";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setActionMenu(null);
+  };
 
   const { data: files = [], isLoading } = useQuery({
     queryKey: ["files"],
@@ -222,6 +241,25 @@ export default function FilesPage() {
                           </Button>
                           {actionMenu === file.id && (
                             <div className="absolute right-0 top-8 z-50 w-48 rounded-md border bg-popover p-1 shadow-md">
+                              {isPreviewable(file.mime_type) && (
+                                <button
+                                  className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-muted"
+                                  onClick={() => {
+                                    setPreviewFile(file);
+                                    setActionMenu(null);
+                                  }}
+                                >
+                                  <Eye className="h-4 w-4" />
+                                  Preview
+                                </button>
+                              )}
+                              <button
+                                className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-muted"
+                                onClick={() => handleDownload(file.id)}
+                              >
+                                <Download className="h-4 w-4" />
+                                Download
+                              </button>
                               <button
                                 className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-muted"
                                 onClick={() => processMutation.mutate(file.id)}
@@ -253,6 +291,42 @@ export default function FilesPage() {
 
       {showScan && <ScanModal onClose={() => setShowScan(false)} />}
       {showUpload && <UploadModal onClose={() => setShowUpload(false)} />}
+
+      {previewFile && (
+        <div
+          className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"
+          onClick={() => setPreviewFile(null)}
+        >
+          <div
+            className="bg-background rounded-lg max-w-4xl max-h-[90vh] overflow-auto p-6 w-full"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="font-medium">{previewFile.path.split("/").pop()}</h3>
+              <Button variant="ghost" size="sm" onClick={() => setPreviewFile(null)}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            {previewFile.mime_type.startsWith("image/") ? (
+              <img
+                src={`/api/v1/files/${previewFile.id}/download/`}
+                alt={previewFile.path}
+                className="max-w-full max-h-[70vh] object-contain mx-auto"
+              />
+            ) : previewFile.mime_type === "application/pdf" ? (
+              <iframe
+                src={`/api/v1/files/${previewFile.id}/download/`}
+                className="w-full h-[70vh] border rounded"
+                title={previewFile.path}
+              />
+            ) : (
+              <pre className="text-sm whitespace-pre-wrap bg-muted p-4 rounded max-h-[70vh] overflow-auto">
+                Preview not available for this file type
+              </pre>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
