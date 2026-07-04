@@ -70,6 +70,33 @@ export interface ScanResult {
   file_ids: string[];
 }
 
+export type ScanProgressEventType =
+  | "scan_started"
+  | "file_scanned"
+  | "scan_complete"
+  | "scan_error";
+
+export interface ScanProgressEvent {
+  event: ScanProgressEventType;
+  data: {
+    message?: string;
+    folder_path?: string;
+    processed?: number;
+    total_found?: number;
+    current_file?: string;
+    new?: number;
+    skipped?: number;
+    failed?: number;
+    files_scanned?: number;
+    new_files?: number;
+    skipped_files?: number;
+    failed_files?: number;
+    scan_duration_seconds?: number;
+    errors?: string[];
+    detail?: string;
+  };
+}
+
 export interface FileOperationResult {
   operation: string;
   file_id: string;

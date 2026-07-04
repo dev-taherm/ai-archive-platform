@@ -1,7 +1,12 @@
 from __future__ import annotations
 
+import json
 import logging
+import time
+import uuid as _uuid
+from pathlib import Path
 
+from django.http import StreamingHttpResponse
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, MultiPartParser
@@ -53,6 +58,11 @@ class FileRecordViewSet(viewsets.GenericViewSet):
     def _file_service(self):
         from django.apps import apps
         return apps.get_app_config("files").file_service
+
+    @property
+    def _file_use_cases(self):
+        service = self._file_service
+        return service._file_use_cases
 
     def list(self, request):
         offset = (int(request.query_params.get("page", 1)) - 1) * int(
@@ -161,6 +171,133 @@ class FileRecordViewSet(viewsets.GenericViewSet):
             return Response(
                 {"detail": e.message}, status=status.HTTP_400_BAD_REQUEST
             )
+
+    @action(detail=False, methods=["get"], url_path="scan-stream")
+    def scan_stream(self, request):
+        """SSE endpoint that streams scan progress as files are discovered and processed."""
+        folder_path = request.query_params.get("folder_path", "").strip()
+        if not folder_path:
+            return Response(
+                {"detail": "folder_path query parameter is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not folder_path.startswith("/"):
+            return Response(
+                {"detail": "Folder path must be an absolute path (starts with /)."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        path_obj = Path(folder_path)
+        if not path_obj.exists():
+            return Response(
+                {"detail": f"Folder path does not exist: {folder_path}"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not path_obj.is_dir():
+            return Response(
+                {"detail": f"Path is not a directory: {folder_path}"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        recursive = request.query_params.get("recursive", "true").lower() == "true"
+
+        def event_stream():
+            def send_event(event_name: str, data: dict):
+                yield f"event: {event_name}\ndata: {json.dumps(data)}\n\n"
+
+            start_time = time.monotonic()
+            processed = 0
+            new_files = 0
+            skipped = 0
+            failed = 0
+            total_found = 0
+            errors = []
+
+            yield from send_event("scan_started", {
+                "message": "Scanning folder...",
+                "folder_path": folder_path,
+            })
+
+            file_scanner = self._file_use_cases._file_scanner
+            file_repository = self._file_use_cases._file_repository
+
+            for file_info in file_scanner.scan_folder(
+                folder_path, recursive=recursive
+            ):
+                total_found += 1
+                current_file = file_info.get("path", "unknown")
+                processed += 1
+
+                try:
+                    from core.domain.files.entities import FileFingerprint, FileRecord
+                    from core.domain.files.value_objects import (
+                        FileSize,
+                        FilePath,
+                        FileStatus,
+                        Hash,
+                        MimeType,
+                    )
+
+                    content_hash_str = file_info.get("content_hash", "")
+                    if ":" in content_hash_str:
+                        algo, digest = content_hash_str.split(":", 1)
+                    else:
+                        algo, digest = "sha256", content_hash_str
+
+                    content_hash = Hash(algorithm=algo, digest=digest)
+                    file_size_obj = FileSize(bytes=file_info.get("size_bytes", 0))
+
+                    existing = file_repository.get_by_fingerprint(content_hash)
+                    if existing:
+                        skipped += 1
+                    else:
+                        record = FileRecord(
+                            path=FilePath(raw=file_info["path"]),
+                            mime_type=MimeType(value=file_info.get("mime_type", "application/octet-stream")),
+                            size=file_size_obj,
+                            fingerprint=FileFingerprint(
+                                content_hash=content_hash,
+                                size=file_size_obj,
+                                magic_bytes=file_info.get("magic_bytes", ""),
+                            ),
+                            status=FileStatus.PENDING,
+                        )
+                        file_repository.save(record)
+                        new_files += 1
+
+                except Exception as e:
+                    failed += 1
+                    errors.append(f"{current_file}: {e}")
+                    logger.exception("Failed to process file: %s", current_file)
+
+                yield from send_event("file_scanned", {
+                    "processed": processed,
+                    "total_found": total_found,
+                    "current_file": current_file,
+                    "new": new_files,
+                    "skipped": skipped,
+                    "failed": failed,
+                })
+
+            duration = round(time.monotonic() - start_time, 3)
+
+            yield from send_event("scan_complete", {
+                "total_found": total_found,
+                "files_scanned": processed,
+                "new_files": new_files,
+                "skipped_files": skipped,
+                "failed_files": failed,
+                "scan_duration_seconds": duration,
+                "errors": errors,
+            })
+
+        response = StreamingHttpResponse(
+            event_stream(),
+            content_type="text/event-stream",
+        )
+        response["Cache-Control"] = "no-cache"
+        response["X-Accel-Buffering"] = "no"
+        return response
 
     @action(detail=True, methods=["delete"], url_path="delete")
     def delete_file(self, request, pk=None):
