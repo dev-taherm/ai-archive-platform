@@ -109,6 +109,26 @@ export interface FileOperationResult {
 
 // --- Documents ---
 
+export interface DocumentEntity {
+  name: string;
+  type: string;
+  context: string;
+}
+
+export interface DocumentMetadata {
+  title: string;
+  author: string;
+  subject: string;
+  keywords: string[];
+  creation_date: string;
+  modification_date: string;
+  page_count: number;
+  word_count: number;
+  char_count: number;
+  language: string;
+  extra: Record<string, unknown>;
+}
+
 export interface Document {
   id: string;
   file_id: string;
@@ -125,6 +145,8 @@ export interface Document {
   tags: string[];
   extracted_text_preview: string;
   error_message: string | null;
+  entities?: DocumentEntity[];
+  summary?: string;
   created_at: string;
   updated_at: string;
 }

@@ -21,9 +21,13 @@ import {
   Hash,
   Layers,
   AlertCircle,
+  Tag,
+  Brain,
+  Lightbulb,
+  Info,
 } from "lucide-react";
 import { formatDateTime } from "@/lib/utils";
-import type { Document } from "@/types/api";
+import type { Document, DocumentMetadata } from "@/types/api";
 
 const statusVariant: Record<string, "default" | "secondary" | "destructive" | "success" | "warning"> = {
   queued: "warning",
@@ -35,6 +39,15 @@ const statusVariant: Record<string, "default" | "secondary" | "destructive" | "s
   retrying: "warning",
 };
 
+const entityTypeVariant: Record<string, "default" | "secondary" | "outline"> = {
+  PERSON: "default",
+  ORGANIZATION: "secondary",
+  DATE: "outline",
+  LOCATION: "default",
+  EVENT: "secondary",
+  MONEY: "outline",
+};
+
 export default function DocumentDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
 
@@ -44,6 +57,15 @@ export default function DocumentDetailPage({ params }: { params: Promise<{ id: s
       const res = await api.get<Document>(`/documents/${id}`);
       return res.data;
     },
+  });
+
+  const { data: metadata } = useQuery<DocumentMetadata>({
+    queryKey: ["document-metadata", id],
+    queryFn: async () => {
+      const res = await api.get<DocumentMetadata>(`/documents/${id}/metadata/`);
+      return res.data;
+    },
+    enabled: !!doc,
   });
 
   if (isLoading) {
@@ -173,6 +195,90 @@ export default function DocumentDetailPage({ params }: { params: Promise<{ id: s
         </Card>
       </div>
 
+      {/* Document Summary */}
+      {doc.summary && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Lightbulb className="h-4 w-4" />
+              Summary
+            </CardTitle>
+            <CardDescription>
+              AI-generated summary of this document
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm leading-relaxed text-muted-foreground">
+              {doc.summary}
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Extracted Entities */}
+      {doc.entities && doc.entities.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Brain className="h-4 w-4" />
+              Extracted Entities
+            </CardTitle>
+            <CardDescription>
+              Named entities identified by the AI pipeline
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {doc.entities.map((entity, index) => (
+                <div
+                  key={`${entity.name}-${entity.type}-${index}`}
+                  className="flex items-start gap-3 rounded-md border p-3"
+                >
+                  <Badge
+                    variant={entityTypeVariant[entity.type] || "outline"}
+                    className="mt-0.5 shrink-0"
+                  >
+                    {entity.type}
+                  </Badge>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium">{entity.name}</p>
+                    {entity.context && (
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        {entity.context}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Keywords */}
+      {metadata && metadata.keywords.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Tag className="h-4 w-4" />
+              Keywords
+            </CardTitle>
+            <CardDescription>
+              Extracted keywords from document metadata
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap gap-2">
+              {metadata.keywords.map((keyword) => (
+                <Badge key={keyword} variant="secondary">
+                  {keyword}
+                </Badge>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Tags */}
       {doc.tags.length > 0 && (
         <Card>
@@ -186,6 +292,75 @@ export default function DocumentDetailPage({ params }: { params: Promise<{ id: s
                   {tag}
                 </Badge>
               ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Metadata */}
+      {metadata && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Info className="h-4 w-4" />
+              Document Metadata
+            </CardTitle>
+            <CardDescription>
+              Extracted metadata from the document file
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {metadata.title && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Title</span>
+                  <span className="font-medium">{metadata.title}</span>
+                </div>
+              )}
+              {metadata.author && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Author</span>
+                  <span className="font-medium">{metadata.author}</span>
+                </div>
+              )}
+              {metadata.subject && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Subject</span>
+                  <span className="font-medium">{metadata.subject}</span>
+                </div>
+              )}
+              {metadata.creation_date && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Creation Date</span>
+                  <span className="font-medium">{metadata.creation_date}</span>
+                </div>
+              )}
+              {metadata.modification_date && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Modification Date</span>
+                  <span className="font-medium">{metadata.modification_date}</span>
+                </div>
+              )}
+              {metadata.char_count > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Characters</span>
+                  <span className="font-medium">{metadata.char_count.toLocaleString()}</span>
+                </div>
+              )}
+              {Object.keys(metadata.extra).length > 0 && (
+                <>
+                  <div className="my-2 border-t" />
+                  <p className="text-sm font-medium text-muted-foreground">Additional Metadata</p>
+                  {Object.entries(metadata.extra).map(([key, value]) => (
+                    <div key={key} className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">{key}</span>
+                      <span className="font-medium">
+                        {typeof value === "object" ? JSON.stringify(value) : String(value)}
+                      </span>
+                    </div>
+                  ))}
+                </>
+              )}
             </div>
           </CardContent>
         </Card>
