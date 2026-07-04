@@ -1,32 +1,18 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-const protectedRoutes = ["/dashboard", "/documents", "/files", "/search", "/settings", "/chat"];
-const authRoutes = ["/login", "/register"];
-
 export function middleware(request: NextRequest) {
-  const { pathname } = request.nextUrl;
-  const accessToken = request.cookies.get("auth-storage");
+  const token = request.cookies.get("accessToken");
 
-  let isAuthenticated = false;
-  if (accessToken) {
-    try {
-      const parsed = JSON.parse(accessToken.value);
-      isAuthenticated = parsed?.state?.isAuthenticated === true;
-    } catch {
-      isAuthenticated = false;
-    }
+  const isAuthPage =
+    request.nextUrl.pathname.startsWith("/login") ||
+    request.nextUrl.pathname.startsWith("/register");
+
+  if (!token && !isAuthPage) {
+    return NextResponse.redirect(new URL("/login", request.url));
   }
 
-  // Redirect unauthenticated users away from protected routes
-  if (protectedRoutes.some((route) => pathname.startsWith(route)) && !isAuthenticated) {
-    const loginUrl = new URL("/login", request.url);
-    loginUrl.searchParams.set("redirect", pathname);
-    return NextResponse.redirect(loginUrl);
-  }
-
-  // Redirect authenticated users away from auth routes
-  if (authRoutes.some((route) => pathname.startsWith(route)) && isAuthenticated) {
+  if (token && isAuthPage) {
     return NextResponse.redirect(new URL("/dashboard", request.url));
   }
 
@@ -34,5 +20,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/documents/:path*", "/files/:path*", "/search/:path*", "/settings/:path*", "/chat/:path*", "/login", "/register"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|api).*)"],
 };
