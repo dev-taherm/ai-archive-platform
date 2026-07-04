@@ -2,9 +2,10 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { FileText, Upload, MoreVertical, Eye, Trash2 } from "lucide-react";
+import Link from "next/link";
+import { FileText, Search, MoreVertical, Eye, Trash2 } from "lucide-react";
 import api from "@/lib/api";
-import { formatBytes, formatDate } from "@/lib/utils";
+import { formatDate } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -16,52 +17,55 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import type { Document, DocumentListResponse } from "@/types/api";
+import type { Document } from "@/types/api";
 
-const statusVariant: Record<Document["status"], "default" | "secondary" | "destructive" | "success" | "warning"> = {
-  pending: "warning",
-  processing: "secondary",
+const statusVariant: Record<string, "default" | "secondary" | "destructive" | "success" | "warning"> = {
+  queued: "warning",
+  extracting: "secondary",
+  classifying: "secondary",
+  indexing: "secondary",
   completed: "success",
   failed: "destructive",
+  retrying: "warning",
 };
 
 export default function DocumentsPage() {
   const [search, setSearch] = useState("");
-  const [page, setPage] = useState(1);
 
-  const { data, isLoading } = useQuery<DocumentListResponse>({
-    queryKey: ["documents", search, page],
+  const { data: documents = [], isLoading } = useQuery<Document[]>({
+    queryKey: ["documents", search],
     queryFn: async () => {
-      const response = await api.get("/documents", {
-        params: { q: search, page, page_size: 20 },
+      const response = await api.get<Document[]>("/documents", {
+        params: { q: search || undefined },
       });
       return response.data;
     },
   });
 
+  const filtered = documents.filter(
+    (d) =>
+      d.title?.toLowerCase().includes(search.toLowerCase()) ||
+      d.doc_type?.toLowerCase().includes(search.toLowerCase()) ||
+      d.language?.toLowerCase().includes(search.toLowerCase())
+  );
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Documents</h1>
+          <h1 className="text-2xl font-bold">Documents</h1>
           <p className="text-muted-foreground">
-            Manage your archived documents
+            Processed and indexed documents
           </p>
         </div>
-        <Button>
-          <Upload className="mr-2 h-4 w-4" />
-          Upload
-        </Button>
       </div>
 
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-2">
+        <Search className="h-4 w-4 text-muted-foreground" />
         <Input
           placeholder="Search documents..."
           value={search}
-          onChange={(e) => {
-            setSearch(e.target.value);
-            setPage(1);
-          }}
+          onChange={(e) => setSearch(e.target.value)}
           className="max-w-sm"
         />
       </div>
@@ -71,8 +75,10 @@ export default function DocumentsPage() {
           <TableHeader>
             <TableRow>
               <TableHead>Document</TableHead>
+              <TableHead>Type</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead>Size</TableHead>
+              <TableHead>Language</TableHead>
+              <TableHead>Words</TableHead>
               <TableHead>Chunks</TableHead>
               <TableHead>Created</TableHead>
               <TableHead className="w-12" />
@@ -81,43 +87,53 @@ export default function DocumentsPage() {
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={6} className="h-24 text-center">
+                <TableCell colSpan={8} className="h-24 text-center">
                   Loading...
                 </TableCell>
               </TableRow>
-            ) : data?.items.length === 0 ? (
+            ) : filtered.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="h-24 text-center">
+                <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
                   No documents found
                 </TableCell>
               </TableRow>
             ) : (
-              data?.items.map((doc) => (
+              filtered.map((doc) => (
                 <TableRow key={doc.id}>
                   <TableCell>
-                    <div className="flex items-center gap-3">
+                    <Link href={`/documents/${doc.id}`} className="flex items-center gap-3 hover:underline">
                       <div className="rounded-md bg-muted p-2">
                         <FileText className="h-4 w-4" />
                       </div>
                       <div>
-                        <p className="font-medium">{doc.title}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {doc.filename}
+                        <p className="font-medium">{doc.title || doc.doc_type}</p>
+                        <p className="max-w-[250px] truncate text-xs text-muted-foreground">
+                          {doc.extracted_text_preview || doc.subject || "—"}
                         </p>
                       </div>
-                    </div>
+                    </Link>
                   </TableCell>
                   <TableCell>
-                    <Badge variant={statusVariant[doc.status]}>
-                      {doc.status}
+                    <Badge variant="outline">{doc.doc_type}</Badge>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={statusVariant[doc.processing_status] || "secondary"}>
+                      {doc.processing_status}
                     </Badge>
                   </TableCell>
-                  <TableCell>{formatBytes(doc.file_size)}</TableCell>
-                  <TableCell>{doc.chunk_count}</TableCell>
-                  <TableCell>{formatDate(doc.created_at)}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
+                    {doc.language || "—"}
+                  </TableCell>
+                  <TableCell className="text-sm">{doc.word_count}</TableCell>
+                  <TableCell className="text-sm">{doc.chunk_count}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
+                    {formatDate(doc.created_at)}
+                  </TableCell>
                   <TableCell>
-                    <Button variant="ghost" size="icon">
-                      <MoreVertical className="h-4 w-4" />
+                    <Button variant="ghost" size="icon" asChild>
+                      <Link href={`/documents/${doc.id}`}>
+                        <Eye className="h-4 w-4" />
+                      </Link>
                     </Button>
                   </TableCell>
                 </TableRow>
@@ -127,32 +143,9 @@ export default function DocumentsPage() {
         </Table>
       </div>
 
-      {data && data.pages > 1 && (
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-muted-foreground">
-            Showing {(page - 1) * 20 + 1} to{" "}
-            {Math.min(page * 20, data.total)} of {data.total} documents
-          </p>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page === 1}
-            >
-              Previous
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setPage((p) => Math.min(data.pages, p + 1))}
-              disabled={page === data.pages}
-            >
-              Next
-            </Button>
-          </div>
-        </div>
-      )}
+      <p className="text-sm text-muted-foreground">
+        {filtered.length} document(s)
+      </p>
     </div>
   );
 }

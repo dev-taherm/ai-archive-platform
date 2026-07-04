@@ -1,0 +1,25 @@
+- generic [ref=e3]:
+  - generic [ref=e4]:
+    - img [ref=e6]
+    - heading "AI Archive Platform" [level=1] [ref=e9]
+    - paragraph [ref=e10]: Intelligent document management
+  - generic [ref=e11]:
+    - generic [ref=e12]:
+      - heading "Sign in" [level=3] [ref=e13]
+      - paragraph [ref=e14]: Enter your credentials to access your account
+    - generic [ref=e15]:
+      - generic [ref=e16]:
+        - generic [ref=e17]:
+          - text: Email
+          - textbox "Email" [ref=e18]:
+            - /placeholder: name@example.com
+        - generic [ref=e19]:
+          - text: Password
+          - textbox "Password" [ref=e20]:
+            - /placeholder: ••••••••
+      - generic [ref=e21]:
+        - button "Sign in" [ref=e22]
+        - paragraph [ref=e23]:
+          - text: Don't have an account?
+          - link "Sign up" [ref=e24] [cursor=pointer]:
+            - /url: /register

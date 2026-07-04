@@ -36,7 +36,9 @@ export default function LoginPage() {
         <CardContent className="space-y-4">
           {loginError && (
             <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
-              {loginError.response?.data?.detail || "Invalid credentials"}
+              {(loginError as any)?.response?.data?.detail
+                || (loginError as any)?.response?.data?.email
+                || "Invalid credentials"}
             </div>
           )}
           <div className="space-y-2">

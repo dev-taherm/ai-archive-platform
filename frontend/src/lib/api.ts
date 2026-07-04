@@ -2,7 +2,7 @@ import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
 import { useAuthStore } from "@/stores/auth-store";
 
 const api = axios.create({
-  baseURL: "/api",
+  baseURL: "/api/v1",
   timeout: 30000,
   headers: {
     "Content-Type": "application/json",
@@ -67,17 +67,18 @@ api.interceptors.response.use(
           throw new Error("No refresh token");
         }
 
-        const { data } = await axios.post("/api/auth/refresh", {
-          refresh_token: refreshToken,
+        const { data } = await axios.post("/api/v1/token/refresh", {
+          refresh: refreshToken,
         });
 
-        const { access_token, refresh_token } = data;
-        useAuthStore.getState().setTokens(access_token, refresh_token);
+        const newAccess = data.access;
+        const newRefresh = data.refresh || refreshToken;
+        useAuthStore.getState().setTokens(newAccess, newRefresh);
 
-        processQueue(null, access_token);
+        processQueue(null, newAccess);
 
         if (originalRequest.headers) {
-          originalRequest.headers.Authorization = `Bearer ${access_token}`;
+          originalRequest.headers.Authorization = `Bearer ${newAccess}`;
         }
         return api(originalRequest);
       } catch (refreshError) {

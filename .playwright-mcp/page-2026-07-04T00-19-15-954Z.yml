@@ -1,0 +1,41 @@
+- generic [ref=f4e1]:
+  - generic [ref=f4e3]:
+    - generic [ref=f4e4]:
+      - img [ref=f4e6]
+      - heading "AI Archive Platform" [level=1] [ref=f4e9]
+      - paragraph [ref=f4e10]: Intelligent document management
+    - generic [ref=f4e11]:
+      - generic [ref=f4e12]:
+        - heading "Create an account" [level=3] [ref=f4e13]
+        - paragraph [ref=f4e14]: Enter your information to get started
+      - generic [ref=f4e15]:
+        - generic [ref=f4e16]:
+          - generic [ref=f4e39]: Passwords do not match
+          - generic [ref=f4e17]:
+            - text: Username
+            - textbox "Username" [ref=f4e18]:
+              - /placeholder: johndoe
+              - text: admin
+          - generic [ref=f4e19]:
+            - text: Email
+            - textbox "Email" [active] [ref=f4e20]:
+              - /placeholder: name@example.com
+          - generic [ref=f4e21]:
+            - text: Password
+            - textbox "Password" [ref=f4e22]:
+              - /placeholder: ••••••••
+              - text: admin@example.comsecurepass123!
+          - generic [ref=f4e23]:
+            - text: Confirm Password
+            - textbox "Confirm Password" [ref=f4e24]:
+              - /placeholder: ••••••••
+              - text: securepass123!
+        - generic [ref=f4e25]:
+          - button "Create account" [ref=f4e26] [cursor=pointer]
+          - paragraph [ref=f4e27]:
+            - text: Already have an account?
+            - link "Sign in" [ref=f4e28] [cursor=pointer]:
+              - /url: /login
+  - button "Open Next.js Dev Tools" [ref=f4e34] [cursor=pointer]:
+    - img [ref=f4e35]
+  - alert [ref=f4e38]

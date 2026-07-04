@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { createCookieStorage } from "@/lib/cookie-storage";
 import type { User, AuthTokens } from "@/types/api";
 
 interface AuthState {
@@ -10,7 +11,7 @@ interface AuthState {
 
   setUser: (user: User) => void;
   setTokens: (accessToken: string, refreshToken: string) => void;
-  login: (user: User, tokens: AuthTokens) => void;
+  login: (tokens: AuthTokens) => void;
   logout: () => void;
 }
 
@@ -27,11 +28,11 @@ export const useAuthStore = create<AuthState>()(
       setTokens: (accessToken, refreshToken) =>
         set({ accessToken, refreshToken }),
 
-      login: (user, tokens) =>
+      login: (tokens) =>
         set({
-          user,
-          accessToken: tokens.access_token,
-          refreshToken: tokens.refresh_token,
+          user: tokens.user,
+          accessToken: tokens.access,
+          refreshToken: tokens.refresh,
           isAuthenticated: true,
         }),
 
@@ -45,6 +46,7 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: "auth-storage",
+      storage: createCookieStorage(),
       partialize: (state) => ({
         user: state.user,
         accessToken: state.accessToken,

@@ -15,7 +15,7 @@ export function Header() {
           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted">
             <User className="h-4 w-4" />
           </div>
-          <span className="text-sm font-medium">{user?.full_name || user?.email}</span>
+          <span className="text-sm font-medium">{user?.username || user?.email}</span>
         </div>
         <Button variant="ghost" size="icon" onClick={logout}>
           <LogOut className="h-4 w-4" />

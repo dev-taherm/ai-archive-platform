@@ -6,6 +6,7 @@ import {
   HardDrive,
   Search,
   AlertCircle,
+  FolderOpen,
 } from "lucide-react";
 import api from "@/lib/api";
 import { formatBytes } from "@/lib/utils";
@@ -17,19 +18,10 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-} from "recharts";
-import type { DashboardStats } from "@/types/api";
+import type { DashboardStats, ActivityResponse } from "@/types/api";
 
 export default function DashboardPage() {
-  const { data: stats, isLoading } = useQuery<DashboardStats>({
+  const { data: stats, isLoading: statsLoading } = useQuery<DashboardStats>({
     queryKey: ["dashboard", "stats"],
     queryFn: async () => {
       const response = await api.get("/dashboard/stats");
@@ -37,7 +29,15 @@ export default function DashboardPage() {
     },
   });
 
-  if (isLoading) {
+  const { data: activityData } = useQuery<ActivityResponse>({
+    queryKey: ["dashboard", "activity"],
+    queryFn: async () => {
+      const response = await api.get("/dashboard/activity");
+      return response.data;
+    },
+  });
+
+  if (statsLoading) {
     return (
       <div className="flex h-96 items-center justify-center">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
@@ -48,7 +48,7 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
+        <h1 className="text-2xl font-bold">Dashboard</h1>
         <p className="text-muted-foreground">
           Overview of your archive platform
         </p>
@@ -56,10 +56,14 @@ export default function DashboardPage() {
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <StatsCard
+          title="Total Files"
+          value={stats?.total_files ?? 0}
+          icon={FolderOpen}
+        />
+        <StatsCard
           title="Total Documents"
           value={stats?.total_documents ?? 0}
           icon={FileText}
-          trend={{ value: 12, isPositive: true }}
         />
         <StatsCard
           title="Storage Used"
@@ -67,43 +71,61 @@ export default function DashboardPage() {
           icon={HardDrive}
         />
         <StatsCard
-          title="Total Searches"
-          value={stats?.total_searches ?? 0}
-          icon={Search}
-          trend={{ value: 8, isPositive: true }}
-        />
-        <StatsCard
           title="Failed Processing"
-          value={stats?.documents_by_status.failed ?? 0}
+          value={
+            (stats?.files_by_status?.failed ?? 0) +
+            (stats?.documents_by_status?.failed ?? 0)
+          }
           icon={AlertCircle}
-          description="Documents requiring attention"
+          description="Files or documents requiring attention"
         />
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-7">
-        <Card className="lg:col-span-4">
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card>
           <CardHeader>
-            <CardTitle>Activity Overview</CardTitle>
+            <CardTitle>Files by Status</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="h-80">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={stats?.activity_over_time ?? []}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="date" />
-                  <YAxis />
-                  <Tooltip />
-                  <Bar dataKey="uploads" fill="hsl(222.2, 47.4%, 11.2%)" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="searches" fill="hsl(210, 40%, 96.1%)" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+            <div className="space-y-3">
+              {Object.entries(stats?.files_by_status ?? {}).map(
+                ([status, count]) => (
+                  <div key={status} className="flex items-center justify-between">
+                    <span className="text-sm capitalize">{status}</span>
+                    <span className="text-sm font-medium">{count}</span>
+                  </div>
+                )
+              )}
+              {Object.keys(stats?.files_by_status ?? {}).length === 0 && (
+                <p className="text-sm text-muted-foreground">No files yet</p>
+              )}
             </div>
           </CardContent>
         </Card>
-        <div className="lg:col-span-3">
-          <RecentActivity activities={stats?.recent_activity ?? []} />
-        </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Documents by Type</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {Object.entries(stats?.documents_by_type ?? {}).map(
+                ([type, count]) => (
+                  <div key={type} className="flex items-center justify-between">
+                    <span className="text-sm">{type}</span>
+                    <span className="text-sm font-medium">{count}</span>
+                  </div>
+                )
+              )}
+              {Object.keys(stats?.documents_by_type ?? {}).length === 0 && (
+                <p className="text-sm text-muted-foreground">No documents yet</p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
       </div>
+
+      <RecentActivity activities={activityData?.activities ?? []} />
     </div>
   );
 }

@@ -4,12 +4,7 @@ import { useRouter } from "next/navigation";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import api from "@/lib/api";
 import { useAuthStore } from "@/stores/auth-store";
-import type {
-  User,
-  AuthTokens,
-  LoginRequest,
-  RegisterRequest,
-} from "@/types/api";
+import type { User, AuthTokens, LoginRequest, RegisterRequest } from "@/types/api";
 
 export function useAuth() {
   const router = useRouter();
@@ -22,11 +17,8 @@ export function useAuth() {
     },
     onSuccess: (tokens) => {
       loginMutation.reset();
-      // Fetch user after login
-      api.get<User>("/auth/me").then(({ data: userData }) => {
-        login(userData, tokens);
-        router.push("/dashboard");
-      });
+      login(tokens);
+      router.push("/dashboard");
     },
   });
 
@@ -37,33 +29,42 @@ export function useAuth() {
     },
     onSuccess: (tokens) => {
       registerMutation.reset();
-      api.get<User>("/auth/me").then(({ data: userData }) => {
-        login(userData, tokens);
-        router.push("/dashboard");
-      });
+      login(tokens);
+      router.push("/dashboard");
     },
   });
 
+  // Rehydrate user from persisted store by calling /users/me
   const { data: currentUser } = useQuery({
     queryKey: ["auth", "me"],
     queryFn: async () => {
-      const response = await api.get<User>("/auth/me");
+      const response = await api.get<User>("/users/me");
       return response.data;
     },
     enabled: isAuthenticated && !user,
     retry: false,
-    onSuccess: (data) => {
-      setUser(data);
-    },
   });
 
-  const handleLogout = () => {
+  // Sync currentUser back to store
+  if (currentUser && !user) {
+    setUser(currentUser);
+  }
+
+  const handleLogout = async () => {
+    const refreshToken = useAuthStore.getState().refreshToken;
+    if (refreshToken) {
+      try {
+        await api.post("/auth/logout", { refresh: refreshToken });
+      } catch {
+        // Token may already be invalid — proceed with local logout
+      }
+    }
     logout();
     router.push("/login");
   };
 
   return {
-    user: user ?? currentUser,
+    user: (user ?? currentUser) as User | null,
     isAuthenticated,
     login: loginMutation.mutate,
     register: registerMutation.mutate,

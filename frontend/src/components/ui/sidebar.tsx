@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   FileText,
+  FolderOpen,
   Search,
   Settings,
   Archive,
@@ -18,6 +19,11 @@ const navItems = [
     label: "Dashboard",
     href: "/dashboard",
     icon: LayoutDashboard,
+  },
+  {
+    label: "Files",
+    href: "/files",
+    icon: FolderOpen,
   },
   {
     label: "Documents",

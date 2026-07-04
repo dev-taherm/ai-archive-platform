@@ -14,8 +14,27 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
+function getFieldErrors(error: any, field: string): string[] {
+  if (!error?.response?.data) return [];
+  const data = error.response.data;
+  const val = data[field];
+  if (Array.isArray(val)) return val;
+  if (typeof val === "string") return [val];
+  return [];
+}
+
+function getGeneralError(error: any): string {
+  if (!error?.response?.data) return "";
+  const data = error.response.data;
+  if (data.detail) return data.detail;
+  if (data.non_field_errors) {
+    return Array.isArray(data.non_field_errors) ? data.non_field_errors.join(". ") : data.non_field_errors;
+  }
+  return "";
+}
+
 export default function RegisterPage() {
-  const [fullName, setFullName] = useState("");
+  const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -24,8 +43,15 @@ export default function RegisterPage() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (password !== confirmPassword) return;
-    register({ email, password, full_name: fullName });
+    register({ email, password, password_confirm: confirmPassword, username });
   };
+
+  const passwordMismatch = password !== confirmPassword && confirmPassword;
+  const usernameErrors = getFieldErrors(registerError, "username");
+  const emailErrors = getFieldErrors(registerError, "email");
+  const passwordErrors = getFieldErrors(registerError, "password");
+  const confirmPasswordErrors = getFieldErrors(registerError, "password_confirm");
+  const generalError = getGeneralError(registerError);
 
   return (
     <Card>
@@ -37,27 +63,30 @@ export default function RegisterPage() {
       </CardHeader>
       <form onSubmit={handleSubmit}>
         <CardContent className="space-y-4">
-          {registerError && (
+          {generalError && (
             <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
-              {registerError.response?.data?.detail || "Registration failed"}
+              {generalError}
             </div>
           )}
-          {password !== confirmPassword && confirmPassword && (
+          {passwordMismatch && (
             <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
               Passwords do not match
             </div>
           )}
           <div className="space-y-2">
-            <label htmlFor="fullName" className="text-sm font-medium">
-              Full Name
+            <label htmlFor="username" className="text-sm font-medium">
+              Username
             </label>
             <Input
-              id="fullName"
-              placeholder="John Doe"
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
+              id="username"
+              placeholder="johndoe"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
               required
             />
+            {usernameErrors.map((err, i) => (
+              <p key={i} className="text-xs text-destructive">{err}</p>
+            ))}
           </div>
           <div className="space-y-2">
             <label htmlFor="email" className="text-sm font-medium">
@@ -71,6 +100,9 @@ export default function RegisterPage() {
               onChange={(e) => setEmail(e.target.value)}
               required
             />
+            {emailErrors.map((err, i) => (
+              <p key={i} className="text-xs text-destructive">{err}</p>
+            ))}
           </div>
           <div className="space-y-2">
             <label htmlFor="password" className="text-sm font-medium">
@@ -85,6 +117,9 @@ export default function RegisterPage() {
               required
               minLength={8}
             />
+            {passwordErrors.map((err, i) => (
+              <p key={i} className="text-xs text-destructive">{err}</p>
+            ))}
           </div>
           <div className="space-y-2">
             <label htmlFor="confirmPassword" className="text-sm font-medium">
@@ -99,6 +134,9 @@ export default function RegisterPage() {
               required
               minLength={8}
             />
+            {confirmPasswordErrors.map((err, i) => (
+              <p key={i} className="text-xs text-destructive">{err}</p>
+            ))}
           </div>
         </CardContent>
         <CardFooter className="flex flex-col space-y-4">

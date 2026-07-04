@@ -12,16 +12,36 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { useToast } from "@/hooks/use-toast";
+import api from "@/lib/api";
 
 export default function SettingsPage() {
   const { user } = useAuth();
   const { theme, setTheme } = useUIStore();
-  const [fullName, setFullName] = useState(user?.full_name || "");
+  const { toast } = useToast();
+  const [firstName, setFirstName] = useState(user?.first_name || "");
+  const [lastName, setLastName] = useState(user?.last_name || "");
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await api.patch(`/auth/users/${user?.id}/`, {
+        first_name: firstName,
+        last_name: lastName,
+      });
+      toast({ title: "Profile updated successfully" });
+    } catch {
+      toast({ title: "Failed to update profile", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
+        <h1 className="text-2xl font-bold">Settings</h1>
         <p className="text-muted-foreground">
           Manage your account settings and preferences
         </p>
@@ -31,11 +51,20 @@ export default function SettingsPage() {
         <Card>
           <CardHeader>
             <CardTitle>Profile</CardTitle>
-            <CardDescription>
-              Update your personal information
-            </CardDescription>
+            <CardDescription>Update your personal information</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <label htmlFor="username" className="text-sm font-medium">
+                Username
+              </label>
+              <Input
+                id="username"
+                value={user?.username || ""}
+                disabled
+                className="max-w-md"
+              />
+            </div>
             <div className="space-y-2">
               <label htmlFor="email" className="text-sm font-medium">
                 Email
@@ -47,18 +76,31 @@ export default function SettingsPage() {
                 className="max-w-md"
               />
             </div>
-            <div className="space-y-2">
-              <label htmlFor="fullName" className="text-sm font-medium">
-                Full Name
-              </label>
-              <Input
-                id="fullName"
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-                className="max-w-md"
-              />
+            <div className="grid grid-cols-2 gap-4 max-w-md">
+              <div className="space-y-2">
+                <label htmlFor="firstName" className="text-sm font-medium">
+                  First Name
+                </label>
+                <Input
+                  id="firstName"
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <label htmlFor="lastName" className="text-sm font-medium">
+                  Last Name
+                </label>
+                <Input
+                  id="lastName"
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                />
+              </div>
             </div>
-            <Button>Save Changes</Button>
+            <Button onClick={handleSave} disabled={saving}>
+              {saving ? "Saving..." : "Save Changes"}
+            </Button>
           </CardContent>
         </Card>
 

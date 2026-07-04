@@ -1,0 +1,83 @@
+- generic [active] [ref=f2e1]:
+  - button "Open Next.js Dev Tools" [ref=f2e30] [cursor=pointer]:
+    - img [ref=f2e31]
+  - alert [ref=f2e34]
+  - generic [ref=f2e35]:
+    - complementary [ref=f2e36]:
+      - generic [ref=f2e37]:
+        - generic [ref=f2e38]:
+          - link "AI Archive" [ref=f2e39] [cursor=pointer]:
+            - /url: /dashboard
+            - img [ref=f2e40]
+            - generic [ref=f2e43]: AI Archive
+          - button [ref=f2e44] [cursor=pointer]:
+            - img [ref=f2e45]
+        - navigation [ref=f2e47]:
+          - link "Dashboard" [ref=f2e48] [cursor=pointer]:
+            - /url: /dashboard
+            - img [ref=f2e49]
+            - generic [ref=f2e54]: Dashboard
+          - link "Files" [ref=f2e55] [cursor=pointer]:
+            - /url: /files
+            - img [ref=f2e56]
+            - generic [ref=f2e58]: Files
+          - link "Documents" [ref=f2e59] [cursor=pointer]:
+            - /url: /documents
+            - img [ref=f2e60]
+            - generic [ref=f2e63]: Documents
+          - link "Search" [ref=f2e64] [cursor=pointer]:
+            - /url: /search
+            - img [ref=f2e65]
+            - generic [ref=f2e68]: Search
+          - link "Settings" [ref=f2e69] [cursor=pointer]:
+            - /url: /settings
+            - img [ref=f2e70]
+            - generic [ref=f2e73]: Settings
+    - generic [ref=f2e74]:
+      - banner [ref=f2e75]:
+        - generic [ref=f2e76]:
+          - generic [ref=f2e77]:
+            - img [ref=f2e79]
+            - generic [ref=f2e82]: admin
+          - button [ref=f2e83] [cursor=pointer]:
+            - img [ref=f2e84]
+      - main [ref=f2e87]:
+        - generic [ref=f2e88]:
+          - generic [ref=f2e89]:
+            - heading "Dashboard" [level=1] [ref=f2e90]
+            - paragraph [ref=f2e91]: Overview of your archive platform
+          - generic [ref=f2e92]:
+            - generic [ref=f2e93]:
+              - generic [ref=f2e94]:
+                - heading "Total Files" [level=3] [ref=f2e95]
+                - img [ref=f2e96]
+              - generic [ref=f2e99]: "7"
+            - generic [ref=f2e100]:
+              - generic [ref=f2e101]:
+                - heading "Total Documents" [level=3] [ref=f2e102]
+                - img [ref=f2e103]
+              - generic [ref=f2e107]: "9"
+            - generic [ref=f2e108]:
+              - generic [ref=f2e109]:
+                - heading "Storage Used" [level=3] [ref=f2e110]
+                - img [ref=f2e111]
+              - generic [ref=f2e114]: 0 Bytes
+            - generic [ref=f2e115]:
+              - generic [ref=f2e116]:
+                - heading "Failed Processing" [level=3] [ref=f2e117]
+                - img [ref=f2e118]
+              - generic [ref=f2e120]:
+                - generic [ref=f2e121]: "0"
+                - paragraph [ref=f2e122]: Files or documents requiring attention
+          - generic [ref=f2e123]:
+            - generic [ref=f2e124]:
+              - heading "Files by Status" [level=3] [ref=f2e126]
+              - generic [ref=f2e129]:
+                - generic [ref=f2e130]: pending
+                - generic [ref=f2e131]: "7"
+            - generic [ref=f2e132]:
+              - heading "Documents by Type" [level=3] [ref=f2e134]
+              - paragraph [ref=f2e137]: No documents yet
+          - generic [ref=f2e138]:
+            - heading "Recent Activity" [level=3] [ref=f2e140]
+            - paragraph [ref=f2e143]: No recent activity

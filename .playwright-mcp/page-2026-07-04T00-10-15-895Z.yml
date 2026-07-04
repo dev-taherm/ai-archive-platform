@@ -1,0 +1,38 @@
+- generic [ref=e2]:
+  - complementary [ref=e3]:
+    - generic [ref=e4]:
+      - generic [ref=e5]:
+        - link "AI Archive" [ref=e6] [cursor=pointer]:
+          - /url: /dashboard
+          - img [ref=e7]
+          - generic [ref=e10]: AI Archive
+        - button [ref=e11] [cursor=pointer]:
+          - img [ref=e12]
+      - navigation [ref=e14]:
+        - link "Dashboard" [ref=e15] [cursor=pointer]:
+          - /url: /dashboard
+          - img [ref=e16]
+          - generic [ref=e21]: Dashboard
+        - link "Files" [ref=e22] [cursor=pointer]:
+          - /url: /files
+          - img [ref=e23]
+          - generic [ref=e25]: Files
+        - link "Documents" [ref=e26] [cursor=pointer]:
+          - /url: /documents
+          - img [ref=e27]
+          - generic [ref=e30]: Documents
+        - link "Search" [ref=e31] [cursor=pointer]:
+          - /url: /search
+          - img [ref=e32]
+          - generic [ref=e35]: Search
+        - link "Settings" [ref=e36] [cursor=pointer]:
+          - /url: /settings
+          - img [ref=e37]
+          - generic [ref=e40]: Settings
+  - generic [ref=e41]:
+    - banner [ref=e42]:
+      - generic [ref=e43]:
+        - img [ref=e46]
+        - button [ref=e49] [cursor=pointer]:
+          - img [ref=e50]
+    - main [ref=e53]

@@ -1,19 +1,23 @@
+// ============================================================
+// Types matching Django backend responses
+// ============================================================
+
+// --- Auth ---
+
 export interface User {
   id: string;
   email: string;
-  full_name: string;
-  avatar_url: string | null;
-  role: "admin" | "user";
+  username: string;
+  first_name: string;
+  last_name: string;
   is_active: boolean;
-  created_at: string;
-  updated_at: string;
+  date_joined: string;
 }
 
 export interface AuthTokens {
-  access_token: string;
-  refresh_token: string;
-  token_type: string;
-  expires_in: number;
+  access: string;
+  refresh: string;
+  user: User;
 }
 
 export interface LoginRequest {
@@ -24,73 +28,134 @@ export interface LoginRequest {
 export interface RegisterRequest {
   email: string;
   password: string;
-  full_name: string;
+  password_confirm: string;
+  username: string;
+  first_name?: string;
+  last_name?: string;
 }
 
-export interface Document {
+// --- Files ---
+
+export interface FileRecord {
   id: string;
-  title: string;
-  filename: string;
-  file_size: number;
+  path: string;
   mime_type: string;
-  status: "pending" | "processing" | "completed" | "failed";
+  size_bytes: number;
+  status: "pending" | "indexing" | "completed" | "failed";
+  checksum: string;
   tags: string[];
-  summary: string | null;
-  chunk_count: number;
-  created_by: string;
+  metadata: Record<string, unknown>;
+  duplicate_group_id: string | null;
   created_at: string;
   updated_at: string;
 }
 
-export interface DocumentListResponse {
-  items: Document[];
-  total: number;
-  page: number;
-  page_size: number;
-  pages: number;
+export interface ScanRequest {
+  folder_path: string;
+  recursive?: boolean;
+  patterns?: string[];
+  ignore_patterns?: string[];
 }
+
+export interface ScanResult {
+  folder_path: string;
+  total_files_found: number;
+  files_scanned: number;
+  new_files: number;
+  skipped_files: number;
+  failed_files: number;
+  scan_duration_seconds: number;
+  scanned_at: string;
+  errors: string[];
+  file_ids: string[];
+}
+
+export interface FileOperationResult {
+  operation: string;
+  file_id: string;
+  source_path: string;
+  destination_path: string | null;
+  success: boolean;
+  error_message: string | null;
+  performed_at: string;
+}
+
+// --- Documents ---
+
+export interface Document {
+  id: string;
+  file_id: string;
+  doc_type: string;
+  processing_status: "queued" | "extracting" | "classifying" | "indexing" | "completed" | "failed" | "retrying";
+  title: string;
+  author: string;
+  subject: string;
+  language: string;
+  word_count: number;
+  page_count: number;
+  chunk_count: number;
+  classification_confidence: number | null;
+  tags: string[];
+  extracted_text_preview: string;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// --- Search ---
 
 export interface SearchRequest {
   query: string;
+  search_type?: "hybrid" | "semantic" | "keyword";
+  max_results?: number;
+  offset?: number;
   filters?: {
+    doc_types?: string[];
+    languages?: string[];
     tags?: string[];
     date_from?: string;
     date_to?: string;
-    status?: Document["status"];
+    min_score?: number;
+    file_extensions?: string[];
+    exclude_duplicates?: boolean;
   };
-  page?: number;
-  page_size?: number;
 }
 
 export interface SearchResult {
   document_id: string;
-  document_title: string;
-  chunk_id: string;
-  content: string;
+  file_id: string;
+  title: string;
+  snippet: string;
   score: number;
+  rank: number;
+  doc_type: string;
+  language: string;
+  match_source: string;
   highlights: string[];
+  metadata: Record<string, unknown>;
 }
 
 export interface SearchResponse {
   query: string;
   results: SearchResult[];
-  total: number;
-  took_ms: number;
+  total_count: number;
+  search_time_ms: number;
+  search_type: string;
 }
 
+// --- Dashboard ---
+
 export interface DashboardStats {
+  total_files: number;
   total_documents: number;
-  total_chunks: number;
   total_searches: number;
+  total_chat_sessions: number;
+  files_by_status: Record<string, number>;
+  documents_by_type: Record<string, number>;
+  documents_by_status: Record<string, number>;
+  recent_uploads_count: number;
   storage_used_bytes: number;
-  documents_by_status: {
-    pending: number;
-    processing: number;
-    completed: number;
-    failed: number;
-  };
-  recent_activity: ActivityItem[];
-  activity_over_time: ActivityTimeSeries[];
+  avg_processing_time_ms: number;
 }
 
 export interface ActivityItem {
@@ -101,21 +166,47 @@ export interface ActivityItem {
   created_at: string;
 }
 
-export interface ActivityTimeSeries {
+export interface ActivityResponse {
+  activities: ActivityItem[];
+  total_count: number;
+}
+
+export interface ChartDataPoint {
   date: string;
   uploads: number;
   searches: number;
 }
 
-export interface PaginatedResponse<T> {
-  items: T[];
-  total: number;
-  page: number;
-  page_size: number;
-  pages: number;
+// --- Pipeline ---
+
+export interface PipelineResult {
+  status: string;
+  document_id: string;
+  parse_method: string;
+  classification: string;
+  classification_confidence: number;
+  entities: { name: string; type: string; context: string }[];
+  summary: string;
+  chunk_count: number;
+  embedding_count: number;
+  processing_log: string[];
+  error: string | null;
 }
+
+// --- AI ---
+
+export interface ClassificationResult {
+  document_id: string;
+  predicted_type: string;
+  confidence: number;
+  all_labels: string[];
+  model_used: string;
+  classified_at: string;
+}
+
+// --- Common ---
 
 export interface ApiError {
   detail: string;
-  status_code: number;
+  status_code?: number;
 }
