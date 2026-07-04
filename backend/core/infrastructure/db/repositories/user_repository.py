@@ -6,7 +6,6 @@ from typing import Any, Sequence
 from django.db.models import QuerySet
 
 from core.application.interfaces.repositories import UserRepository
-from core.domain.common.exceptions import EntityNotFound
 
 
 class DjangoUserRepository(UserRepository):

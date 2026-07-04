@@ -29,11 +29,16 @@ DEFAULT_IGNORE_PATTERNS: list[str] = [
 
 
 class FileScannerService(FileScanner):
-    """Local filesystem implementation of FileScanner ABC."""
+    """Local filesystem implementation of FileScanner ABC.
+
+    Supports folder scanning with fingerprinting and real-time
+    filesystem monitoring via watchdog.
+    """
 
     def __init__(self) -> None:
         self._watching: dict[str, bool] = {}
         self._callbacks: dict[str, Callable | None] = {}
+        self._observers: dict[str, Any] = {}
 
     def _should_ignore(self, name: str, ignore_patterns: list[str]) -> bool:
         for pattern in ignore_patterns:
@@ -95,7 +100,9 @@ class FileScannerService(FileScanner):
             entries = sorted(root.iterdir(), key=lambda p: (p.is_file(), p.name))
 
         for entry in entries:
-            if entry.name in effective_ignore or self._should_ignore(entry.name, effective_ignore):
+            if entry.name in effective_ignore or self._should_ignore(
+                entry.name, effective_ignore
+            ):
                 continue
 
             if entry.is_dir():
@@ -131,13 +138,66 @@ class FileScannerService(FileScanner):
         recursive: bool = True,
         callback: Callable | None = None,
     ) -> None:
+        """Begin watching a folder for changes using watchdog.
+
+        Calls the callback with (event_type, path) tuples when files change.
+        """
         resolved = str(Path(path).resolve())
         self._watching[resolved] = True
         self._callbacks[resolved] = callback
-        logger.info("Started watching folder: %s", resolved)
+
+        try:
+            from watchdog.events import FileSystemEvent, FileSystemEventHandler
+            from watchdog.observers import Observer
+
+            class _ArchiveEventHandler(FileSystemEventHandler):
+                """Routes watchdog events to the registered callback."""
+
+                def __init__(self, cb: Callable | None) -> None:
+                    super().__init__()
+                    self._cb = cb
+
+                def on_created(self, event: FileSystemEvent) -> None:
+                    if not event.is_directory and self._cb:
+                        self._cb("created", event.src_path)
+
+                def on_modified(self, event: FileSystemEvent) -> None:
+                    if not event.is_directory and self._cb:
+                        self._cb("modified", event.src_path)
+
+                def on_deleted(self, event: FileSystemEvent) -> None:
+                    if not event.is_directory and self._cb:
+                        self._cb("deleted", event.src_path)
+
+                def on_moved(self, event: FileSystemEvent) -> None:
+                    if not event.is_directory and self._cb:
+                        self._cb("moved", event.src_path)
+
+            handler = _ArchiveEventHandler(callback)
+            observer = Observer()
+            observer.schedule(handler, resolved, recursive=recursive)
+            observer.daemon = True
+            observer.start()
+            self._observers[resolved] = observer
+            logger.info("Started watching folder: %s", resolved)
+        except ImportError:
+            logger.warning(
+                "watchdog not installed — folder watching disabled. "
+                "Install with: pip install watchdog"
+            )
+        except Exception:
+            logger.exception("Failed to start watching folder: %s", resolved)
 
     def stop_watching(self, path: str) -> None:
+        """Stop watching a folder for changes."""
         resolved = str(Path(path).resolve())
+        observer = self._observers.pop(resolved, None)
+        if observer:
+            try:
+                observer.stop()
+                observer.join(timeout=5)
+            except Exception:
+                logger.exception("Error stopping observer for %s", resolved)
         self._watching.pop(resolved, None)
         self._callbacks.pop(resolved, None)
         logger.info("Stopped watching folder: %s", resolved)

@@ -6,7 +6,7 @@ import uuid as _uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from core.application.dtos.ai_dto import AIResultDTO, ClassificationDTO, EmbeddingDTO
+from core.application.dtos.ai_dto import ClassificationDTO, EmbeddingDTO
 from core.application.use_cases.ai_use_cases import AIUseCases
 
 logger = logging.getLogger(__name__)

@@ -7,11 +7,8 @@ from typing import Any
 from core.application.dtos.file_dto import FileOperationDTO, FileRecordDTO, ScanResultDTO
 from core.application.interfaces.repositories import (
     AuditLogRepository,
-    FileRepository,
 )
-from core.application.interfaces.services import FileScanner, StorageBackend
 from core.application.use_cases.file_use_cases import FileUseCases
-from core.domain.common.exceptions import EntityNotFound, ValidationException
 
 logger = logging.getLogger(__name__)
 

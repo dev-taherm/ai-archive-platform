@@ -19,7 +19,7 @@ class DashboardView(viewsets.GenericViewSet):
     """
     Dashboard ViewSet for statistics, charts, and activity feed.
 
-    Delegates to application services for data aggregation.
+    Queries real data from the database for all dashboard widgets.
     """
 
     permission_classes = [permissions.IsAuthenticated]
@@ -27,7 +27,9 @@ class DashboardView(viewsets.GenericViewSet):
     @action(detail=False, methods=["get"])
     def stats(self, request):
         try:
-            from django.apps import apps
+            from django.db.models import Count
+            from django.utils import timezone
+            from datetime import timedelta
 
             stats_data = {
                 "total_files": 0,
@@ -42,11 +44,11 @@ class DashboardView(viewsets.GenericViewSet):
                 "avg_processing_time_ms": 0.0,
             }
 
+            # File counts
             try:
                 from apps.files.models import FileRecord as FileModel
 
                 stats_data["total_files"] = FileModel.objects.count()
-                from django.db.models import Count
 
                 status_counts = (
                     FileModel.objects.values("status")
@@ -56,14 +58,71 @@ class DashboardView(viewsets.GenericViewSet):
                 stats_data["files_by_status"] = {
                     item["status"]: item["count"] for item in status_counts
                 }
-            except (ImportError, Exception):
-                pass
 
+                # Storage used
+                from django.db.models import Sum
+
+                storage = FileModel.objects.aggregate(total=Sum("size_bytes"))
+                stats_data["storage_used_bytes"] = storage["total"] or 0
+
+                # Recent uploads (last 7 days)
+                week_ago = timezone.now() - timedelta(days=7)
+                stats_data["recent_uploads_count"] = FileModel.objects.filter(
+                    created_at__gte=week_ago
+                ).count()
+            except Exception:
+                logger.debug("Could not query file stats")
+
+            # Document counts
             try:
                 from apps.documents.models import Document as DocumentModel
 
                 stats_data["total_documents"] = DocumentModel.objects.count()
-            except (ImportError, Exception):
+
+                # Documents by type
+                type_counts = (
+                    DocumentModel.objects.values("doc_type")
+                    .annotate(count=Count("id"))
+                    .order_by("doc_type")
+                )
+                stats_data["documents_by_type"] = {
+                    item["doc_type"]: item["count"] for item in type_counts
+                }
+
+                # Documents by status
+                status_counts = (
+                    DocumentModel.objects.values("processing_status")
+                    .annotate(count=Count("id"))
+                    .order_by("processing_status")
+                )
+                stats_data["documents_by_status"] = {
+                    item["processing_status"]: item["count"] for item in status_counts
+                }
+
+                # Average processing time
+                from django.db.models import Avg
+
+                avg_time = DocumentModel.objects.filter(
+                    processing_status="completed"
+                ).aggregate(avg=Avg("processing_time_ms"))
+                stats_data["avg_processing_time_ms"] = avg_time["avg"] or 0.0
+            except Exception:
+                logger.debug("Could not query document stats")
+
+            # Search count
+            try:
+                from apps.search.models import SearchHistory
+
+                stats_data["total_searches"] = SearchHistory.objects.count()
+            except Exception:
+                pass
+
+            # Chat session count
+            try:
+                from apps.chat.models import ChatSession
+
+                stats_data["total_chat_sessions"] = ChatSession.objects.count()
+            except Exception:
                 pass
 
             return Response(
@@ -79,34 +138,141 @@ class DashboardView(viewsets.GenericViewSet):
 
     @action(detail=False, methods=["get"])
     def charts(self, request):
-        period = request.query_params.get("period", "7d")
+        from django.db.models import Count
+        from django.utils import timezone
+        from datetime import timedelta
 
-        charts = [
-            {
-                "chart_type": "bar",
-                "title": "Files by Status",
-                "data": [],
-                "period": period,
-            },
-            {
-                "chart_type": "line",
-                "title": "Uploads Over Time",
-                "data": [],
-                "period": period,
-            },
-            {
-                "chart_type": "pie",
-                "title": "Documents by Type",
-                "data": [],
-                "period": period,
-            },
-            {
-                "chart_type": "area",
-                "title": "Search Activity",
-                "data": [],
-                "period": period,
-            },
-        ]
+        period = request.query_params.get("period", "7d")
+        days = int(period.replace("d", "")) if period.endswith("d") else 7
+        since = timezone.now() - timedelta(days=days)
+
+        charts = []
+
+        # Files by Status (bar chart)
+        try:
+            from apps.files.models import FileRecord as FileModel
+
+            data = (
+                FileModel.objects.values("status")
+                .annotate(count=Count("id"))
+                .order_by("status")
+            )
+            charts.append(
+                {
+                    "chart_type": "bar",
+                    "title": "Files by Status",
+                    "data": [
+                        {"label": item["status"], "value": item["count"]}
+                        for item in data
+                    ],
+                    "period": period,
+                }
+            )
+        except Exception:
+            charts.append(
+                {
+                    "chart_type": "bar",
+                    "title": "Files by Status",
+                    "data": [],
+                    "period": period,
+                }
+            )
+
+        # Uploads Over Time (line chart)
+        try:
+            from apps.files.models import FileRecord as FileModel
+            from django.db.models.functions import TruncDate
+
+            data = (
+                FileModel.objects.filter(created_at__gte=since)
+                .annotate(date=TruncDate("created_at"))
+                .values("date")
+                .annotate(count=Count("id"))
+                .order_by("date")
+            )
+            charts.append(
+                {
+                    "chart_type": "line",
+                    "title": "Uploads Over Time",
+                    "data": [
+                        {"label": item["date"].isoformat(), "value": item["count"]}
+                        for item in data
+                    ],
+                    "period": period,
+                }
+            )
+        except Exception:
+            charts.append(
+                {
+                    "chart_type": "line",
+                    "title": "Uploads Over Time",
+                    "data": [],
+                    "period": period,
+                }
+            )
+
+        # Documents by Type (pie chart)
+        try:
+            from apps.documents.models import Document as DocumentModel
+
+            data = (
+                DocumentModel.objects.values("doc_type")
+                .annotate(count=Count("id"))
+                .order_by("-count")
+            )
+            charts.append(
+                {
+                    "chart_type": "pie",
+                    "title": "Documents by Type",
+                    "data": [
+                        {"label": item["doc_type"], "value": item["count"]}
+                        for item in data
+                    ],
+                    "period": period,
+                }
+            )
+        except Exception:
+            charts.append(
+                {
+                    "chart_type": "pie",
+                    "title": "Documents by Type",
+                    "data": [],
+                    "period": period,
+                }
+            )
+
+        # Search Activity (area chart)
+        try:
+            from apps.search.models import SearchHistory
+            from django.db.models.functions import TruncDate
+
+            data = (
+                SearchHistory.objects.filter(created_at__gte=since)
+                .annotate(date=TruncDate("created_at"))
+                .values("date")
+                .annotate(count=Count("id"))
+                .order_by("date")
+            )
+            charts.append(
+                {
+                    "chart_type": "area",
+                    "title": "Search Activity",
+                    "data": [
+                        {"label": item["date"].isoformat(), "value": item["count"]}
+                        for item in data
+                    ],
+                    "period": period,
+                }
+            )
+        except Exception:
+            charts.append(
+                {
+                    "chart_type": "area",
+                    "title": "Search Activity",
+                    "data": [],
+                    "period": period,
+                }
+            )
 
         return Response(
             ChartDataSerializer(charts, many=True).data,
@@ -123,9 +289,9 @@ class DashboardView(viewsets.GenericViewSet):
         try:
             from apps.files.models import AuditLog
 
-            recent_logs = AuditLog.objects.order_by("-created_at")[
-                offset : offset + limit
-            ]
+            recent_logs = AuditLog.objects.select_related("user").order_by(
+                "-created_at"
+            )[offset : offset + limit]
             for log in recent_logs:
                 activities.append(
                     {
@@ -134,14 +300,16 @@ class DashboardView(viewsets.GenericViewSet):
                         "resource_type": log.resource_type,
                         "resource_id": log.resource_id,
                         "user_email": (
-                            log.user.email if hasattr(log, "user") and log.user else None
+                            log.user.email
+                            if hasattr(log, "user") and log.user
+                            else None
                         ),
                         "details": log.details if hasattr(log, "details") else {},
                         "created_at": log.created_at,
                     }
                 )
-        except (ImportError, Exception):
-            pass
+        except Exception:
+            logger.debug("Could not query audit logs for activity")
 
         return Response(
             {

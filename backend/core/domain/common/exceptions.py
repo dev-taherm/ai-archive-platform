@@ -46,6 +46,21 @@ class ValidationException(DomainException):
         )
 
 
+class DuplicateEntityException(DomainException):
+    """Raised when an entity with a unique constraint already exists."""
+
+    def __init__(
+        self,
+        entity_type: str,
+        identifier: str | int,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(
+            message=f"{entity_type} with identifier '{identifier}' already exists",
+            details={"entity_type": entity_type, "identifier": str(identifier), **kwargs},
+        )
+
+
 class UnauthorizedError(DomainException):
     """Raised when an operation is not permitted."""
 

@@ -10,7 +10,6 @@ logger = logging.getLogger(__name__)
 @shared_task(name="dashboard.refresh_cache")
 def refresh_dashboard_cache() -> str:
     """Refresh cached dashboard data."""
-    import json
 
     from django.core.cache import cache
     from apps.dashboard.services import DashboardService

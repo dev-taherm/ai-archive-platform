@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import uuid
 
 from rest_framework import serializers
 

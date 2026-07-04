@@ -22,17 +22,15 @@ def scan_folder_task(
     from core.application.use_cases.file_use_cases import FileUseCases
 
     async def _run() -> dict[str, object]:
-        # In production, repositories are injected via DI container
-        # This is a simplified bridge for Celery
         from core.infrastructure.db.repositories.file_repository import (
             DjangoFileRepository,
         )
-        from core.infrastructure.services.file_scanner import OSFileScanner
-        from core.infrastructure.services.storage_backend import LocalStorageBackend
+        from core.infrastructure.services.file_scanner import FileScannerService
+        from core.infrastructure.storage.local import LocalStorage
 
         repo = DjangoFileRepository()
-        scanner = OSFileScanner()
-        storage = LocalStorageBackend()
+        scanner = FileScannerService()
+        storage = LocalStorage(root_dir="/tmp/archive-storage")
         use_cases = FileUseCases(repo, storage, scanner)
         service = FileService(use_cases)
 
@@ -65,12 +63,12 @@ def delete_file_task(file_id: str) -> dict[str, object]:
         from core.infrastructure.db.repositories.file_repository import (
             DjangoFileRepository,
         )
-        from core.infrastructure.services.file_scanner import OSFileScanner
-        from core.infrastructure.services.storage_backend import LocalStorageBackend
+        from core.infrastructure.services.file_scanner import FileScannerService
+        from core.infrastructure.storage.local import LocalStorage
 
         repo = DjangoFileRepository()
-        scanner = OSFileScanner()
-        storage = LocalStorageBackend()
+        scanner = FileScannerService()
+        storage = LocalStorage(root_dir="/tmp/archive-storage")
         use_cases = FileUseCases(repo, storage, scanner)
         service = FileService(use_cases)
 

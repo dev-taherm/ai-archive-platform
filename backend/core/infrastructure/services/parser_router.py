@@ -4,7 +4,7 @@ import logging
 import mimetypes
 from pathlib import Path
 
-from core.application.interfaces.parsers import DocumentParser, ParsedDocument
+from core.application.interfaces.parsers import ParsedDocument
 from core.infrastructure.services.mineru_parser import MinerUParser
 
 logger = logging.getLogger(__name__)

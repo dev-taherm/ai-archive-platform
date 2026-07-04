@@ -21,11 +21,15 @@ class LangChainEmbeddingProvider(EmbeddingProvider):
         *,
         model_name: str = "text-embedding-3-small",
         provider: str = "openai",
+        api_key: str | None = None,
+        base_url: str | None = None,
         dimensions: int = 1536,
         batch_size: int = 64,
     ) -> None:
         self._model_name = model_name
         self._provider = provider.lower()
+        self._api_key = api_key
+        self._base_url = base_url
         self._dimensions = dimensions
         self._batch_size = batch_size
         self._embeddings: Any = None
@@ -39,7 +43,7 @@ class LangChainEmbeddingProvider(EmbeddingProvider):
             try:
                 from langchain_openai import OpenAIEmbeddings
 
-                api_key = os.environ.get("OPENAI_API_KEY", "")
+                api_key = self._api_key or os.environ.get("OPENAI_API_KEY", "")
                 self._embeddings = OpenAIEmbeddings(
                     model=self._model_name,
                     api_key=api_key,
@@ -54,7 +58,9 @@ class LangChainEmbeddingProvider(EmbeddingProvider):
             try:
                 from langchain_ollama import OllamaEmbeddings
 
-                base_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
+                base_url = self._base_url or os.environ.get(
+                    "OLLAMA_BASE_URL", "http://localhost:11434"
+                )
                 self._embeddings = OllamaEmbeddings(
                     model=self._model_name,
                     base_url=base_url,
@@ -89,33 +95,23 @@ class LangChainEmbeddingProvider(EmbeddingProvider):
         )
         return self._embeddings
 
-    async def embed_text(self, text: str) -> list[float]:
+    def embed_text(self, text: str) -> list[float]:
         """Generate an embedding vector for a single text."""
         embeddings = self._get_embeddings()
-        # LangChain embeddings are sync; run in executor
-        import asyncio
+        return embeddings.embed_query(text)
 
-        loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(None, embeddings.embed_query, text)
-        return result
-
-    async def embed_documents(self, texts: list[str]) -> list[list[float]]:
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
         """Generate embedding vectors for multiple texts with batching."""
         if not texts:
             return []
 
         embeddings = self._get_embeddings()
-        import asyncio
-
-        loop = asyncio.get_event_loop()
 
         # Process in batches to avoid API rate limits and memory issues
         all_results: list[list[float]] = []
         for i in range(0, len(texts), self._batch_size):
             batch = texts[i : i + self._batch_size]
-            batch_results = await loop.run_in_executor(
-                None, embeddings.embed_documents, batch
-            )
+            batch_results = embeddings.embed_documents(batch)
             all_results.extend(batch_results)
 
         return all_results
@@ -124,3 +120,8 @@ class LangChainEmbeddingProvider(EmbeddingProvider):
     def dimension(self) -> int:
         """Return the dimensionality of the embedding vectors."""
         return self._dimensions
+
+    @property
+    def model_name(self) -> str:
+        """Return the name of the embedding model."""
+        return self._model_name

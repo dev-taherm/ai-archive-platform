@@ -3,7 +3,6 @@ from __future__ import annotations
 import uuid
 
 from django.conf import settings
-from django.contrib import admin
 from django.db import models
 
 

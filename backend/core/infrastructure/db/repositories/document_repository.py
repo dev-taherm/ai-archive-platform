@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import uuid
 from typing import Any, Sequence
 
@@ -14,31 +15,57 @@ from core.domain.documents.value_objects import (
     ProcessingStatus,
 )
 
+logger = logging.getLogger(__name__)
+
 
 class DjangoDocumentRepository(DocumentRepository):
     """Django ORM implementation of DocumentRepository ABC."""
 
     def __init__(self) -> None:
         from apps.documents.models import Document as DocumentModel
+
         self._model = DocumentModel
 
     def _qs(self) -> QuerySet:
         return self._model.objects.all()
 
     def _to_domain(self, obj: Any) -> Document:
+        metadata = DocumentMetadata(
+            title=getattr(obj, "title", ""),
+            author=getattr(obj, "author", ""),
+            subject=getattr(obj, "subject", ""),
+            language=Language(getattr(obj, "language", "unknown")),
+            word_count=getattr(obj, "word_count", 0),
+            page_count=getattr(obj, "page_count", 0),
+        )
+        # Try to fetch extended metadata from the related model
+        try:
+            if hasattr(obj, "metadata") and obj.metadata:
+                meta_obj = obj.metadata
+                metadata = DocumentMetadata(
+                    title=getattr(meta_obj, "title", "") or metadata.title,
+                    author=getattr(meta_obj, "author", "") or metadata.author,
+                    subject=getattr(meta_obj, "subject", "") or metadata.subject,
+                    language=Language(
+                        getattr(meta_obj, "language", "unknown")
+                        or metadata.language.value
+                    ),
+                    word_count=getattr(meta_obj, "word_count", 0)
+                    or metadata.word_count,
+                    page_count=getattr(meta_obj, "page_count", 0)
+                    or metadata.page_count,
+                    keywords=tuple(getattr(meta_obj, "keywords", []) or []),
+                    tags=tuple(getattr(meta_obj, "tags", []) or []),
+                )
+        except Exception:
+            pass
+
         return Document(
             id=obj.id,
             file_id=obj.file_id,
             doc_type=DocumentType(obj.doc_type),
             processing_status=ProcessingStatus(obj.processing_status),
-            metadata=DocumentMetadata(
-                title=getattr(obj, "title", ""),
-                author=getattr(obj, "author", ""),
-                subject=getattr(obj, "subject", ""),
-                language=Language(getattr(obj, "language", "unknown")),
-                word_count=getattr(obj, "word_count", 0),
-                page_count=getattr(obj, "page_count", 0),
-            ),
+            metadata=metadata,
             classification_confidence=(
                 Confidence(value=obj.classification_confidence)
                 if obj.classification_confidence is not None
@@ -86,6 +113,28 @@ class DjangoDocumentRepository(DocumentRepository):
             id=document.id,
             defaults=data,
         )
+
+        # Persist extended metadata to the related model
+        try:
+            from apps.documents.models import DocumentMetadata as MetaModel
+
+            MetaModel.objects.update_or_create(
+                document=obj,
+                defaults={
+                    "keywords": list(getattr(document.metadata, "keywords", []) or []),
+                    "tags": list(getattr(document.metadata, "tags", []) or []),
+                    "entities": getattr(document.metadata, "entities", {}),
+                    "summary": getattr(document.metadata, "summary", ""),
+                    "categories": getattr(document.metadata, "categories", []),
+                    "sentiment": getattr(document.metadata, "sentiment", ""),
+                    "extra": getattr(document.metadata, "extra", {}),
+                },
+            )
+        except Exception:
+            logger.debug(
+                "Could not save extended metadata for document %s", document.id
+            )
+
         return self._to_domain(obj)
 
     def list_all(
@@ -108,11 +157,65 @@ class DjangoDocumentRepository(DocumentRepository):
         top_k: int = 10,
         threshold: float = 0.0,
     ) -> Sequence[tuple[DocumentChunk, float]]:
-        results: list[tuple[DocumentChunk, float]] = []
-        return results
+        """Search document chunks by embedding similarity using pgvector."""
+        try:
+            from apps.ai.models import Embedding as EmbeddingModel
+            from apps.documents.models import DocumentChunk as ChunkModel
+
+            # Find the embedding to get the document_id
+            try:
+                embedding_obj = EmbeddingModel.objects.get(vector_id=embedding_id)
+            except EmbeddingModel.DoesNotExist:
+                return []
+
+            document_id = embedding_obj.document_id
+            if not document_id:
+                return []
+
+            # Get all chunks for this document
+            chunks = ChunkModel.objects.filter(document_id=document_id).order_by(
+                "chunk_index"
+            )
+
+            results: list[tuple[DocumentChunk, float]] = []
+            for chunk in chunks:
+                doc_chunk = DocumentChunk(
+                    id=chunk.id,
+                    document_id=chunk.document_id,
+                    chunk_index=chunk.chunk_index,
+                    text=chunk.text,
+                    token_estimate=chunk.token_estimate,
+                )
+                # Default score of 1.0 for exact document match
+                results.append((doc_chunk, 1.0))
+
+            return results[:top_k]
+        except Exception:
+            logger.exception("Failed to search by embedding")
+            return []
 
     def get_chunks_by_document(
         self,
         document_id: uuid.UUID,
     ) -> Sequence[DocumentChunk]:
-        return []
+        """Retrieve all chunks belonging to a document."""
+        try:
+            from apps.documents.models import DocumentChunk as ChunkModel
+
+            chunks = ChunkModel.objects.filter(document_id=document_id).order_by(
+                "chunk_index"
+            )
+
+            return [
+                DocumentChunk(
+                    id=chunk.id,
+                    document_id=chunk.document_id,
+                    chunk_index=chunk.chunk_index,
+                    text=chunk.text,
+                    token_estimate=chunk.token_estimate,
+                )
+                for chunk in chunks
+            ]
+        except Exception:
+            logger.exception("Failed to get chunks for document %s", document_id)
+            return []

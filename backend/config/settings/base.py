@@ -11,7 +11,9 @@ SECRET_KEY: str = os.environ.get(
     "DJANGO_SECRET_KEY", "django-insecure-change-me-in-production-!!"
 )
 
-ALLOWED_HOSTS: list[str] = os.environ.get("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
+ALLOWED_HOSTS: list[str] = os.environ.get("ALLOWED_HOSTS", "localhost,127.0.0.1").split(
+    ","
+)
 
 INSTALLED_APPS: list[str] = [
     # Django core
@@ -43,6 +45,7 @@ INSTALLED_APPS: list[str] = [
     "apps.reports.apps.ReportsConfig",
     "apps.dashboard.apps.DashboardConfig",
     "apps.chat.apps.ChatConfig",
+    "apps.apikeys.apps.ApiKeysConfig",
 ]
 
 MIDDLEWARE: list[str] = [
@@ -111,7 +114,9 @@ DATABASES: dict[str, dict[str, Any]] = {
 AUTH_USER_MODEL: str = "accounts.User"
 
 AUTH_PASSWORD_VALIDATORS: list[dict[str, str]] = [
-    {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
+    {
+        "NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"
+    },
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
     {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
@@ -169,8 +174,12 @@ SPECTACULAR_SETTINGS: dict[str, Any] = {
 # Simple JWT
 # ---------------------------------------------------------------------------
 SIMPLE_JWT: dict[str, Any] = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=int(os.environ.get("JWT_ACCESS_LIFETIME_MINUTES", "30"))),
-    "REFRESH_TOKEN_LIFETIME": timedelta(days=int(os.environ.get("JWT_REFRESH_LIFETIME_DAYS", "7"))),
+    "ACCESS_TOKEN_LIFETIME": timedelta(
+        minutes=int(os.environ.get("JWT_ACCESS_LIFETIME_MINUTES", "30"))
+    ),
+    "REFRESH_TOKEN_LIFETIME": timedelta(
+        days=int(os.environ.get("JWT_REFRESH_LIFETIME_DAYS", "7"))
+    ),
     "ROTATE_REFRESH_TOKENS": True,
     "BLACKLIST_AFTER_ROTATION": True,
     "UPDATE_LAST_LOGIN": True,

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import uuid as _uuid
 
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
@@ -23,7 +24,7 @@ class ChatViewSet(viewsets.GenericViewSet):
     Chat ViewSet for conversational AI.
 
     Provides sessions (list, create) and messages (list, send) actions.
-    Delegates all business logic to AIService.
+    Delegates all business logic to ChatService.
     """
 
     permission_classes = [permissions.IsAuthenticated]
@@ -38,6 +39,7 @@ class ChatViewSet(viewsets.GenericViewSet):
     @property
     def _chat_service(self):
         from django.apps import apps
+
         return apps.get_app_config("chat").chat_service
 
     @action(detail=False, methods=["get", "post"], url_path="sessions")
@@ -47,20 +49,33 @@ class ChatViewSet(viewsets.GenericViewSet):
         return self._list_sessions(request)
 
     def _list_sessions(self, request):
-        return Response(
-            {
-                "sessions": [],
-                "message": "Session listing requires a persistent session store.",
-            },
-            status=status.HTTP_200_OK,
-        )
+        try:
+            sessions = self._chat_service.list_sessions(
+                user_id=request.user.pk,
+                limit=int(request.query_params.get("limit", 20)),
+            )
+            return Response(
+                {
+                    "sessions": ChatSessionSerializer(sessions, many=True).data,
+                    "count": len(sessions),
+                },
+                status=status.HTTP_200_OK,
+            )
+        except DomainException as e:
+            return Response({"detail": e.message}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            logger.exception("Failed to list chat sessions")
+            return Response(
+                {"detail": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
     def _create_session(self, request):
         serializer = ChatSessionCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
         try:
-            session = self._chat_service.create_chat_session(
+            session = self._chat_service.create_session(
                 user_id=request.user.pk,
                 title=serializer.validated_data.get("title", ""),
             )
@@ -69,9 +84,7 @@ class ChatViewSet(viewsets.GenericViewSet):
                 status=status.HTTP_201_CREATED,
             )
         except DomainException as e:
-            return Response(
-                {"detail": e.message}, status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response({"detail": e.message}, status=status.HTTP_400_BAD_REQUEST)
 
     @action(
         detail=False,
@@ -84,7 +97,6 @@ class ChatViewSet(viewsets.GenericViewSet):
         return self._list_messages(request, session_id)
 
     def _list_messages(self, request, session_id):
-        import uuid as _uuid
         try:
             session_uuid = _uuid.UUID(session_id)
         except (ValueError, TypeError):
@@ -94,7 +106,7 @@ class ChatViewSet(viewsets.GenericViewSet):
             )
 
         try:
-            messages = self._chat_service.get_chat_history(
+            messages = self._chat_service.get_history(
                 session_uuid,
                 limit=int(request.query_params.get("limit", 50)),
             )
@@ -103,12 +115,9 @@ class ChatViewSet(viewsets.GenericViewSet):
                 status=status.HTTP_200_OK,
             )
         except DomainException as e:
-            return Response(
-                {"detail": e.message}, status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response({"detail": e.message}, status=status.HTTP_400_BAD_REQUEST)
 
     def _send_message(self, request, session_id):
-        import uuid as _uuid
         try:
             session_uuid = _uuid.UUID(session_id)
         except (ValueError, TypeError):
@@ -121,7 +130,7 @@ class ChatViewSet(viewsets.GenericViewSet):
         serializer.is_valid(raise_exception=True)
 
         try:
-            response = self._chat_service.send_chat_message(
+            response = self._chat_service.send_message(
                 session_id=session_uuid,
                 message=serializer.validated_data["message"],
                 user_id=request.user.pk if request.user.is_authenticated else None,
@@ -131,6 +140,4 @@ class ChatViewSet(viewsets.GenericViewSet):
                 status=status.HTTP_200_OK,
             )
         except DomainException as e:
-            return Response(
-                {"detail": e.message}, status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response({"detail": e.message}, status=status.HTTP_400_BAD_REQUEST)

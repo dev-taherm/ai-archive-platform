@@ -4,7 +4,6 @@ import csv
 import io
 import json
 import logging
-import mimetypes
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any

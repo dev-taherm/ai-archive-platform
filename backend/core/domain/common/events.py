@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Callable
@@ -12,18 +13,25 @@ logger = logging.getLogger(__name__)
 class DomainEventBus:
     """Simple in-process event bus for domain events."""
 
-    _handlers: dict[str, list[Callable]] = {}
+    _handlers: dict[str, list[Callable[[dict[str, Any]], None]]] = defaultdict(list)
 
     @classmethod
-    def subscribe(cls, event_type: str, handler: Callable) -> None:
-        if event_type not in cls._handlers:
-            cls._handlers[event_type] = []
+    def subscribe(cls, event_type: str, handler: Callable[[dict[str, Any]], None]) -> None:
         cls._handlers[event_type].append(handler)
 
     @classmethod
+    def unsubscribe(cls, event_type: str, handler: Callable[[dict[str, Any]], None]) -> None:
+        if event_type in cls._handlers:
+            try:
+                cls._handlers[event_type].remove(handler)
+            except ValueError:
+                logger.warning(
+                    "Handler %s not found for event %s", handler.__qualname__, event_type
+                )
+
+    @classmethod
     def publish(cls, event_type: str, payload: dict[str, Any]) -> None:
-        handlers = cls._handlers.get(event_type, [])
-        for handler in handlers:
+        for handler in cls._handlers.get(event_type, []):
             try:
                 handler(payload)
             except Exception:

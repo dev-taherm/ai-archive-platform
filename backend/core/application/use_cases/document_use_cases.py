@@ -22,7 +22,6 @@ from core.domain.documents.entities import Document, DocumentChunk, DocumentMeta
 from core.domain.documents.value_objects import (
     Confidence,
     DocumentType,
-    Language,
     ProcessingStatus,
 )
 

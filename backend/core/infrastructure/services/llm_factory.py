@@ -5,7 +5,7 @@ import os
 from typing import Any
 
 from core.application.interfaces.services import LLMProvider
-from core.domain.ai.value_objects import AIProvider, ModelConfig
+from core.domain.ai.value_objects import ModelConfig
 
 logger = logging.getLogger(__name__)
 

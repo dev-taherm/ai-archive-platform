@@ -8,9 +8,7 @@ from rest_framework.response import Response
 
 from core.domain.common.exceptions import DomainException
 from interfaces.api.v1.serializers.search_serializers import (
-    SearchFiltersSerializer,
     SearchQuerySerializer,
-    SearchResponseSerializer,
 )
 
 logger = logging.getLogger(__name__)

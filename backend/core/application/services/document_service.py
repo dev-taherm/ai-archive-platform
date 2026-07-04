@@ -11,10 +11,8 @@ from core.application.dtos.document_dto import (
 )
 from core.application.interfaces.repositories import (
     AuditLogRepository,
-    DocumentRepository,
 )
 from core.application.use_cases.document_use_cases import DocumentUseCases
-from core.domain.common.exceptions import EntityNotFound
 
 logger = logging.getLogger(__name__)
 

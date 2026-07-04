@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+import os
+import tempfile
 from typing import Any
 
 from core.application.interfaces.services import OCRProvider
@@ -13,13 +15,14 @@ class PaddleOCREngine(OCRProvider):
     """PaddleOCR-based implementation of OCRProvider ABC.
 
     Uses PaddleOCR for text extraction from images and scanned PDFs.
-    Falls back to a basic stub when PaddleOCR is not installed.
+    Falls back to Tesseract when PaddleOCR is not installed.
     """
 
     def __init__(self, *, lang: str = "en", use_gpu: bool = False) -> None:
         self._lang = lang
         self._use_gpu = use_gpu
         self._engine: Any = None
+        self._tesseract_available: bool | None = None
 
     def _get_engine(self) -> Any:
         """Lazy-initialise the PaddleOCR engine."""
@@ -34,14 +37,55 @@ class PaddleOCREngine(OCRProvider):
                 use_gpu=self._use_gpu,
                 show_log=False,
             )
-            logger.info("PaddleOCR engine initialised (lang=%s, gpu=%s)", self._lang, self._use_gpu)
+            logger.info(
+                "PaddleOCR engine initialised (lang=%s, gpu=%s)",
+                self._lang,
+                self._use_gpu,
+            )
         except ImportError:
             logger.warning(
-                "PaddleOCR not installed — OCR requests will return empty strings. "
+                "PaddleOCR not installed — falling back to Tesseract. "
                 "Install with: pip install paddleocr paddlepaddle"
             )
             self._engine = None
         return self._engine
+
+    def _get_tesseract_lang(self, language_hint: Language | None = None) -> str:
+        """Map Language enum to Tesseract language code."""
+        lang_map = {
+            Language.EN: "eng",
+            Language.AR: "ara",
+            Language.FR: "fra",
+            Language.DE: "deu",
+            Language.ES: "spa",
+            Language.ZH: "chi_sim",
+            Language.JA: "jpn",
+            Language.KO: "kor",
+            Language.RU: "rus",
+            Language.PT: "por",
+            Language.IT: "ita",
+            Language.NL: "nld",
+            Language.SV: "swe",
+            Language.PL: "pol",
+            Language.TR: "tur",
+        }
+        if language_hint and language_hint in lang_map:
+            return lang_map[language_hint]
+        return "eng+ara"
+
+    def _check_tesseract(self) -> bool:
+        """Check if Tesseract is available as a fallback."""
+        if self._tesseract_available is not None:
+            return self._tesseract_available
+        try:
+            import pytesseract
+
+            pytesseract.get_tesseract_version()
+            self._tesseract_available = True
+        except (ImportError, Exception):
+            self._tesseract_available = False
+            logger.warning("Tesseract not available as OCR fallback")
+        return self._tesseract_available
 
     async def extract_text(
         self,
@@ -50,58 +94,203 @@ class PaddleOCREngine(OCRProvider):
         content_type: str,
         language_hint: Language | None = None,
     ) -> str:
+        # Try PaddleOCR first
         engine = self._get_engine()
-        if engine is None:
-            logger.debug("PaddleOCR unavailable, skipping text extraction")
-            return ""
+        if engine is not None:
+            return await self._extract_with_paddle(content, content_type)
 
-        # TODO: Implement actual PaddleOCR integration.
-        # Steps:
-        #   1. Write `content` to a temporary file based on content_type.
-        #   2. Call engine.ocr(tmp_path, cls=True).
-        #   3. Concatenate detected text lines.
-        #   4. Clean up temp file.
-        #
-        # Example (to be implemented):
-        #   import tempfile, os
-        #   suffix = _content_type_to_suffix(content_type)
-        #   with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-        #       tmp.write(content)
-        #       tmp_path = tmp.name
-        #   try:
-        #       result = engine.ocr(tmp_path, cls=True)
-        #       lines = [line[1][0] for line in result[0]] if result and result[0] else []
-        #       return "\n".join(lines)
-        #   finally:
-        #       os.unlink(tmp_path)
+        # Fallback to Tesseract
+        if self._check_tesseract():
+            return await self._extract_with_tesseract(
+                content, content_type, language_hint=language_hint
+            )
 
-        logger.info("PaddleOCR stub: text extraction not yet implemented")
+        logger.warning("No OCR engine available")
         return ""
 
+    async def _extract_with_paddle(self, content: bytes, content_type: str) -> str:
+        """Extract text using PaddleOCR."""
+        import asyncio
+
+        def _run_ocr() -> str:
+            suffix = _content_type_to_suffix(content_type)
+            tmp_path = None
+            try:
+                with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+                    tmp.write(content)
+                    tmp_path = tmp.name
+
+                result = self._engine.ocr(tmp_path, cls=True)
+                if not result or not result[0]:
+                    return ""
+
+                lines = []
+                for line in result[0]:
+                    if line and len(line) >= 2:
+                        text = line[1][0]
+                        if text and text.strip():
+                            lines.append(text.strip())
+                return "\n".join(lines)
+            except Exception:
+                logger.exception("PaddleOCR extraction failed")
+                return ""
+            finally:
+                if tmp_path and os.path.exists(tmp_path):
+                    os.unlink(tmp_path)
+
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, _run_ocr)
+
+    async def _extract_with_tesseract(
+        self,
+        content: bytes,
+        content_type: str,
+        language_hint: Language | None = None,
+    ) -> str:
+        """Extract text using Tesseract as fallback."""
+        import asyncio
+
+        def _run_tesseract() -> str:
+            import pytesseract
+            from PIL import Image
+
+            suffix = _content_type_to_suffix(content_type)
+            tmp_path = None
+            try:
+                if content_type == "application/pdf":
+                    return self._ocr_pdf_with_tesseract(content, language_hint)
+
+                with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+                    tmp.write(content)
+                    tmp_path = tmp.name
+
+                img = Image.open(tmp_path)
+                lang = self._get_tesseract_lang(language_hint)
+                text = pytesseract.image_to_string(img, lang=lang)
+                return text.strip() if text else ""
+            except Exception:
+                logger.exception("Tesseract extraction failed")
+                return ""
+            finally:
+                if tmp_path and os.path.exists(tmp_path):
+                    os.unlink(tmp_path)
+
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, _run_tesseract)
+
+    def _ocr_pdf_with_tesseract(
+        self, pdf_content: bytes, language_hint: Language | None = None
+    ) -> str:
+        """OCR a PDF by converting pages to images first."""
+        try:
+            import fitz  # PyMuPDF
+            import pytesseract
+            from PIL import Image
+
+            doc = fitz.open(stream=pdf_content, filetype="pdf")
+            lang = self._get_tesseract_lang(language_hint)
+            all_text = []
+
+            for page_num in range(min(len(doc), 50)):
+                page = doc[page_num]
+                pix = page.get_pixmap(dpi=200)
+                img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                text = pytesseract.image_to_string(img, lang=lang)
+                if text and text.strip():
+                    all_text.append(text.strip())
+
+            doc.close()
+            return "\n\n".join(all_text)
+        except Exception:
+            logger.exception("Tesseract PDF OCR failed")
+            return ""
+
     async def detect_language(self, text: str) -> Language:
-        """Detect the primary language of the given text."""
+        """Detect the primary language of the given text using Unicode ranges."""
         if not text.strip():
             return Language.UNKNOWN
 
-        # TODO: Use a proper language detection library (e.g., langdetect, lingua).
-        # For now, perform a simple heuristic based on character ranges.
-        sample = text[:2000]
-        cjk_chars = sum(1 for c in sample if "\u4e00" <= c <= "\u9fff")
-        if cjk_chars > len(sample) * 0.1:
-            return Language.ZH
+        sample = text[:5000]
+        char_counts: dict[str, int] = {}
+        total = 0
 
-        # Default to English when detection is unavailable
+        for c in sample:
+            if c.isalpha():
+                total += 1
+                if "\u0600" <= c <= "\u06ff" or "\u0750" <= c <= "\u077f":
+                    char_counts["ar"] = char_counts.get("ar", 0) + 1
+                elif "\u0400" <= c <= "\u04ff":
+                    char_counts["ru"] = char_counts.get("ru", 0) + 1
+                elif "\u4e00" <= c <= "\u9fff":
+                    char_counts["zh"] = char_counts.get("zh", 0) + 1
+                elif "\u3040" <= c <= "\u309f" or "\u30a0" <= c <= "\u30ff":
+                    char_counts["ja"] = char_counts.get("ja", 0) + 1
+                elif "\uac00" <= c <= "\ud7af":
+                    char_counts["ko"] = char_counts.get("ko", 0) + 1
+                elif "\u0900" <= c <= "\u097f":
+                    char_counts["hi"] = char_counts.get("hi", 0) + 1
+                elif "\u0e00" <= c <= "\u0e7f":
+                    char_counts["th"] = char_counts.get("th", 0) + 1
+
+        if total == 0:
+            return Language.UNKNOWN
+
+        lang_map = {
+            "ar": Language.AR,
+            "ru": Language.RU,
+            "zh": Language.ZH,
+            "ja": Language.JA,
+            "ko": Language.KOR,
+            "hi": Language.UNKNOWN,
+            "th": Language.UNKNOWN,
+        }
+
+        for lang_code, count in char_counts.items():
+            if count > total * 0.1:
+                return lang_map.get(lang_code, Language.EN)
+
         return Language.EN
 
     async def get_confidence(self, text: str) -> Confidence:
-        """Return the confidence score of the OCR extraction."""
+        """Return the confidence score of the OCR extraction.
+
+        Uses heuristics based on text quality indicators.
+        """
         if not text.strip():
             return Confidence(value=0.0)
 
-        # TODO: Return actual OCR confidence from PaddleOCR results.
-        # PaddleOCR provides per-word confidence scores; aggregate them.
-        # For now, return a moderate confidence for non-empty results.
-        return Confidence(value=0.75)
+        lines = text.strip().split("\n")
+        non_empty = [line for line in lines if line.strip()]
+        if not non_empty:
+            return Confidence(value=0.0)
+
+        total_chars = sum(len(line) for line in non_empty)
+        alpha_chars = sum(c.isalpha() for line in non_empty for c in line)
+        digit_chars = sum(c.isdigit() for line in non_empty for c in line)
+        space_chars = sum(c.isspace() for line in non_empty for c in line)
+
+        if total_chars == 0:
+            return Confidence(value=0.0)
+
+        alpha_ratio = alpha_chars / total_chars
+        has_structure = len(non_empty) >= 2
+        has_mixed_content = digit_chars > 0 and alpha_chars > 0
+        line_length_variance = _variance([len(line) for line in non_empty])
+
+        score = 0.5
+        if alpha_ratio > 0.5:
+            score += 0.15
+        if has_structure:
+            score += 0.1
+        if has_mixed_content:
+            score += 0.05
+        if line_length_variance > 10:
+            score += 0.1
+        if space_chars / max(total_chars, 1) > 0.05:
+            score += 0.05
+
+        score = max(0.0, min(1.0, score))
+        return Confidence(value=round(score, 2))
 
 
 def _content_type_to_suffix(content_type: str) -> str:
@@ -111,6 +300,15 @@ def _content_type_to_suffix(content_type: str) -> str:
         "image/jpeg": ".jpg",
         "image/tiff": ".tiff",
         "image/bmp": ".bmp",
+        "image/webp": ".webp",
         "application/pdf": ".pdf",
     }
     return mapping.get(content_type, ".bin")
+
+
+def _variance(values: list[int]) -> float:
+    """Compute variance of a list of numbers."""
+    if len(values) < 2:
+        return 0.0
+    mean = sum(values) / len(values)
+    return sum((x - mean) ** 2 for x in values) / len(values)

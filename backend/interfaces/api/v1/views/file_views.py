@@ -57,6 +57,7 @@ class FileRecordViewSet(viewsets.GenericViewSet):
     @property
     def _file_service(self):
         from django.apps import apps
+
         return apps.get_app_config("files").file_service
 
     @property
@@ -74,12 +75,9 @@ class FileRecordViewSet(viewsets.GenericViewSet):
             serializer = self.get_serializer(files, many=True)
             return Response(serializer.data)
         except DomainException as e:
-            return Response(
-                {"detail": e.message}, status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response({"detail": e.message}, status=status.HTTP_400_BAD_REQUEST)
 
     def retrieve(self, request, pk=None):
-        import uuid as _uuid
         try:
             file_id = _uuid.UUID(str(pk))
         except ValueError:
@@ -93,11 +91,11 @@ class FileRecordViewSet(viewsets.GenericViewSet):
             serializer = FileRecordSerializer(file_record)
             return Response(serializer.data)
         except DomainException as e:
-            return Response(
-                {"detail": e.message}, status=status.HTTP_404_NOT_FOUND
-            )
+            return Response({"detail": e.message}, status=status.HTTP_404_NOT_FOUND)
 
-    @action(detail=False, methods=["post"], parser_classes=[MultiPartParser, FormParser])
+    @action(
+        detail=False, methods=["post"], parser_classes=[MultiPartParser, FormParser]
+    )
     def upload(self, request):
         serializer = FileUploadSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -129,7 +127,11 @@ class FileRecordViewSet(viewsets.GenericViewSet):
 
     @action(detail=True, methods=["get"], url_path="download")
     def download(self, request, pk=None):
-        import uuid as _uuid
+        import mimetypes
+        import os
+
+        from django.http import FileResponse
+
         try:
             file_id = _uuid.UUID(str(pk))
         except ValueError:
@@ -140,13 +142,32 @@ class FileRecordViewSet(viewsets.GenericViewSet):
 
         try:
             file_record = self._file_service.get_file(file_id)
-            return Response(
-                {"download_url": file_record.path},
-                status=status.HTTP_200_OK,
+            file_path = file_record.path
+
+            if not file_path or not os.path.exists(file_path):
+                return Response(
+                    {"detail": "File not found on disk."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            content_type = (
+                mimetypes.guess_type(file_path)[0] or "application/octet-stream"
             )
+            filename = os.path.basename(file_path)
+
+            response = FileResponse(
+                open(file_path, "rb"),
+                content_type=content_type,
+            )
+            response["Content-Disposition"] = f'inline; filename="{filename}"'
+            return response
         except DomainException as e:
+            return Response({"detail": e.message}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            logger.exception("File download failed")
             return Response(
-                {"detail": e.message}, status=status.HTTP_404_NOT_FOUND
+                {"detail": f"Download failed: {e}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
     @action(detail=False, methods=["post"], url_path="scan")
@@ -167,9 +188,7 @@ class FileRecordViewSet(viewsets.GenericViewSet):
                 status=status.HTTP_200_OK,
             )
         except DomainException as e:
-            return Response(
-                {"detail": e.message}, status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response({"detail": e.message}, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=False, methods=["get"], url_path="scan-stream")
     def scan_stream(self, request):
@@ -212,17 +231,18 @@ class FileRecordViewSet(viewsets.GenericViewSet):
             total_found = 0
             errors = []
 
-            yield from send_event("scan_started", {
-                "message": "Scanning folder...",
-                "folder_path": folder_path,
-            })
+            yield from send_event(
+                "scan_started",
+                {
+                    "message": "Scanning folder...",
+                    "folder_path": folder_path,
+                },
+            )
 
             file_scanner = self._file_use_cases._file_scanner
             file_repository = self._file_use_cases._file_repository
 
-            for file_info in file_scanner.scan_folder(
-                folder_path, recursive=recursive
-            ):
+            for file_info in file_scanner.scan_folder(folder_path, recursive=recursive):
                 total_found += 1
                 current_file = file_info.get("path", "unknown")
                 processed += 1
@@ -252,7 +272,11 @@ class FileRecordViewSet(viewsets.GenericViewSet):
                     else:
                         record = FileRecord(
                             path=FilePath(raw=file_info["path"]),
-                            mime_type=MimeType(value=file_info.get("mime_type", "application/octet-stream")),
+                            mime_type=MimeType(
+                                value=file_info.get(
+                                    "mime_type", "application/octet-stream"
+                                )
+                            ),
                             size=file_size_obj,
                             fingerprint=FileFingerprint(
                                 content_hash=content_hash,
@@ -269,26 +293,32 @@ class FileRecordViewSet(viewsets.GenericViewSet):
                     errors.append(f"{current_file}: {e}")
                     logger.exception("Failed to process file: %s", current_file)
 
-                yield from send_event("file_scanned", {
-                    "processed": processed,
-                    "total_found": total_found,
-                    "current_file": current_file,
-                    "new": new_files,
-                    "skipped": skipped,
-                    "failed": failed,
-                })
+                yield from send_event(
+                    "file_scanned",
+                    {
+                        "processed": processed,
+                        "total_found": total_found,
+                        "current_file": current_file,
+                        "new": new_files,
+                        "skipped": skipped,
+                        "failed": failed,
+                    },
+                )
 
             duration = round(time.monotonic() - start_time, 3)
 
-            yield from send_event("scan_complete", {
-                "total_found": total_found,
-                "files_scanned": processed,
-                "new_files": new_files,
-                "skipped_files": skipped,
-                "failed_files": failed,
-                "scan_duration_seconds": duration,
-                "errors": errors,
-            })
+            yield from send_event(
+                "scan_complete",
+                {
+                    "total_found": total_found,
+                    "files_scanned": processed,
+                    "new_files": new_files,
+                    "skipped_files": skipped,
+                    "failed_files": failed,
+                    "scan_duration_seconds": duration,
+                    "errors": errors,
+                },
+            )
 
         response = StreamingHttpResponse(
             event_stream(),
@@ -300,7 +330,6 @@ class FileRecordViewSet(viewsets.GenericViewSet):
 
     @action(detail=True, methods=["delete"], url_path="delete")
     def delete_file(self, request, pk=None):
-        import uuid as _uuid
         try:
             file_id = _uuid.UUID(str(pk))
         except ValueError:
@@ -319,13 +348,10 @@ class FileRecordViewSet(viewsets.GenericViewSet):
                 status=status.HTTP_200_OK,
             )
         except DomainException as e:
-            return Response(
-                {"detail": e.message}, status=status.HTTP_404_NOT_FOUND
-            )
+            return Response({"detail": e.message}, status=status.HTTP_404_NOT_FOUND)
 
     @action(detail=True, methods=["patch"], url_path="rename")
     def rename(self, request, pk=None):
-        import uuid as _uuid
         try:
             file_id = _uuid.UUID(str(pk))
         except ValueError:
@@ -348,13 +374,10 @@ class FileRecordViewSet(viewsets.GenericViewSet):
                 status=status.HTTP_200_OK,
             )
         except DomainException as e:
-            return Response(
-                {"detail": e.message}, status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response({"detail": e.message}, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=True, methods=["post"])
     def move(self, request, pk=None):
-        import uuid as _uuid
         try:
             file_id = _uuid.UUID(str(pk))
         except ValueError:
@@ -377,13 +400,10 @@ class FileRecordViewSet(viewsets.GenericViewSet):
                 status=status.HTTP_200_OK,
             )
         except DomainException as e:
-            return Response(
-                {"detail": e.message}, status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response({"detail": e.message}, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=True, methods=["post"])
     def copy(self, request, pk=None):
-        import uuid as _uuid
         try:
             file_id = _uuid.UUID(str(pk))
         except ValueError:
@@ -406,6 +426,4 @@ class FileRecordViewSet(viewsets.GenericViewSet):
                 status=status.HTTP_200_OK,
             )
         except DomainException as e:
-            return Response(
-                {"detail": e.message}, status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response({"detail": e.message}, status=status.HTTP_400_BAD_REQUEST)

@@ -31,7 +31,6 @@ class DocumentsConfig(AppConfig):
         )
         from core.application.use_cases.document_use_cases import DocumentUseCases
         from core.infrastructure.services.stub_providers import (
-            StubEmbeddingProvider,
             StubLLMProvider,
         )
         from core.infrastructure.services.parser_router import ParserRouter

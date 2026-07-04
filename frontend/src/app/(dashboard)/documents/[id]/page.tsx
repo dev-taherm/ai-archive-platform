@@ -62,7 +62,7 @@ export default function DocumentDetailPage({ params }: { params: Promise<{ id: s
   const { data: metadata } = useQuery<DocumentMetadata>({
     queryKey: ["document-metadata", id],
     queryFn: async () => {
-      const res = await api.get<DocumentMetadata>(`/documents/${id}/metadata/`);
+      const res = await api.get<DocumentMetadata>(`/documents/${id}/metadata`);
       return res.data;
     },
     enabled: !!doc,

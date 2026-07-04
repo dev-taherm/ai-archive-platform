@@ -3,9 +3,8 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import Iterator
 from typing import Any, Sequence
-from uuid import UUID
 
-from core.domain.documents.value_objects import Confidence, Language, DocumentType
+from core.domain.documents.value_objects import Confidence, Language
 
 
 class StorageBackend(ABC):

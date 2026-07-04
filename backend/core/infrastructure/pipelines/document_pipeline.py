@@ -1,180 +1,545 @@
 from __future__ import annotations
 
+import asyncio
 import logging
+import time
+import uuid
+from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
-from langgraph.graph import END, StateGraph
-
-from core.infrastructure.pipelines.document_state import DocumentPipelineState
-from core.infrastructure.pipelines.nodes import (
-    check_status,
-    chunk_node,
-    classify_node,
-    embed_index_node,
-    extract_entities_node,
-    ocr_node,
-    parse_node,
-    should_run_ocr,
-    summarize_node,
+from core.application.interfaces.repositories import (
+    DocumentRepository,
+    EmbeddingRepository,
+    FileRepository,
 )
+from core.application.interfaces.services import EmbeddingProvider, LLMProvider, OCRProvider
+from core.domain.documents.entities import Document, DocumentMetadata
+from core.domain.documents.value_objects import (
+    Confidence,
+    DocumentType,
+    Language,
+    ProcessingStatus,
+)
+from core.domain.files.entities import FileRecord
+from core.infrastructure.services.document_reader import DocumentReader
 
 logger = logging.getLogger(__name__)
 
+DOCUMENT_CATEGORIES = [
+    "invoice",
+    "receipt",
+    "contract",
+    "report",
+    "letter",
+    "memo",
+    "email",
+    "resume",
+    "academic_paper",
+    "legal_document",
+    "financial_statement",
+    "technical_specification",
+    "meeting_notes",
+    "proposal",
+    "presentation",
+    "spreadsheet",
+    "code",
+    "data_export",
+    "other",
+]
 
-def build_document_pipeline() -> StateGraph:
-    """Build the LangGraph document processing pipeline.
+IMAGE_EXTENSIONS = frozenset({".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tiff", ".tif", ".webp"})
 
-    Graph structure:
-        START
-          │
-          ▼
-        parse ──────────────────────────┐
-          │                             │
-          ├─ status=failed → END        │
-          │                             │
-          ▼                             │
-        should_run_ocr? ──► ocr ────────┤
-          │                             │
-          ├─ "classify" (has text)      │
-          │                             │
-          ▼                             │
-        classify                        │
-          │                             │
-          ├─ status=failed → END        │
-          │                             │
-          ▼                             │
-        extract_entities                │
-          │                             │
-          ▼                             │
-        summarize                       │
-          │                             │
-          ├─ status=failed → END        │
-          │                             │
-          ▼                             │
-        chunk                           │
-          │                             │
-          ├─ status=failed → END        │
-          │                             │
-          ▼                             │
-        embed_index                     │
-          │                             │
-          ├─ status=failed → END        │
-          │                             │
-          ▼                             │
-        END
+
+@dataclass
+class PipelineResult:
+    """Result of a pipeline run."""
+
+    document_id: str = ""
+    file_id: str = ""
+    status: str = "pending"
+    classification: str = ""
+    classification_confidence: float = 0.0
+    chunk_count: int = 0
+    embedding_ids: list[str] = field(default_factory=list)
+    summary: str = ""
+    entities: list[dict[str, Any]] = field(default_factory=list)
+    error: str | None = None
+    processing_log: list[str] = field(default_factory=list)
+    elapsed_ms: float = 0.0
+
+
+class DocumentProcessingPipeline:
+    """End-to-end document processing pipeline.
+
+    Orchestrates: load file -> read content -> OCR (if needed) -> classify ->
+    extract entities -> summarize -> chunk -> embed -> index.
+
+    All LLM and OCR operations use async/await. Error handling includes
+    configurable retry logic with exponential backoff.
     """
-    graph = StateGraph(DocumentPipelineState)
 
-    # Add nodes
-    graph.add_node("parse", parse_node)
-    graph.add_node("ocr", ocr_node)
-    graph.add_node("classify", classify_node)
-    graph.add_node("extract_entities", extract_entities_node)
-    graph.add_node("summarize", summarize_node)
-    graph.add_node("chunk", chunk_node)
-    graph.add_node("embed_index", embed_index_node)
+    def __init__(
+        self,
+        *,
+        file_repository: FileRepository,
+        document_repository: DocumentRepository,
+        embedding_repository: EmbeddingRepository,
+        document_reader: DocumentReader,
+        ocr_engine: OCRProvider,
+        llm_provider: LLMProvider,
+        embedding_provider: EmbeddingProvider,
+        max_retries: int = 3,
+        retry_base_delay: float = 1.0,
+    ) -> None:
+        self._file_repo = file_repository
+        self._doc_repo = document_repository
+        self._embedding_repo = embedding_repository
+        self._reader = document_reader
+        self._ocr = ocr_engine
+        self._llm = llm_provider
+        self._embeddings = embedding_provider
+        self._max_retries = max_retries
+        self._retry_base_delay = retry_base_delay
 
-    # Entry point
-    graph.set_entry_point("parse")
+    async def process(self, file_id: str) -> PipelineResult:
+        """Run the full processing pipeline for a file.
 
-    # Edges
-    graph.add_conditional_edges(
-        "parse",
-        should_run_ocr,
-        {
-            "ocr": "ocr",
-            "classify": "classify",
-        },
-    )
+        Args:
+            file_id: UUID string of the source file record.
 
-    graph.add_edge("ocr", "classify")
-    graph.add_edge("classify", "extract_entities")
-    graph.add_edge("extract_entities", "summarize")
-    graph.add_edge("summarize", "chunk")
-    graph.add_edge("chunk", "embed_index")
-    graph.add_edge("embed_index", END)
+        Returns:
+            PipelineResult with all processing outcomes.
+        """
+        t0 = time.time()
+        result = PipelineResult(file_id=file_id)
+        result.processing_log.append(f"PIPELINE: started for file {file_id}")
+        logger.info("Pipeline started: file_id=%s", file_id)
 
-    # Error handling: any node can set status="failed"
-    for node_name in ["parse", "classify", "summarize", "chunk", "embed_index"]:
-        graph.add_conditional_edges(
-            node_name,
-            check_status,
-            {
-                "failed": END,
-                "completed": END,  # placeholder, actual next edge already set
-            },
+        document: Document | None = None
+
+        try:
+            # Step 1: Load file record
+            file_record = await self._load_file_record(file_id)
+            result.processing_log.append(
+                f"LOAD: file record loaded ({file_record.path.filename})"
+            )
+
+            # Step 2: Create or fetch document entity
+            document = await self._create_document(file_record)
+            result.document_id = str(document.id)
+            result.processing_log.append(f"DOCUMENT: entity created {document.id}")
+
+            # Step 3: Read document content
+            extraction = await self._read_content(file_record)
+            result.processing_log.append(
+                f"READ: {len(extraction.text)} chars extracted"
+            )
+
+            # Step 4: Run OCR if needed
+            parsed_text = extraction.text
+            if self._needs_ocr(file_record, extraction):
+                ocr_text = await self._run_ocr(file_record)
+                if ocr_text and len(ocr_text.strip()) > len(parsed_text.strip()):
+                    parsed_text = ocr_text
+                    result.processing_log.append(
+                        f"OCR: used OCR text ({len(ocr_text)} chars)"
+                    )
+                else:
+                    result.processing_log.append("OCR: skipped — parsed text is richer")
+            else:
+                result.processing_log.append("OCR: not needed")
+
+            # Step 5: Classify document
+            classification, confidence = await self._classify(parsed_text)
+            result.classification = classification
+            result.classification_confidence = confidence
+            result.processing_log.append(
+                f"CLASSIFY: {classification} ({confidence:.2f})"
+            )
+
+            # Update document with classification
+            doc_type = self._map_classification_to_type(classification)
+            conf = Confidence(value=confidence)
+            document.mark_classified(doc_type, conf)
+            await self._save_document(document)
+
+            # Step 6: Extract entities
+            entities = await self._extract_entities(parsed_text)
+            result.entities = entities
+            result.processing_log.append(f"ENTITIES: extracted {len(entities)} entities")
+
+            # Step 7: Generate summary
+            summary = await self._summarize(parsed_text, classification)
+            result.summary = summary
+            result.processing_log.append(f"SUMMARY: {len(summary)} chars")
+
+            # Step 8: Chunk text
+            chunks = self._chunk_text(parsed_text)
+            result.chunk_count = len(chunks)
+            result.processing_log.append(f"CHUNK: {len(chunks)} chunks created")
+
+            # Step 9: Generate embeddings and index
+            embedding_ids = await self._embed_and_index(
+                document=document,
+                chunks=chunks,
+                file_id=file_id,
+            )
+            result.embedding_ids = embedding_ids
+            result.processing_log.append(
+                f"INDEX: {len(embedding_ids)} embeddings stored"
+            )
+
+            # Step 10: Mark document as completed
+            document.mark_indexed(chunk_count=len(chunks))
+            await self._save_document(document)
+
+            result.status = "completed"
+            result.processing_log.append("PIPELINE: completed successfully")
+            logger.info(
+                "Pipeline completed: file=%s, doc=%s, chunks=%d, embeddings=%d",
+                file_id, document.id, len(chunks), len(embedding_ids),
+            )
+
+        except Exception as e:
+            result.status = "failed"
+            result.error = str(e)
+            result.processing_log.append(f"PIPELINE FAILED: {e}")
+            logger.exception("Pipeline failed for file %s", file_id)
+
+            if document is not None:
+                await self._handle_failure(document, e)
+
+        result.elapsed_ms = (time.time() - t0) * 1000
+        result.processing_log.append(f"PIPELINE: total {result.elapsed_ms:.0f}ms")
+        return result
+
+    async def _load_file_record(self, file_id: str) -> FileRecord:
+        """Load a file record from the repository with retry."""
+        return await self._retry_async(
+            lambda: self._sync_to_async(
+                self._file_repo.get_by_id, uuid.UUID(file_id)
+            ),
+            operation="load_file_record",
         )
 
-    return graph.compile()
+    async def _create_document(self, file_record: FileRecord) -> Document:
+        """Create a new Document entity in QUEUED status."""
+        ext = Path(file_record.path.raw).suffix.lower()
+        doc_type = DocumentType.from_extension(ext)
 
+        document = Document(
+            file_id=file_record.id,
+            doc_type=doc_type,
+            processing_status=ProcessingStatus.QUEUED,
+            metadata=DocumentMetadata(
+                language=Language.UNKNOWN,
+                page_count=0,
+            ),
+        )
 
-# Singleton compiled graph
-_compiled_graph = None
+        saved = await self._retry_async(
+            lambda: self._sync_to_async(self._doc_repo.save, document),
+            operation="create_document",
+        )
+        logger.info("Document created: %s (file=%s)", saved.id, file_record.id)
+        return saved
 
+    async def _read_content(self, file_record: FileRecord) -> Any:
+        """Read document content using DocumentReader (sync operation)."""
+        return await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: self._reader.read(file_record.path.raw),
+        )
 
-def get_document_pipeline():
-    """Get the compiled document processing pipeline (singleton)."""
-    global _compiled_graph
-    if _compiled_graph is None:
-        _compiled_graph = build_document_pipeline()
-    return _compiled_graph
+    def _needs_ocr(self, file_record: FileRecord, extraction: Any) -> bool:
+        """Determine if OCR is needed for this file."""
+        ext = Path(file_record.path.raw).suffix.lower()
 
+        # Images always need OCR
+        if ext in IMAGE_EXTENSIONS:
+            return True
 
-def run_document_pipeline(
-    file_id: str,
-    file_path: str,
-    mime_type: str,
-) -> dict[str, Any]:
-    """Run the full document processing pipeline.
+        # PDFs with no/little extracted text likely need OCR
+        if ext == ".pdf":
+            text = extraction.text.strip() if extraction.text else ""
+            if len(text) < 50:
+                return True
 
-    Args:
-        file_id: UUID of the source file record.
-        file_path: Absolute path to the file on disk.
-        mime_type: MIME type of the file.
+        # Any file with insufficient text from parsing
+        text = extraction.text.strip() if extraction.text else ""
+        if len(text) < 50 and file_record.size.bytes > 1000:
+            return True
 
-    Returns:
-        Final pipeline state with all results.
-    """
-    pipeline = get_document_pipeline()
+        return False
 
-    initial_state: DocumentPipelineState = {
-        "file_id": file_id,
-        "file_path": file_path,
-        "mime_type": mime_type,
-        "markdown_content": "",
-        "structured_blocks": [],
-        "tables": [],
-        "images": [],
-        "parse_method": "",
-        "page_count": 0,
-        "ocr_text": "",
-        "ocr_confidence": 0.0,
-        "detected_language": "unknown",
-        "classification": "other",
-        "classification_confidence": 0.0,
-        "entities": [],
-        "summary": "",
-        "enriched_metadata": {},
-        "chunks": [],
-        "chunk_count": 0,
-        "document_id": "",
-        "embedding_ids": [],
-        "status": "pending",
-        "error": None,
-        "retry_count": 0,
-        "processing_log": [],
-    }
+    async def _run_ocr(self, file_record: FileRecord) -> str:
+        """Run OCR on the file content with retry."""
+        content = await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: Path(file_record.path.raw).read_bytes(),
+        )
 
-    logger.info("Starting document pipeline: file=%s, path=%s", file_id, file_path)
+        mime_type = file_record.mime_type.value
 
-    final_state = pipeline.invoke(initial_state)
+        async def _do_ocr() -> str:
+            return await self._ocr.extract_text(
+                content, content_type=mime_type
+            )
 
-    logger.info(
-        "Pipeline complete: status=%s, doc=%s, chunks=%d, log=%d entries",
-        final_state.get("status"),
-        final_state.get("document_id"),
-        final_state.get("chunk_count", 0),
-        len(final_state.get("processing_log", [])),
-    )
+        return await self._retry_async(_do_ocr, operation="ocr")
 
-    return final_state
+    async def _classify(self, text: str) -> tuple[str, float]:
+        """Classify document using LLM with retry."""
+        if not text or not text.strip():
+            return "other", 0.0
+
+        classification_text = text[:3000]
+
+        async def _do_classify() -> tuple[str, float]:
+            return await self._llm.classify(
+                classification_text,
+                categories=DOCUMENT_CATEGORIES,
+                system_prompt=(
+                    "Classify this document into one of the given categories. "
+                    "Return only the category name followed by confidence in parentheses, "
+                    "e.g. 'invoice (0.95)'."
+                ),
+            )
+
+        return await self._retry_async(_do_classify, operation="classify")
+
+    async def _extract_entities(self, text: str) -> list[dict[str, Any]]:
+        """Extract named entities from text using LLM."""
+        if not text or not text.strip():
+            return []
+
+        entity_types = [
+            "person", "organization", "date", "amount",
+            "location", "email", "phone", "reference_number",
+        ]
+
+        async def _do_extract() -> list[dict[str, Any]]:
+            return await self._llm.extract(
+                text[:4000],
+                fields=entity_types,
+                system_prompt=(
+                    "Extract named entities from the text. "
+                    "Return a JSON object with entity types as keys and lists of "
+                    "objects with 'name' and 'context' fields as values."
+                ),
+            )
+
+        try:
+            result = await self._retry_async(_do_extract, operation="extract_entities")
+            if isinstance(result, dict):
+                entities = []
+                for etype, items in result.items():
+                    if isinstance(items, list):
+                        for item in items:
+                            if isinstance(item, dict):
+                                entities.append({
+                                    "type": etype,
+                                    "name": item.get("name", ""),
+                                    "context": item.get("context", ""),
+                                })
+                return entities
+            return []
+        except Exception as e:
+            logger.warning("Entity extraction failed (non-fatal): %s", e)
+            return []
+
+    async def _summarize(self, text: str, classification: str) -> str:
+        """Generate document summary using LLM with retry."""
+        if not text or not text.strip():
+            return ""
+
+        async def _do_summarize() -> str:
+            return await self._llm.summarize(
+                text[:6000],
+                max_tokens=500,
+                system_prompt=(
+                    f"This is a {classification} document. "
+                    "Provide a concise summary in 2-4 sentences covering the "
+                    "key information, purpose, and main points."
+                ),
+            )
+
+        return await self._retry_async(_do_summarize, operation="summarize")
+
+    def _chunk_text(self, text: str) -> list[dict[str, Any]]:
+        """Split text into overlapping chunks for embedding."""
+        if not text or not text.strip():
+            return []
+
+        chunk_size = 1000
+        overlap = 200
+        chunks: list[dict[str, Any]] = []
+        start = 0
+        idx = 0
+
+        while start < len(text):
+            end = min(start + chunk_size, len(text))
+
+            # Try to break at a natural boundary
+            if end < len(text):
+                para_break = text.rfind("\n\n", start + chunk_size // 2, end)
+                if para_break > start:
+                    end = para_break + 2
+                else:
+                    for sep in (". ", ".\n", "! ", "? ", "\n"):
+                        sent_break = text.rfind(sep, start + chunk_size // 2, end)
+                        if sent_break > start:
+                            end = sent_break + len(sep)
+                            break
+
+            chunk = text[start:end].strip()
+            if chunk:
+                chunks.append({
+                    "text": chunk,
+                    "index": idx,
+                    "start": start,
+                    "end": end,
+                })
+                idx += 1
+
+            start = end - overlap
+            if start <= (chunks[-1]["start"] if chunks else 0):
+                start = end
+
+        return chunks
+
+    async def _embed_and_index(
+        self,
+        document: Document,
+        chunks: list[dict[str, Any]],
+        file_id: str,
+    ) -> list[str]:
+        """Generate embeddings and store in vector index."""
+        if not chunks:
+            return []
+
+        chunk_texts = [c["text"] for c in chunks]
+
+        # Generate embeddings (sync, run in executor)
+        embeddings = await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: self._embeddings.embed_documents(chunk_texts),
+        )
+
+        # Store embeddings
+        embedding_ids: list[str] = []
+        for i, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
+            emb_id = f"{document.id}_chunk_{i}"
+            metadata = {
+                "document_id": str(document.id),
+                "file_id": file_id,
+                "chunk_index": i,
+                "start": chunk.get("start", 0),
+                "end": chunk.get("end", 0),
+            }
+            await self._retry_async(
+                lambda eid=emb_id, emb=embedding, meta=metadata: (
+                    self._embedding_repo.save(eid, emb, meta)
+                ),
+                operation="save_embedding",
+            )
+            embedding_ids.append(emb_id)
+
+        return embedding_ids
+
+    async def _save_document(self, document: Document) -> None:
+        """Persist document changes to repository."""
+        await self._retry_async(
+            lambda: self._sync_to_async(self._doc_repo.save, document),
+            operation="save_document",
+        )
+
+    async def _handle_failure(self, document: Document, error: Exception) -> None:
+        """Handle pipeline failure by updating document status."""
+        try:
+            if document.can_retry:
+                document.schedule_retry()
+                await self._save_document(document)
+                logger.info(
+                    "Document scheduled for retry: %s (attempt %d)",
+                    document.id, document.retry_count,
+                )
+            else:
+                document.mark_failed(str(error))
+                await self._save_document(document)
+                logger.warning(
+                    "Document marked as failed (max retries exceeded): %s",
+                    document.id,
+                )
+        except Exception as save_err:
+            logger.exception(
+                "Failed to persist failure state for document %s: %s",
+                document.id, save_err,
+            )
+
+    def _map_classification_to_type(self, classification: str) -> DocumentType:
+        """Map a classification category to a DocumentType enum."""
+        mapping = {
+            "invoice": DocumentType.PDF,
+            "receipt": DocumentType.PDF,
+            "contract": DocumentType.PDF,
+            "report": DocumentType.PDF,
+            "letter": DocumentType.TEXT,
+            "memo": DocumentType.TEXT,
+            "email": DocumentType.EMAIL,
+            "resume": DocumentType.PDF,
+            "academic_paper": DocumentType.PDF,
+            "legal_document": DocumentType.PDF,
+            "financial_statement": DocumentType.SPREADSHEET,
+            "technical_specification": DocumentType.TEXT,
+            "meeting_notes": DocumentType.TEXT,
+            "proposal": DocumentType.PDF,
+            "presentation": DocumentType.PRESENTATION,
+            "spreadsheet": DocumentType.SPREADSHEET,
+            "code": DocumentType.CODE,
+            "data_export": DocumentType.CSV,
+        }
+        return mapping.get(classification.lower(), DocumentType.UNKNOWN)
+
+    async def _retry_async(self, coro_fn, *, operation: str) -> Any:
+        """Execute an async operation with exponential backoff retry.
+
+        Args:
+            coro_fn: A callable that returns an awaitable.
+            operation: Name of the operation for logging.
+
+        Returns:
+            The result of the operation.
+
+        Raises:
+            The last exception after all retries are exhausted.
+        """
+        last_error: Exception | None = None
+
+        for attempt in range(1, self._max_retries + 1):
+            try:
+                return await coro_fn()
+            except Exception as e:
+                last_error = e
+                if attempt < self._max_retries:
+                    delay = self._retry_base_delay * (2 ** (attempt - 1))
+                    logger.warning(
+                        "Operation %s failed (attempt %d/%d): %s. "
+                        "Retrying in %.1fs...",
+                        operation, attempt, self._max_retries, e, delay,
+                    )
+                    await asyncio.sleep(delay)
+                else:
+                    logger.error(
+                        "Operation %s failed after %d attempts: %s",
+                        operation, self._max_retries, e,
+                    )
+
+        raise last_error  # type: ignore[misc]
+
+    async def _sync_to_async(self, fn, *args, **kwargs):
+        """Run a synchronous function in an executor."""
+        return await asyncio.get_event_loop().run_in_executor(
+            None, lambda: fn(*args, **kwargs)
+        )

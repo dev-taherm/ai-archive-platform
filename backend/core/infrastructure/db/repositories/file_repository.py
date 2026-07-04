@@ -6,8 +6,7 @@ from typing import Any, Sequence
 from django.db.models import QuerySet
 
 from core.application.interfaces.repositories import FileRepository
-from core.domain.common.exceptions import EntityNotFound
-from core.domain.files.entities import DuplicateGroup, FileFingerprint, FileRecord
+from core.domain.files.entities import FileFingerprint, FileRecord
 from core.domain.files.value_objects import FileSize, FilePath, FileStatus, Hash, MimeType
 
 

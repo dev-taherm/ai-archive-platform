@@ -4,12 +4,11 @@ import logging
 import uuid
 from typing import Any
 
-from core.application.dtos.ai_dto import AIResultDTO, ClassificationDTO, EmbeddingDTO
+from core.application.dtos.ai_dto import ClassificationDTO, EmbeddingDTO
 from core.application.dtos.chat_dto import ChatMessageDTO, ChatResponseDTO, ChatSessionDTO
 from core.application.interfaces.repositories import AuditLogRepository
 from core.application.use_cases.ai_use_cases import AIUseCases
 from core.application.use_cases.chat_use_cases import ChatUseCases
-from core.domain.common.exceptions import ValidationException
 
 logger = logging.getLogger(__name__)
 

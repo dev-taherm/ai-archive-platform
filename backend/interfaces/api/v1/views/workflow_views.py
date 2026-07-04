@@ -7,16 +7,11 @@ from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from core.domain.common.exceptions import DomainException
-from core.domain.workflows.entities import Workflow, WorkflowStep
-from core.domain.workflows.value_objects import TriggerType, WorkflowStatus
 from interfaces.api.v1.serializers.workflow_serializers import (
     WorkflowCreateSerializer,
     WorkflowRunCreateSerializer,
     WorkflowRunSerializer,
     WorkflowSerializer,
-    WorkflowStepCreateSerializer,
-    WorkflowStepSerializer,
     WorkflowUpdateSerializer,
 )
 
@@ -27,17 +22,11 @@ class WorkflowViewSet(viewsets.GenericViewSet):
     """
     Workflow ViewSet with CRUD and run actions.
 
-    Delegates persistence to an in-memory store for demonstration.
-    Replace with proper repository in production.
+    Persists workflows and runs via Django ORM through WorkflowService.
     """
 
     permission_classes = [permissions.IsAuthenticated]
     lookup_field = "pk"
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        if not hasattr(self, "_workflows"):
-            WorkflowViewSet._workflows: dict[_uuid.UUID, Workflow] = {}
 
     def get_serializer_class(self):
         if self.action == "create":
@@ -48,8 +37,17 @@ class WorkflowViewSet(viewsets.GenericViewSet):
             return WorkflowRunCreateSerializer
         return WorkflowSerializer
 
+    def _get_service(self):
+        from apps.workflows.services import WorkflowService
+
+        return WorkflowService
+
     def list(self, request):
-        workflows = list(self._workflows.values())
+        service = self._get_service()
+        workflows = service.list_workflows(
+            offset=int(request.query_params.get("offset", 0)),
+            limit=int(request.query_params.get("limit", 100)),
+        )
         serializer = WorkflowSerializer(workflows, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -62,7 +60,8 @@ class WorkflowViewSet(viewsets.GenericViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        workflow = self._workflows.get(workflow_id)
+        service = self._get_service()
+        workflow = service.get_workflow(workflow_id)
         if workflow is None:
             return Response(
                 {"detail": "Workflow not found."},
@@ -79,37 +78,16 @@ class WorkflowViewSet(viewsets.GenericViewSet):
         serializer.is_valid(raise_exception=True)
         validated = serializer.validated_data
 
-        steps = []
-        for i, step_data in enumerate(validated.get("steps", [])):
-            step = WorkflowStep(
-                workflow_id=_uuid.uuid4(),
-                name=step_data["name"],
-                step_type=step_data["step_type"],
-                order=step_data.get("order", i),
-                config=step_data.get("config", {}),
-                is_optional=step_data.get("is_optional", False),
-                timeout_seconds=step_data.get("timeout_seconds", 300),
-                max_retries=step_data.get("max_retries", 3),
-                dependencies=tuple(
-                    _uuid.UUID(str(d)) for d in step_data.get("dependencies", [])
-                ),
-            )
-            steps.append(step)
+        service = self._get_service()
+        steps = validated.get("steps", [])
 
-        workflow = Workflow(
+        workflow = service.create_workflow(
             name=validated["name"],
-            description=validated.get("description", ""),
-            status=WorkflowStatus.DRAFT,
-            trigger_type=TriggerType(validated.get("trigger_type", "manual")),
-            trigger_config=validated.get("trigger_config", {}),
             steps=steps,
-            tags=validated.get("tags", []),
+            description=validated.get("description", ""),
+            trigger_type=validated.get("trigger_type", "manual"),
+            created_by_id=request.user.pk if request.user.is_authenticated else None,
         )
-
-        for step in steps:
-            step.workflow_id = workflow.id
-
-        self._workflows[workflow.id] = workflow
 
         return Response(
             WorkflowSerializer(workflow).data,
@@ -125,7 +103,8 @@ class WorkflowViewSet(viewsets.GenericViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        workflow = self._workflows.get(workflow_id)
+        service = self._get_service()
+        workflow = service.get_workflow(workflow_id)
         if workflow is None:
             return Response(
                 {"detail": "Workflow not found."},
@@ -136,38 +115,24 @@ class WorkflowViewSet(viewsets.GenericViewSet):
         serializer.is_valid(raise_exception=True)
         validated = serializer.validated_data
 
+        update_fields = {}
         if "name" in validated:
             workflow.name = validated["name"]
+            update_fields["name"] = True
         if "description" in validated:
             workflow.description = validated["description"]
-        if "status" in validated:
-            try:
-                new_status = WorkflowStatus(validated["status"])
-                if workflow.status.can_transition_to(new_status):
-                    object.__setattr__(workflow, "status", new_status)
-                else:
-                    return Response(
-                        {
-                            "detail": f"Cannot transition from {workflow.status.value} to {new_status.value}."
-                        },
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
-            except ValueError:
-                return Response(
-                    {"detail": "Invalid status value."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
+            update_fields["description"] = True
+        if "steps" in validated:
+            workflow.steps = validated["steps"]
+            update_fields["steps"] = True
         if "trigger_type" in validated:
-            workflow.trigger_type = TriggerType(validated["trigger_type"])
-        if "trigger_config" in validated:
-            workflow.trigger_config = validated["trigger_config"]
-        if "tags" in validated:
-            workflow.tags = validated["tags"]
+            workflow.trigger_type = validated["trigger_type"]
+            update_fields["trigger_type"] = True
+        if "is_active" in validated:
+            workflow.is_active = validated["is_active"]
+            update_fields["is_active"] = True
 
-        from datetime import datetime, timezone
-
-        object.__setattr__(workflow, "updated_at", datetime.now(timezone.utc))
-
+        workflow.save()
         return Response(
             WorkflowSerializer(workflow).data,
             status=status.HTTP_200_OK,
@@ -182,21 +147,21 @@ class WorkflowViewSet(viewsets.GenericViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        if workflow_id not in self._workflows:
+        service = self._get_service()
+        workflow = service.get_workflow(workflow_id)
+        if workflow is None:
             return Response(
                 {"detail": "Workflow not found."},
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        workflow = self._workflows[workflow_id]
         if workflow.is_active:
             return Response(
                 {"detail": "Cannot delete an active workflow. Deactivate it first."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        del self._workflows[workflow_id]
-
+        workflow.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=True, methods=["post"])
@@ -209,37 +174,46 @@ class WorkflowViewSet(viewsets.GenericViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        workflow = self._workflows.get(workflow_id)
+        service = self._get_service()
+        workflow = service.get_workflow(workflow_id)
         if workflow is None:
             return Response(
                 {"detail": "Workflow not found."},
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        if not workflow.is_active and workflow.status != WorkflowStatus.DRAFT:
+        if not workflow.is_active:
             return Response(
-                {
-                    "detail": f"Workflow in '{workflow.status.value}' status cannot be run."
-                },
+                {"detail": "Workflow must be active to run."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
         serializer = WorkflowRunCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        from datetime import datetime, timezone
-
-        from core.domain.workflows.entities import WorkflowRun
-
-        run = WorkflowRun(
-            workflow_id=workflow.id,
-            status=WorkflowStatus.RUNNING,
-            triggered_by=TriggerType.MANUAL,
-            trigger_user_id=request.user.pk if request.user.is_authenticated else None,
+        run = service.start_run(
+            workflow_id,
             input_data=serializer.validated_data.get("input_data", {}),
+            triggered_by_id=request.user.pk if request.user.is_authenticated else None,
         )
 
-        workflow.record_run()
+        if run is None:
+            return Response(
+                {"detail": "Failed to start workflow run."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        # Dispatch async workflow execution
+        try:
+            from apps.workflows.tasks import execute_full_workflow
+
+            execute_full_workflow.delay(
+                str(workflow_id),
+                input_data=serializer.validated_data.get("input_data", {}),
+                user_id=str(request.user.pk) if request.user.is_authenticated else None,
+            )
+        except Exception:
+            logger.exception("Failed to dispatch workflow execution")
 
         return Response(
             WorkflowRunSerializer(run).data,
@@ -256,22 +230,22 @@ class WorkflowViewSet(viewsets.GenericViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        workflow = self._workflows.get(workflow_id)
+        service = self._get_service()
+        workflow = service.get_workflow(workflow_id)
         if workflow is None:
             return Response(
                 {"detail": "Workflow not found."},
                 status=status.HTTP_404_NOT_FOUND,
             )
 
+        limit = int(request.query_params.get("limit", 50))
+        run_history = service.get_run_history(workflow_id, limit=limit)
+
         return Response(
             {
                 "workflow_id": str(workflow.id),
-                "run_count": workflow.run_count,
-                "last_run_at": (
-                    workflow.last_run_at.isoformat() if workflow.last_run_at else None
-                ),
-                "runs": [],
-                "message": "Run history requires a persistent store.",
+                "run_count": workflow.runs.count() if hasattr(workflow, "runs") else 0,
+                "runs": WorkflowRunSerializer(run_history, many=True).data,
             },
             status=status.HTTP_200_OK,
         )

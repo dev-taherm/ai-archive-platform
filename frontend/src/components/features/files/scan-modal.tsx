@@ -94,7 +94,7 @@ export function ScanModal({ onClose }: ScanModalProps) {
 
     // Pre-refresh token via axios interceptor before opening SSE stream
     try {
-      await api.get("/auth/me");
+      await api.get("/users/me");
     } catch {
       // If refresh fails, the interceptor will redirect to login
     }

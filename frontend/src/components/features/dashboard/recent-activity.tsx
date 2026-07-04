@@ -22,6 +22,11 @@ const iconMap: Record<string, typeof FileText> = {
   process: RefreshCw,
   index: FolderOpen,
   classify: Settings,
+  scan: FolderOpen,
+  rename: RefreshCw,
+  move: FolderOpen,
+  copy: FileText,
+  download: FileText,
 };
 
 interface RecentActivityProps {
@@ -40,7 +45,7 @@ export function RecentActivity({ activities }: RecentActivityProps) {
             <p className="text-sm text-muted-foreground">No recent activity</p>
           )}
           {activities.map((activity) => {
-            const Icon = iconMap[activity.type] || FileText;
+            const Icon = iconMap[activity.action] || FileText;
             return (
               <div
                 key={activity.id}
@@ -51,15 +56,18 @@ export function RecentActivity({ activities }: RecentActivityProps) {
                 </div>
                 <div className="flex-1 space-y-1">
                   <p className="text-sm font-medium">
-                    {activity.type}
-                    {activity.document_id && (
+                    {activity.action}
+                    {activity.resource_id && (
                       <span className="text-muted-foreground">
                         {" "}
-                        — {activity.document_id.slice(0, 8)}
+                        — {String(activity.resource_id).slice(0, 8)}
                       </span>
                     )}
                   </p>
                   <p className="text-xs text-muted-foreground">
+                    {activity.user_email && (
+                      <span className="mr-2">{activity.user_email}</span>
+                    )}
                     {formatDateTime(activity.created_at)}
                   </p>
                 </div>

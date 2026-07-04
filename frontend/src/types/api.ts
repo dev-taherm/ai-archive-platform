@@ -209,9 +209,11 @@ export interface DashboardStats {
 
 export interface ActivityItem {
   id: string;
-  type: "upload" | "search" | "delete" | "update";
-  description: string;
-  document_id: string | null;
+  action: string;
+  resource_type: string;
+  resource_id: string | null;
+  user_email: string | null;
+  details: Record<string, unknown>;
   created_at: string;
 }
 

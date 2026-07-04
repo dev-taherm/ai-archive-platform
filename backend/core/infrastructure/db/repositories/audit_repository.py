@@ -3,7 +3,6 @@ from __future__ import annotations
 import uuid
 from typing import Any, Sequence
 
-from django.db.models import QuerySet
 
 from core.application.interfaces.repositories import AuditLogRepository
 

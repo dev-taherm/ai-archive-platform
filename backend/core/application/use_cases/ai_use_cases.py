@@ -4,7 +4,7 @@ import logging
 import uuid
 from typing import Any
 
-from core.application.dtos.ai_dto import AIResultDTO, ClassificationDTO, EmbeddingDTO
+from core.application.dtos.ai_dto import ClassificationDTO, EmbeddingDTO
 from core.application.interfaces.repositories import (
     AITaskRepository,
     DocumentRepository,

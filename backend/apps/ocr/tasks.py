@@ -16,11 +16,10 @@ def process_image_task(
 ) -> dict[str, object]:
     """Celery task to OCR an image file."""
     import asyncio
-    import time
 
     from apps.ocr.models import OCRJob
     from apps.ocr.services import OCRService
-    from core.infrastructure.services.ocr_provider import TesseractOCRProvider
+    from core.infrastructure.services.ocr_engine import PaddleOCREngine
 
     job = OCRJob.objects.create(
         file_id=uuid.UUID(file_id),
@@ -29,7 +28,7 @@ def process_image_task(
     )
 
     async def _run() -> dict[str, object]:
-        ocr = TesseractOCRProvider()
+        ocr = PaddleOCREngine()
         service = OCRService(ocr)
 
         with open(image_path, "rb") as f:
@@ -73,7 +72,7 @@ def process_pdf_task(
 
     from apps.ocr.models import OCRJob
     from apps.ocr.services import OCRService
-    from core.infrastructure.services.ocr_provider import TesseractOCRProvider
+    from core.infrastructure.services.ocr_engine import PaddleOCREngine
 
     job = OCRJob.objects.create(
         file_id=uuid.UUID(file_id),
@@ -82,7 +81,7 @@ def process_pdf_task(
     )
 
     async def _run() -> dict[str, object]:
-        ocr = TesseractOCRProvider()
+        ocr = PaddleOCREngine()
         service = OCRService(ocr)
 
         with open(pdf_path, "rb") as f:
