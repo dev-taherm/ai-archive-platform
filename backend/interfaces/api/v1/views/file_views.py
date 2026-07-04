@@ -65,14 +65,13 @@ class FileRecordViewSet(viewsets.GenericViewSet):
         return service._file_use_cases
 
     def list(self, request):
-        offset = (int(request.query_params.get("page", 1)) - 1) * int(
-            request.query_params.get("page_size", 20)
-        )
-        limit = int(request.query_params.get("page_size", 20))
-
         try:
-            files = self._file_service.list_files(offset=offset, limit=limit)
-            serializer = FileRecordSerializer(files, many=True)
+            files = self._file_service.list_files()
+            page = self.paginate_queryset(files)
+            if page is not None:
+                serializer = self.get_serializer(page, many=True)
+                return self.get_paginated_response(serializer.data)
+            serializer = self.get_serializer(files, many=True)
             return Response(serializer.data)
         except DomainException as e:
             return Response(

@@ -16,6 +16,7 @@ from core.application.interfaces.repositories import (
     FileRepository,
 )
 from core.application.interfaces.services import LLMProvider, OCRProvider
+from core.domain.common.events import DomainEventBus
 from core.domain.common.exceptions import EntityNotFound, ValidationException
 from core.domain.documents.entities import Document, DocumentChunk, DocumentMetadata
 from core.domain.documents.value_objects import (
@@ -113,6 +114,11 @@ class DocumentUseCases:
             doc_type_confidence = Confidence(value=type_confidence)
             document.mark_classified(predicted_type, doc_type_confidence)
 
+            DomainEventBus.publish(
+                "document_classified",
+                {"document_id": str(document.id), "doc_type": predicted_type.value, "confidence": type_confidence},
+            )
+
             metadata = DocumentMetadata(
                 title=title,
                 author=author,
@@ -142,6 +148,11 @@ class DocumentUseCases:
 
             document.mark_indexed(chunk_count)
             saved = self._document_repository.save(document)
+
+            DomainEventBus.publish(
+                "document_indexed",
+                {"document_id": str(document.id), "chunk_count": chunk_count},
+            )
 
             return DocumentDTO.from_entity(saved)
 

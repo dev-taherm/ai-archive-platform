@@ -13,8 +13,15 @@ logger = logging.getLogger(__name__)
 class OpenAILLMProvider(LLMProvider):
     """OpenAI-compatible LLM provider using the openai SDK."""
 
-    def __init__(self, config: ModelConfig) -> None:
+    def __init__(
+        self,
+        config: ModelConfig,
+        api_key: str | None = None,
+        base_url: str | None = None,
+    ) -> None:
         self._config = config
+        self._api_key = api_key
+        self._base_url = base_url
         self._client: Any = None
 
     def _get_client(self) -> Any:
@@ -23,8 +30,8 @@ class OpenAILLMProvider(LLMProvider):
         try:
             import openai
 
-            api_key = os.environ.get("OPENAI_API_KEY", "")
-            base_url = os.environ.get("OPENAI_BASE_URL")
+            api_key = self._api_key or os.environ.get("OPENAI_API_KEY", "")
+            base_url = self._base_url or os.environ.get("OPENAI_BASE_URL")
             self._client = openai.AsyncOpenAI(
                 api_key=api_key,
                 base_url=base_url,
@@ -146,8 +153,15 @@ class OpenAILLMProvider(LLMProvider):
 class GoogleLLMProvider(LLMProvider):
     """Google Gemini / Vertex AI LLM provider."""
 
-    def __init__(self, config: ModelConfig) -> None:
+    def __init__(
+        self,
+        config: ModelConfig,
+        api_key: str | None = None,
+        base_url: str | None = None,
+    ) -> None:
         self._config = config
+        self._api_key = api_key
+        self._base_url = base_url
         self._client: Any = None
 
     def _get_client(self) -> Any:
@@ -156,7 +170,7 @@ class GoogleLLMProvider(LLMProvider):
         try:
             import google.generativeai as genai
 
-            api_key = os.environ.get("GOOGLE_API_KEY", "")
+            api_key = self._api_key or os.environ.get("GOOGLE_API_KEY", "")
             genai.configure(api_key=api_key)
             self._client = genai.GenerativeModel(self._config.model_name)
         except ImportError:
@@ -253,9 +267,18 @@ class GoogleLLMProvider(LLMProvider):
 class OllamaLLMProvider(LLMProvider):
     """Ollama local LLM provider."""
 
-    def __init__(self, config: ModelConfig) -> None:
+    def __init__(
+        self,
+        config: ModelConfig,
+        api_key: str | None = None,
+        base_url: str | None = None,
+    ) -> None:
         self._config = config
-        self._base_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
+        self._api_key = api_key
+        self._base_url = (
+            base_url
+            or os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
+        )
 
     async def _post(self, endpoint: str, payload: dict[str, Any]) -> dict[str, Any]:
         import aiohttp
@@ -366,7 +389,7 @@ class LLMFactory:
     }
 
     @classmethod
-    def create(cls, provider_name: str, config: ModelConfig) -> LLMProvider:
+    def create(cls, provider_name: str, config: ModelConfig, **kwargs) -> LLMProvider:
         """Create an LLMProvider for the given provider name.
 
         Supported providers: openai, google, ollama.
@@ -381,7 +404,7 @@ class LLMFactory:
                 f"Unsupported LLM provider: {provider_name!r}. "
                 f"Supported providers: {supported}"
             )
-        return provider_cls(config)
+        return provider_cls(config, **kwargs)
 
     @classmethod
     def register(cls, name: str, provider_cls: type[LLMProvider]) -> None:

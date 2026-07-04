@@ -9,6 +9,8 @@ class AIProvider(enum.Enum):
     """Supported AI/ML providers."""
 
     OPENAI = "openai"
+    GOOGLE = "google"
+    OLLAMA = "ollama"
     ANTHROPIC = "anthropic"
     LOCAL = "local"
     AZURE = "azure"

@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import api from "@/lib/api";
+import AIProviders from "@/components/features/settings/ai-providers";
 
 export default function SettingsPage() {
   const { user } = useAuth();
@@ -144,6 +145,8 @@ export default function SettingsPage() {
             </p>
           </CardContent>
         </Card>
+
+        <AIProviders />
       </div>
     </div>
   );

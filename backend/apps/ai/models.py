@@ -76,3 +76,39 @@ class Embedding(models.Model):
 
     def __str__(self) -> str:
         return f"Embedding({self.vector_id})"
+
+
+class ProviderConfig(models.Model):
+    """Stores LLM/Embedding provider configurations in the database."""
+
+    class ProviderType(models.TextChoices):
+        OPENAI = "openai", "OpenAI"
+        GOOGLE = "google", "Google Gemini"
+        OLLAMA = "ollama", "Ollama (Local)"
+
+    class Capability(models.TextChoices):
+        LLM = "llm", "LLM"
+        EMBEDDING = "embedding", "Embedding"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=100, unique=True)
+    display_name = models.CharField(max_length=200)
+    provider_type = models.CharField(max_length=20, choices=ProviderType.choices)
+    capabilities = models.JSONField(default=list)  # ["llm", "embedding"]
+    api_key = models.CharField(max_length=500, blank=True, default="")
+    base_url = models.CharField(max_length=500, blank=True, default="")
+    model_name = models.CharField(max_length=200, blank=True, default="")
+    is_active = models.BooleanField(default=True)
+    is_default = models.BooleanField(default=False)
+    config = models.JSONField(default=dict, blank=True)  # Extra config options
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "ai_providerconfig"
+        verbose_name = "Provider Config"
+        verbose_name_plural = "Provider Configs"
+        ordering = ["-is_default", "name"]
+
+    def __str__(self) -> str:
+        return f"{self.display_name} ({self.provider_type})"

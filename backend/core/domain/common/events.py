@@ -1,9 +1,60 @@
 from __future__ import annotations
 
+import logging
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Callable
+
+logger = logging.getLogger(__name__)
+
+
+class DomainEventBus:
+    """Simple in-process event bus for domain events."""
+
+    _handlers: dict[str, list[Callable]] = {}
+
+    @classmethod
+    def subscribe(cls, event_type: str, handler: Callable) -> None:
+        if event_type not in cls._handlers:
+            cls._handlers[event_type] = []
+        cls._handlers[event_type].append(handler)
+
+    @classmethod
+    def publish(cls, event_type: str, payload: dict[str, Any]) -> None:
+        handlers = cls._handlers.get(event_type, [])
+        for handler in handlers:
+            try:
+                handler(payload)
+            except Exception:
+                logger.exception("Event handler failed for %s", event_type)
+
+    @classmethod
+    def clear(cls) -> None:
+        cls._handlers.clear()
+
+
+def _on_file_created(payload: dict[str, Any]) -> None:
+    logger.info("Event: file_created file_id=%s path=%s", payload.get("file_id"), payload.get("path"))
+
+
+def _on_file_deleted(payload: dict[str, Any]) -> None:
+    logger.info("Event: file_deleted file_id=%s", payload.get("file_id"))
+
+
+def _on_document_classified(payload: dict[str, Any]) -> None:
+    logger.info("Event: document_classified doc_id=%s type=%s", payload.get("document_id"), payload.get("doc_type"))
+
+
+def _on_document_indexed(payload: dict[str, Any]) -> None:
+    logger.info("Event: document_indexed doc_id=%s chunks=%s", payload.get("document_id"), payload.get("chunk_count"))
+
+
+# Register default handlers
+DomainEventBus.subscribe("file_created", _on_file_created)
+DomainEventBus.subscribe("file_deleted", _on_file_deleted)
+DomainEventBus.subscribe("document_classified", _on_document_classified)
+DomainEventBus.subscribe("document_indexed", _on_document_indexed)
 
 
 @dataclass(frozen=True)

@@ -8,6 +8,7 @@ from pathlib import PurePosixPath
 from core.application.dtos.file_dto import FileOperationDTO, FileRecordDTO, ScanResultDTO
 from core.application.interfaces.repositories import FileRepository
 from core.application.interfaces.services import FileScanner, StorageBackend
+from core.domain.common.events import DomainEventBus
 from core.domain.common.exceptions import EntityNotFound, ValidationException
 from core.domain.files.entities import FileFingerprint, FileRecord
 from core.domain.files.value_objects import FileSize, FilePath, FileStatus, Hash, MimeType
@@ -88,6 +89,10 @@ class FileUseCases:
                 file_ids.append(saved.id)
                 new_files += 1
                 scanned += 1
+                DomainEventBus.publish(
+                    "file_created",
+                    {"file_id": str(saved.id), "path": saved.path.normalized, "mime_type": saved.mime_type.value},
+                )
 
             except Exception as e:
                 failed += 1
@@ -143,6 +148,8 @@ class FileUseCases:
                 source_path=source_path,
                 error_message="File record not found for deletion",
             )
+
+        DomainEventBus.publish("file_deleted", {"file_id": str(file_id)})
 
         return FileOperationDTO.success_result(
             operation="delete",

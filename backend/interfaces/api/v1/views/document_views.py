@@ -46,14 +46,13 @@ class DocumentViewSet(viewsets.GenericViewSet):
         return apps.get_app_config("documents").document_service
 
     def list(self, request):
-        offset = (int(request.query_params.get("page", 1)) - 1) * int(
-            request.query_params.get("page_size", 20)
-        )
-        limit = int(request.query_params.get("page_size", 20))
-
         try:
-            documents = self._document_service.list_documents(offset=offset, limit=limit)
-            serializer = DocumentSerializer(documents, many=True)
+            documents = self._document_service.list_documents()
+            page = self.paginate_queryset(documents)
+            if page is not None:
+                serializer = self.get_serializer(page, many=True)
+                return self.get_paginated_response(serializer.data)
+            serializer = self.get_serializer(documents, many=True)
             return Response(serializer.data)
         except DomainException as e:
             return Response(

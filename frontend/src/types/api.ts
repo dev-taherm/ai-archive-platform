@@ -231,6 +231,25 @@ export interface ClassificationResult {
   classified_at: string;
 }
 
+// --- Providers ---
+
+export interface ProviderConfig {
+  id: string;
+  name: string;
+  display_name: string;
+  provider_type: "openai" | "google" | "ollama";
+  capabilities: ("llm" | "embedding")[];
+  api_key_set: boolean;
+  api_key?: string;
+  base_url: string;
+  model_name: string;
+  is_active: boolean;
+  is_default: boolean;
+  config: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
 // --- Common ---
 
 export interface ApiError {
