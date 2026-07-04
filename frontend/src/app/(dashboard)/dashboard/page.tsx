@@ -4,7 +4,6 @@ import { useQuery } from "@tanstack/react-query";
 import {
   FileText,
   HardDrive,
-  Search,
   AlertCircle,
   FolderOpen,
 } from "lucide-react";
@@ -13,11 +12,9 @@ import { formatBytes } from "@/lib/utils";
 import { StatsCard } from "@/components/features/dashboard/stats-card";
 import { RecentActivity } from "@/components/features/dashboard/recent-activity";
 import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+  FileTypeChart,
+  FileStatusChart,
+} from "@/components/features/dashboard/charts-section";
 import type { DashboardStats, ActivityResponse } from "@/types/api";
 
 export default function DashboardPage() {
@@ -81,48 +78,17 @@ export default function DashboardPage() {
         />
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Files by Status</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {Object.entries(stats?.files_by_status ?? {}).map(
-                ([status, count]) => (
-                  <div key={status} className="flex items-center justify-between">
-                    <span className="text-sm capitalize">{status}</span>
-                    <span className="text-sm font-medium">{count}</span>
-                  </div>
-                )
-              )}
-              {Object.keys(stats?.files_by_status ?? {}).length === 0 && (
-                <p className="text-sm text-muted-foreground">No files yet</p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Documents by Type</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {Object.entries(stats?.documents_by_type ?? {}).map(
-                ([type, count]) => (
-                  <div key={type} className="flex items-center justify-between">
-                    <span className="text-sm">{type}</span>
-                    <span className="text-sm font-medium">{count}</span>
-                  </div>
-                )
-              )}
-              {Object.keys(stats?.documents_by_type ?? {}).length === 0 && (
-                <p className="text-sm text-muted-foreground">No documents yet</p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
+      <div className="grid gap-6 md:grid-cols-2">
+        <FileTypeChart
+          data={Object.entries(stats?.documents_by_type ?? {}).map(
+            ([name, value]) => ({ name, value })
+          )}
+        />
+        <FileStatusChart
+          data={Object.entries(stats?.files_by_status ?? {}).map(
+            ([name, value]) => ({ name, value })
+          )}
+        />
       </div>
 
       <RecentActivity activities={activityData?.activities ?? []} />
