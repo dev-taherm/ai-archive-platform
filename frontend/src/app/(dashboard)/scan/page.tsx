@@ -44,7 +44,7 @@ export default function ScanPage() {
       patterns?: string[];
       ignore_patterns?: string[];
     }) => {
-      const res = await api.post<ScanResult>("/scan", params);
+      const res = await api.post<ScanResult>("/files/scan", params);
       return res.data;
     },
     onSuccess: (data) => {
