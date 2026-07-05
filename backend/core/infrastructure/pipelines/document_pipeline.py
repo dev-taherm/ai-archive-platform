@@ -179,16 +179,26 @@ class DocumentProcessingPipeline:
             result.chunk_count = len(chunks)
             result.processing_log.append(f"CHUNK: {len(chunks)} chunks created")
 
-            # Step 9: Generate embeddings and index
-            embedding_ids = await self._embed_and_index(
-                document=document,
-                chunks=chunks,
-                file_id=file_id,
-            )
-            result.embedding_ids = embedding_ids
-            result.processing_log.append(
-                f"INDEX: {len(embedding_ids)} embeddings stored"
-            )
+            # Step 9: Generate embeddings and index (non-fatal if embedding fails)
+            embedding_ids: list[str] = []
+            try:
+                embedding_ids = await self._embed_and_index(
+                    document=document,
+                    chunks=chunks,
+                    file_id=file_id,
+                )
+                result.embedding_ids = embedding_ids
+                result.processing_log.append(
+                    f"INDEX: {len(embedding_ids)} embeddings stored"
+                )
+            except Exception as emb_err:
+                result.processing_log.append(
+                    f"INDEX: embedding failed ({emb_err}), continuing without embeddings"
+                )
+                logger.warning(
+                    "Embedding failed for file %s, document will be keyword-searchable only: %s",
+                    file_id, emb_err,
+                )
 
             # Step 10: Mark document as completed
             document.mark_indexed(chunk_count=len(chunks))
@@ -543,3 +553,92 @@ class DocumentProcessingPipeline:
         return await asyncio.get_event_loop().run_in_executor(
             None, lambda: fn(*args, **kwargs)
         )
+
+
+def run_document_pipeline(
+    file_id: str,
+    file_path: str,
+    mime_type: str,
+) -> dict[str, Any]:
+    """Convenience function that wires up all dependencies and runs the pipeline.
+
+    Called by the ``process_pipeline`` API view.
+    """
+    from apps.ai.models import ProviderConfig
+    from core.domain.ai.value_objects import AIProvider, ModelConfig
+    from core.infrastructure.db.repositories.document_repository import DjangoDocumentRepository
+    from core.infrastructure.db.repositories.embedding_repository import PgvectorEmbeddingRepository
+    from core.infrastructure.db.repositories.file_repository import DjangoFileRepository
+    from core.infrastructure.services.document_reader import DocumentReader
+    from core.infrastructure.services.embedding_service import LangChainEmbeddingProvider
+    from core.infrastructure.services.llm_factory import LLMFactory
+    from core.infrastructure.services.ocr_engine import PaddleOCREngine
+
+    # ---- Load active LLM provider from DB ----
+    llm_config = (
+        ProviderConfig.objects.filter(
+            is_active=True, capabilities__contains=["llm"]
+        )
+        .order_by("-is_default")
+        .first()
+    )
+    if not llm_config:
+        raise ValueError(
+            "No active LLM provider configured. Go to /settings and add one."
+        )
+
+    model_config = ModelConfig(
+        provider=AIProvider(llm_config.provider_type),
+        model_name=llm_config.model_name,
+    )
+    llm = LLMFactory.create(
+        llm_config.provider_type,
+        model_config,
+        api_key=llm_config.api_key or None,
+        base_url=llm_config.base_url or None,
+    )
+
+    # ---- Load active embedding provider from DB ----
+    emb_config = (
+        ProviderConfig.objects.filter(
+            is_active=True, capabilities__contains=["embedding"]
+        )
+        .order_by("-is_default")
+        .first()
+    )
+
+    if emb_config:
+        embeddings = LangChainEmbeddingProvider(
+            model_name=emb_config.model_name,
+            provider=emb_config.provider_type,
+            api_key=emb_config.api_key or None,
+            base_url=emb_config.base_url or None,
+        )
+    else:
+        embeddings = LangChainEmbeddingProvider()
+
+    # ---- Instantiate and run the pipeline ----
+    pipeline = DocumentProcessingPipeline(
+        file_repository=DjangoFileRepository(),
+        document_repository=DjangoDocumentRepository(),
+        embedding_repository=PgvectorEmbeddingRepository(),
+        document_reader=DocumentReader(),
+        ocr_engine=PaddleOCREngine(),
+        llm_provider=llm,
+        embedding_provider=embeddings,
+    )
+
+    result = asyncio.run(pipeline.process(file_id))
+
+    return {
+        "status": result.status,
+        "document_id": result.document_id,
+        "classification": result.classification,
+        "classification_confidence": result.classification_confidence,
+        "entities": result.entities,
+        "summary": result.summary,
+        "chunk_count": result.chunk_count,
+        "embedding_ids": result.embedding_ids,
+        "processing_log": result.processing_log,
+        "error": result.error,
+    }

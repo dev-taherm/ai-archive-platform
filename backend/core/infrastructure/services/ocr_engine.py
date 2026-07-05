@@ -32,10 +32,7 @@ class PaddleOCREngine(OCRProvider):
             from paddleocr import PaddleOCR
 
             self._engine = PaddleOCR(
-                use_angle_cls=True,
                 lang=self._lang,
-                use_gpu=self._use_gpu,
-                show_log=False,
             )
             logger.info(
                 "PaddleOCR engine initialised (lang=%s, gpu=%s)",
