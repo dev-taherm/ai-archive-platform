@@ -1,23 +1,23 @@
 "use client";
 
 import { useState, useRef, useCallback } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
+import { useAuthStore } from "@/stores/auth-store";
+import api from "@/lib/api";
 import {
   FolderSearch,
   FolderOpen,
   Play,
-  FileIcon,
-  CheckCircle,
   XCircle,
   AlertTriangle,
   ArrowRight,
   Clock,
+  CheckCircle,
+  AlertCircle,
 } from "lucide-react";
-import api from "@/lib/api";
-import { formatDateTime } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
 import {
   Card,
   CardContent,
@@ -25,65 +25,219 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import type { ScanResult, ScanProgressEvent } from "@/types/api";
+
+type ScanPhase = "idle" | "scanning" | "complete" | "error";
+
+interface ScanState {
+  phase: ScanPhase;
+  processed: number;
+  totalFound: number;
+  newFiles: number;
+  skipped: number;
+  failed: number;
+  currentFile: string;
+  errors: string[];
+  errorMessage: string;
+  scanDuration: number;
+}
+
+const initialState: ScanState = {
+  phase: "idle",
+  processed: 0,
+  totalFound: 0,
+  newFiles: 0,
+  skipped: 0,
+  failed: 0,
+  currentFile: "",
+  errors: [],
+  errorMessage: "",
+  scanDuration: 0,
+};
 
 export default function ScanPage() {
   const queryClient = useQueryClient();
+  const accessToken = useAuthStore((s) => s.accessToken);
   const [folderPath, setFolderPath] = useState("");
   const [recursive, setRecursive] = useState(true);
   const [patterns, setPatterns] = useState("");
   const [ignorePatterns, setIgnorePatterns] = useState("");
-  const [progress, setProgress] = useState<ScanProgressEvent | null>(null);
-  const [result, setResult] = useState<ScanResult | null>(null);
-  const eventSourceRef = useRef<EventSource | null>(null);
+  const [state, setState] = useState<ScanState>(initialState);
+  const abortRef = useRef<AbortController | null>(null);
 
-  const scanMutation = useMutation({
-    mutationFn: async (params: {
-      folder_path: string;
-      recursive: boolean;
-      patterns?: string[];
-      ignore_patterns?: string[];
-    }) => {
-      const res = await api.post<ScanResult>("/files/scan", params);
-      return res.data;
-    },
-    onSuccess: (data) => {
-      setResult(data);
-      setProgress(null);
-      queryClient.invalidateQueries({ queryKey: ["files"] });
-    },
-    onError: () => {
-      setProgress(null);
-    },
-  });
+  const handleSSEvent = useCallback((eventName: string, dataStr: string) => {
+    try {
+      const data = JSON.parse(dataStr);
 
-  const handleScan = useCallback(() => {
-    if (!folderPath.trim()) return;
+      switch (eventName) {
+        case "scan_started":
+          setState((s) => ({
+            ...s,
+            currentFile: data.message || "Scanning...",
+          }));
+          break;
 
-    setResult(null);
-    setProgress({ event: "scan_started", data: { message: "Starting scan..." } });
+        case "file_scanned":
+          setState((s) => ({
+            ...s,
+            processed: data.processed ?? s.processed,
+            totalFound: data.total_found ?? s.totalFound,
+            currentFile: data.current_file ?? s.currentFile,
+            newFiles: data.new ?? s.newFiles,
+            skipped: data.skipped ?? s.skipped,
+            failed: data.failed ?? s.failed,
+          }));
+          break;
 
-    const params: {
-      folder_path: string;
-      recursive: boolean;
-      patterns?: string[];
-      ignore_patterns?: string[];
-    } = {
-      folder_path: folderPath.trim(),
-      recursive,
-    };
+        case "scan_complete":
+          setState((s) => ({
+            ...s,
+            phase: "complete",
+            processed: data.files_scanned ?? s.processed,
+            totalFound: data.total_found ?? s.totalFound,
+            newFiles: data.new_files ?? s.newFiles,
+            skipped: data.skipped_files ?? s.skipped,
+            failed: data.failed_files ?? s.failed,
+            errors: data.errors ?? [],
+            scanDuration: data.scan_duration_seconds ?? 0,
+            currentFile: "",
+          }));
+          queryClient.invalidateQueries({ queryKey: ["files"] });
+          break;
 
+        case "scan_error":
+          setState((s) => ({
+            ...s,
+            phase: "error",
+            errorMessage: data.detail || "Scan failed unexpectedly.",
+          }));
+          break;
+      }
+    } catch {}
+  }, [queryClient]);
+
+  const handleScan = useCallback(async () => {
+    const trimmedPath = folderPath.trim();
+    if (!trimmedPath) return;
+
+    setState({ ...initialState, phase: "scanning", currentFile: "Starting scan..." });
+
+    if (!accessToken) {
+      setState((s) => ({
+        ...s,
+        phase: "error",
+        errorMessage: "Session expired — please log in again.",
+      }));
+      return;
+    }
+
+    // Pre-refresh token via axios interceptor before opening SSE stream
+    try {
+      await api.get("/users/me");
+    } catch {
+      // If refresh fails, the interceptor will redirect to login
+    }
+    const freshToken = useAuthStore.getState().accessToken;
+    if (!freshToken) {
+      setState((s) => ({
+        ...s,
+        phase: "error",
+        errorMessage: "Session expired — please log in again.",
+      }));
+      return;
+    }
+
+    const params = new URLSearchParams({
+      folder_path: trimmedPath,
+      recursive: String(recursive),
+    });
     if (patterns.trim()) {
-      params.patterns = patterns.split(",").map((p) => p.trim()).filter(Boolean);
+      // scan-stream doesn't support patterns yet, but pass as query param for future use
     }
     if (ignorePatterns.trim()) {
-      params.ignore_patterns = ignorePatterns.split(",").map((p) => p.trim()).filter(Boolean);
+      // scan-stream doesn't support ignore_patterns yet, but pass as query param for future use
     }
 
-    scanMutation.mutate(params);
-  }, [folderPath, recursive, patterns, ignorePatterns, scanMutation]);
+    const abortController = new AbortController();
+    abortRef.current = abortController;
 
-  const isScanning = scanMutation.isPending;
+    try {
+      const response = await fetch(`/api/v1/files/scan-stream?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${freshToken}` },
+        signal: abortController.signal,
+      });
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          setState((s) => ({
+            ...s,
+            phase: "error",
+            errorMessage: "Session expired — please log in again.",
+          }));
+          return;
+        }
+        let detail = `Scan failed (HTTP ${response.status})`;
+        try {
+          const body = await response.json();
+          detail = body.detail || detail;
+        } catch {}
+        setState((s) => ({ ...s, phase: "error", errorMessage: detail }));
+        return;
+      }
+
+      const reader = response.body!.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        let currentEvent = "";
+        let currentData = "";
+
+        for (const line of lines) {
+          if (line.startsWith("event: ")) {
+            currentEvent = line.slice(7);
+          } else if (line.startsWith("data: ")) {
+            currentData = line.slice(6);
+          } else if (line === "" && currentEvent && currentData) {
+            handleSSEvent(currentEvent, currentData);
+            currentEvent = "";
+            currentData = "";
+          }
+        }
+      }
+    } catch (err: any) {
+      if (err.name === "AbortError") {
+        setState(initialState);
+      } else {
+        setState((s) => ({
+          ...s,
+          phase: "error",
+          errorMessage: err.message || "Network error — could not connect to scan endpoint.",
+        }));
+      }
+    } finally {
+      abortRef.current = null;
+    }
+  }, [folderPath, recursive, patterns, ignorePatterns, accessToken, handleSSEvent]);
+
+  const handleCancel = useCallback(() => {
+    abortRef.current?.abort();
+    setState(initialState);
+  }, []);
+
+  const isScanning = state.phase === "scanning";
+  const isComplete = state.phase === "complete";
+  const isError = state.phase === "error";
+  const isIdle = state.phase === "idle";
+
+  const progressPercent =
+    state.totalFound > 0 ? Math.min((state.processed / state.totalFound) * 100, 100) : 0;
 
   return (
     <div className="space-y-6">
@@ -116,24 +270,26 @@ export default function ScanPage() {
                   onChange={(e) => setFolderPath(e.target.value)}
                   className="pl-10"
                   disabled={isScanning}
+                  onKeyDown={(e) => e.key === "Enter" && !isScanning && folderPath.trim() && handleScan()}
                 />
               </div>
-              <Button
-                onClick={handleScan}
-                disabled={!folderPath.trim() || isScanning}
-              >
-                {isScanning ? (
-                  <>
-                    <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
-                    Scanning...
-                  </>
-                ) : (
-                  <>
-                    <Play className="mr-2 h-4 w-4" />
-                    Start Scan
-                  </>
-                )}
-              </Button>
+              {isIdle ? (
+                <Button
+                  onClick={handleScan}
+                  disabled={!folderPath.trim()}
+                >
+                  <Play className="mr-2 h-4 w-4" />
+                  Start Scan
+                </Button>
+              ) : isScanning ? (
+                <Button variant="destructive" onClick={handleCancel}>
+                  Cancel
+                </Button>
+              ) : (
+                <Button onClick={() => { setState(initialState); setFolderPath(""); }}>
+                  Scan Again
+                </Button>
+              )}
             </div>
           </div>
 
@@ -185,60 +341,60 @@ export default function ScanPage() {
         </CardContent>
       </Card>
 
-      {progress && (
+      {/* Progress section — shown during scan */}
+      {isScanning && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              {isScanning && (
-                <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-              )}
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
               Scan Progress
             </CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              <p className="text-sm">
-                {progress.data.message || progress.data.current_file || "Processing..."}
-              </p>
-              {progress.data.processed != null && progress.data.total_found != null && (
-                <div className="space-y-1">
-                  <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>{progress.data.processed} / {progress.data.total_found} files</span>
-                    <span>
-                      {progress.data.total_found > 0
-                        ? `${Math.round((progress.data.processed / progress.data.total_found) * 100)}%`
-                        : "0%"}
-                    </span>
-                  </div>
-                  <div className="h-2 rounded-full bg-muted overflow-hidden">
-                    <div
-                      className="h-full rounded-full bg-primary transition-all"
-                      style={{
-                        width: `${
-                          progress.data.total_found > 0
-                            ? (progress.data.processed / progress.data.total_found) * 100
-                            : 0
-                        }%`,
-                      }}
-                    />
-                  </div>
-                </div>
-              )}
-              {progress.data.new != null && (
-                <div className="flex gap-4 text-xs text-muted-foreground">
-                  <span className="text-emerald-600">{progress.data.new} new</span>
-                  <span>{progress.data.skipped ?? 0} skipped</span>
-                  {progress.data.failed != null && progress.data.failed > 0 && (
-                    <span className="text-red-600">{progress.data.failed} failed</span>
-                  )}
+          <CardContent className="space-y-3">
+            <Progress value={progressPercent} />
+
+            <div className="grid grid-cols-2 gap-2 text-sm">
+              <div className="flex items-center gap-1.5">
+                <span className="text-muted-foreground">Found:</span>
+                <span className="font-mono font-medium">{state.totalFound}</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-muted-foreground">Processed:</span>
+                <span className="font-mono font-medium">{state.processed}</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-green-600 dark:text-green-400">New:</span>
+                <span className="font-mono font-medium text-green-600 dark:text-green-400">
+                  {state.newFiles}
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-amber-600 dark:text-amber-400">Skipped:</span>
+                <span className="font-mono font-medium text-amber-600 dark:text-amber-400">
+                  {state.skipped}
+                </span>
+              </div>
+              {state.failed > 0 && (
+                <div className="flex items-center gap-1.5">
+                  <span className="text-destructive">Failed:</span>
+                  <span className="font-mono font-medium text-destructive">
+                    {state.failed}
+                  </span>
                 </div>
               )}
             </div>
+
+            {state.currentFile && (
+              <p className="truncate text-xs text-muted-foreground" title={state.currentFile}>
+                {state.currentFile}
+              </p>
+            )}
           </CardContent>
         </Card>
       )}
 
-      {result && (
+      {/* Results — shown after scan completes */}
+      {isComplete && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -246,45 +402,45 @@ export default function ScanPage() {
               Scan Complete
             </CardTitle>
             <CardDescription>
-              Scanned {result.folder_path} in {result.scan_duration_seconds.toFixed(1)}s
+              Scanned {folderPath.trim()} in {state.scanDuration.toFixed(1)}s
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
               <div className="rounded-lg border p-3 text-center">
-                <p className="text-2xl font-bold">{result.total_files_found}</p>
+                <p className="text-2xl font-bold">{state.totalFound}</p>
                 <p className="text-xs text-muted-foreground">Files Found</p>
               </div>
               <div className="rounded-lg border p-3 text-center">
-                <p className="text-2xl font-bold">{result.files_scanned}</p>
+                <p className="text-2xl font-bold">{state.processed}</p>
                 <p className="text-xs text-muted-foreground">Scanned</p>
               </div>
               <div className="rounded-lg border p-3 text-center">
-                <p className="text-2xl font-bold text-emerald-600">{result.new_files}</p>
+                <p className="text-2xl font-bold text-emerald-600">{state.newFiles}</p>
                 <p className="text-xs text-muted-foreground">New Files</p>
               </div>
               <div className="rounded-lg border p-3 text-center">
-                <p className="text-2xl font-bold">{result.skipped_files}</p>
+                <p className="text-2xl font-bold">{state.skipped}</p>
                 <p className="text-xs text-muted-foreground">Skipped</p>
               </div>
               <div className="rounded-lg border p-3 text-center">
-                <p className="text-2xl font-bold text-red-600">{result.failed_files}</p>
+                <p className="text-2xl font-bold text-red-600">{state.failed}</p>
                 <p className="text-xs text-muted-foreground">Failed</p>
               </div>
             </div>
 
-            {result.errors.length > 0 && (
+            {state.errors.length > 0 && (
               <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-900/20">
                 <div className="flex items-center gap-2 text-sm font-medium text-amber-800 dark:text-amber-200">
                   <AlertTriangle className="h-4 w-4" />
-                  Errors ({result.errors.length})
+                  Errors ({state.errors.length})
                 </div>
                 <ul className="mt-2 space-y-1 text-xs text-amber-700 dark:text-amber-300">
-                  {result.errors.slice(0, 5).map((error, i) => (
+                  {state.errors.slice(0, 5).map((error, i) => (
                     <li key={i}>• {error}</li>
                   ))}
-                  {result.errors.length > 5 && (
-                    <li>• ...and {result.errors.length - 5} more</li>
+                  {state.errors.length > 5 && (
+                    <li>• ...and {state.errors.length - 5} more</li>
                   )}
                 </ul>
               </div>
@@ -293,15 +449,15 @@ export default function ScanPage() {
             <div className="flex items-center gap-4 text-sm text-muted-foreground">
               <span>
                 <Clock className="mr-1 inline h-3.5 w-3.5" />
-                Scanned at: {formatDateTime(result.scanned_at)}
+                Duration: {state.scanDuration.toFixed(1)}s
               </span>
-              {result.file_ids.length > 0 && (
+              {state.newFiles > 0 && (
                 <Button
                   variant="link"
                   className="h-auto p-0"
                   onClick={() => queryClient.invalidateQueries({ queryKey: ["files"] })}
                 >
-                  View {result.file_ids.length} files
+                  View {state.newFiles} new files
                   <ArrowRight className="ml-1 h-3.5 w-3.5" />
                 </Button>
               )}
@@ -310,14 +466,15 @@ export default function ScanPage() {
         </Card>
       )}
 
-      {scanMutation.isError && (
+      {/* Error state */}
+      {isError && (
         <Card className="border-destructive">
           <CardContent className="flex items-center gap-3 py-4">
-            <XCircle className="h-5 w-5 text-destructive" />
+            <AlertCircle className="h-5 w-5 text-destructive" />
             <div>
               <p className="text-sm font-medium text-destructive">Scan failed</p>
               <p className="text-xs text-muted-foreground">
-                {scanMutation.error?.message || "An unexpected error occurred. Please try again."}
+                {state.errorMessage}
               </p>
             </div>
           </CardContent>
