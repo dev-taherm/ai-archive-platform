@@ -258,7 +258,7 @@ class TestGenerateEmbeddings:
         assert first.source_type == "document"
         assert first.source_id == doc_id
         assert first.text == "Hello world text for embedding."
-        assert len(first.vector) == 1536
+        assert len(first.vector) == 384
         assert first.chunk_index == 0
 
     def test_embeddings_stored_in_repository(self, ai_use_cases: AIUseCases) -> None:

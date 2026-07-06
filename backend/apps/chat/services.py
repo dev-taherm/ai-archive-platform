@@ -56,7 +56,13 @@ def _get_hybrid_search():
 
 
 def _get_embedding_provider():
-    """Get the default embedding provider for query embedding."""
+    """Get the default embedding provider for query embedding.
+
+    Priority:
+    1. DB ProviderConfig with embedding capability
+    2. Local fastembed model (granite-embedding-97m-multilingual-r2)
+    3. None (caller handles gracefully)
+    """
     try:
         from apps.ai.models import ProviderConfig
         from core.infrastructure.services.embedding_service import (
@@ -71,14 +77,17 @@ def _get_embedding_provider():
             .first()
         )
 
-        if not config:
-            return None
+        if config:
+            return LangChainEmbeddingProvider(
+                model_name=config.model_name,
+                provider=config.provider_type,
+                api_key=config.api_key or None,
+            )
 
-        return LangChainEmbeddingProvider(
-            model_name=config.model_name,
-            provider=config.provider_type,
-            api_key=config.api_key or None,
-        )
+        # Fallback to local multilingual embedding model
+        from core.infrastructure.services.embedding_service import FastEmbedProvider
+
+        return FastEmbedProvider()
     except Exception:
         logger.debug("Could not load embedding provider")
         return None

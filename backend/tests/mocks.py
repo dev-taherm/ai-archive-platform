@@ -209,13 +209,13 @@ class MockLLMProvider(LLMProvider):
 class MockEmbeddingProvider(EmbeddingProvider):
     @property
     def dimension(self) -> int:
-        return 1536
+        return 384
 
     def embed_text(self, text: str) -> list[float]:
-        return [0.1] * 1536
+        return [0.1] * 384
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
-        return [[0.1] * 1536 for _ in texts]
+        return [[0.1] * 384 for _ in texts]
 
 
 class MockStorageBackend(StorageBackend):

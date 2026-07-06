@@ -59,7 +59,7 @@ class LangChainEmbeddingProvider(EmbeddingProvider):
             return self._fallback_embeddings
         try:
             self._fallback_embeddings = self._create_embeddings("fastembed")
-            logger.info("FastEmbed fallback loaded (BAAI/bge-small-en-v1.5)")
+            logger.info("FastEmbed fallback loaded (ibm-granite/granite-embedding-97m-multilingual-r2)")
         except Exception as e:
             logger.error("FastEmbed fallback also failed: %s", e)
             raise
@@ -171,21 +171,34 @@ class LangChainEmbeddingProvider(EmbeddingProvider):
 class FastEmbedProvider:
     """Local embedding provider using fastembed (no API key needed).
 
-    Uses BAAI/bge-small-en-v1.5 — 384-dim model that runs fully offline.
+    Uses ibm-granite/granite-embedding-97m-multilingual-r2 — 384-dim model
+    that runs fully offline with support for 200+ languages including Arabic.
     Compatible with LangChain's embed_query/embed_documents interface.
     """
 
-    def __init__(self, model_name: str = "BAAI/bge-small-en-v1.5") -> None:
+    # Model constants
+    DEFAULT_MODEL = "ibm-granite/granite-embedding-97m-multilingual-r2"
+    DEFAULT_DIM = 384
+
+    def __init__(self, model_name: str | None = None) -> None:
         from fastembed import TextEmbedding
 
-        self._model = TextEmbedding(model_name)
-        self._dim: int | None = None
+        self._model_name = model_name or self.DEFAULT_MODEL
+        self._dim = self.DEFAULT_DIM
+
+        # granite is not in fastembed's built-in list; register it on first use
+        if self._model_name not in TextEmbedding._models:
+            TextEmbedding.add_custom_model(
+                model=self._model_name,
+                dim=self.DEFAULT_DIM,
+                model_file="onnx/model.onnx",
+            )
+
+        self._model = TextEmbedding(self._model_name)
 
     def embed_query(self, text: str) -> list[float]:
         """Embed a single query text."""
         embeddings = list(self._model.embed([text]))
-        if self._dim is None:
-            self._dim = len(embeddings[0])
         return embeddings[0].tolist()
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
@@ -193,6 +206,4 @@ class FastEmbedProvider:
         if not texts:
             return []
         embeddings = list(self._model.embed(texts))
-        if self._dim is None:
-            self._dim = len(embeddings[0])
         return [e.tolist() for e in embeddings]

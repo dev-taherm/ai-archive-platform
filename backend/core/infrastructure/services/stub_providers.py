@@ -59,7 +59,7 @@ class StubEmbeddingProvider(EmbeddingProvider):
 
     @property
     def dimension(self) -> int:
-        return 1536
+        return 384
 
     def embed_text(self, text: str) -> list[float]:
         logger.warning("Using stub embedding provider - returns zero vector")

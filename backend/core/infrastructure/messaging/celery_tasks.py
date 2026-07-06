@@ -225,7 +225,7 @@ def generate_embedding_task(
 ) -> dict[str, Any]:
     """Generate an embedding vector for a document chunk.
 
-    Uses the configured embedding provider (e.g., OpenAI text-embedding-3-small)
+    Uses the configured embedding provider (e.g., granite-embedding-97m-multilingual-r2)
     and stores the result in the embedding table with pgvector.
     """
     import asyncio

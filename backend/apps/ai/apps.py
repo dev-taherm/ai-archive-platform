@@ -77,7 +77,7 @@ class AIConfig(AppConfig):
                 )
 
                 embedding_provider = LangChainEmbeddingProvider(
-                    model_name=default_emb.model_name or "text-embedding-3-small",
+                    model_name=default_emb.model_name or "ibm-granite/granite-embedding-97m-multilingual-r2",
                     provider=default_emb.provider_type,
                 )
         except Exception as e:
@@ -87,7 +87,21 @@ class AIConfig(AppConfig):
         if llm_provider is None:
             llm_provider = StubLLMProvider()
         if embedding_provider is None:
-            embedding_provider = StubEmbeddingProvider()
+            # Default to local multilingual embedding model (no API key needed)
+            from core.infrastructure.services.embedding_service import FastEmbedProvider
+
+            try:
+                embedding_provider = FastEmbedProvider()
+                logger.info(
+                    "Using default local embedding model: %s",
+                    FastEmbedProvider.DEFAULT_MODEL,
+                )
+            except Exception as e:
+                logger.warning(
+                    "Failed to load local embedding model, falling back to stub: %s",
+                    e,
+                )
+                embedding_provider = StubEmbeddingProvider()
 
         self._llm_provider = llm_provider
         self._embedding_provider = embedding_provider
