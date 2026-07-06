@@ -103,10 +103,15 @@ class LangChainEmbeddingProvider(EmbeddingProvider):
                 base_url = self._base_url or os.environ.get(
                     "OLLAMA_BASE_URL", "http://localhost:11434"
                 )
-                return OllamaEmbeddings(
-                    model=self._model_name,
-                    base_url=base_url,
-                )
+                kwargs: dict[str, Any] = {
+                    "model": self._model_name,
+                    "base_url": base_url,
+                }
+                if self._api_key:
+                    kwargs["client_kwargs"] = {
+                        "headers": {"Authorization": f"Bearer {self._api_key}"}
+                    }
+                return OllamaEmbeddings(**kwargs)
             except ImportError:
                 raise ImportError(
                     "langchain-ollama is required: pip install langchain-ollama"

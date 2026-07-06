@@ -18,6 +18,7 @@ from interfaces.api.v1.views.ocr_views import OcrJobViewSet
 from interfaces.api.v1.views.report_views import ReportView
 from interfaces.api.v1.views.provider_views import ProviderConfigViewSet
 from apps.apikeys.views import ApiKeyViewSet
+from apps.agents.views import AgentViewSet
 
 router = DefaultRouter()
 router.trailing_slash = ""
@@ -34,6 +35,7 @@ router.register(r"reports", ReportView, basename="report")
 router.register(r"search", SearchView, basename="search")
 router.register(r"providers", ProviderConfigViewSet, basename="provider")
 router.register(r"api-keys", ApiKeyViewSet, basename="api-key")
+router.register(r"agents", AgentViewSet, basename="agent")
 
 # Custom URL patterns for non-standard REST paths the frontend expects
 urlpatterns = [

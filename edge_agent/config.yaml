@@ -1,0 +1,41 @@
+agent_name: edge-agent
+agent_id: f700fa79-ab2c-4970-8903-82a4ead75b5a
+data_dir: ~/.edge-agent
+log_level: INFO
+server:
+  url: http://localhost:8000
+  api_key: ak_2a23347299b9f643086e6052b9a5850d6a54d3bae74d9bd61a545a8001448a81
+  jwt_token: ''
+folders: null
+scanner:
+  ignore_patterns:
+  - .git
+  - .svn
+  - __pycache__
+  - node_modules
+  - .DS_Store
+  - Thumbs.db
+  - '*.pyc'
+  - '*.pyo'
+  - '*.swp'
+  max_file_size_mb: 100
+ocr:
+  lang: en
+  use_gpu: false
+  timeout_seconds: 120
+parser:
+  backend: pipeline
+  effort: medium
+  language: en
+  formula_enable: true
+  table_enable: true
+sync:
+  interval_minutes: 30
+  push_original_files: false
+  batch_size: 50
+  retry_attempts: 3
+  retry_delay_seconds: 60
+watcher:
+  enabled: true
+  recursive: true
+  debounce_seconds: 2.0

@@ -15,6 +15,11 @@ class FileRecord(models.Model):
         COMPLETED = "completed", "Completed"
         FAILED = "failed", "Failed"
 
+    class Source(models.TextChoices):
+        UPLOADED = "uploaded", "Uploaded"
+        API = "api", "API"
+        AGENT = "agent", "Agent Synced"
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     path = models.TextField()
     mime_type = models.CharField(max_length=255)
@@ -23,6 +28,18 @@ class FileRecord(models.Model):
         max_length=20,
         choices=Status.choices,
         default=Status.PENDING,
+    )
+    source = models.CharField(
+        max_length=20,
+        choices=Source.choices,
+        default=Source.UPLOADED,
+    )
+    agent = models.ForeignKey(
+        "agents.Agent",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="files",
     )
     content_hash = models.CharField(max_length=128, blank=True, default="")
     checksum = models.CharField(max_length=128, blank=True, default="")

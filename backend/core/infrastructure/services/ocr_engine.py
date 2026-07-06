@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -112,7 +113,6 @@ class PaddleOCREngine(OCRProvider):
 
     async def _extract_with_paddle_subprocess(self, content: bytes, content_type: str) -> str:
         """Extract text using PaddleOCR in a subprocess for OOM isolation."""
-        import asyncio
 
         def _run() -> str:
             suffix = _content_type_to_suffix(content_type)
@@ -126,8 +126,7 @@ class PaddleOCREngine(OCRProvider):
                 logger.exception("Subprocess OCR failed")
                 return ""
 
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, _run)
+        return await asyncio.to_thread(_run)
 
     async def _extract_with_tesseract(
         self,
@@ -136,7 +135,6 @@ class PaddleOCREngine(OCRProvider):
         language_hint: Language | None = None,
     ) -> str:
         """Extract text using Tesseract as fallback."""
-        import asyncio
 
         def _run_tesseract() -> str:
             import pytesseract
@@ -163,8 +161,7 @@ class PaddleOCREngine(OCRProvider):
                 if tmp_path and os.path.exists(tmp_path):
                     os.unlink(tmp_path)
 
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, _run_tesseract)
+        return await asyncio.to_thread(_run_tesseract)
 
     def _ocr_pdf_with_tesseract(
         self, pdf_content: bytes, language_hint: Language | None = None

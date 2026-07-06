@@ -51,6 +51,7 @@ INSTALLED_APPS: list[str] = [
     "apps.dashboard.apps.DashboardConfig",
     "apps.chat.apps.ChatConfig",
     "apps.apikeys.apps.ApiKeysConfig",
+    "apps.agents.apps.AgentsConfig",
 ]
 
 MIDDLEWARE: list[str] = [
@@ -150,6 +151,7 @@ DEFAULT_AUTO_FIELD: str = "django.db.models.BigAutoField"
 # ---------------------------------------------------------------------------
 REST_FRAMEWORK: dict[str, Any] = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
+        "interfaces.api.v1.authentication.ApiKeyAuthentication",
         "rest_framework_simplejwt.authentication.JWTAuthentication",
     ],
     "DEFAULT_PERMISSION_CLASSES": [
@@ -245,6 +247,7 @@ CORS_ALLOW_HEADERS: list[str] = [
     "user-agent",
     "x-csrftoken",
     "x-requested-with",
+    "x-api-key",
 ]
 
 # ---------------------------------------------------------------------------

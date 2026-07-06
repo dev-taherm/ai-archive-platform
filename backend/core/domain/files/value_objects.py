@@ -80,7 +80,9 @@ class MimeType:
     value: str
 
     def __post_init__(self) -> None:
-        if not self.value or "/" not in self.value:
+        if not self.value:
+            object.__setattr__(self, "value", "application/octet-stream")
+        elif "/" not in self.value:
             raise ValueError(f"Invalid MIME type: {self.value}")
 
     @property

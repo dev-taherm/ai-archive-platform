@@ -297,10 +297,7 @@ class DocumentProcessingPipeline:
 
     async def _read_content(self, file_record: FileRecord) -> Any:
         """Read document content using DocumentReader (sync operation)."""
-        return await asyncio.get_event_loop().run_in_executor(
-            None,
-            lambda: self._reader.read(file_record.path.raw),
-        )
+        return await asyncio.to_thread(self._reader.read, file_record.path.raw)
 
     def _needs_ocr(self, file_record: FileRecord, extraction: Any) -> bool:
         """Determine if OCR is needed for this file."""
@@ -325,10 +322,7 @@ class DocumentProcessingPipeline:
 
     async def _run_ocr(self, file_record: FileRecord) -> str:
         """Run OCR on the file content with retry."""
-        content = await asyncio.get_event_loop().run_in_executor(
-            None,
-            lambda: Path(file_record.path.raw).read_bytes(),
-        )
+        content = await asyncio.to_thread(Path(file_record.path.raw).read_bytes)
 
         mime_type = file_record.mime_type.value
 
@@ -471,10 +465,9 @@ class DocumentProcessingPipeline:
 
         chunk_texts = [c["text"] for c in chunks]
 
-        # Generate embeddings (sync, run in executor)
-        embeddings = await asyncio.get_event_loop().run_in_executor(
-            None,
-            lambda: self._embeddings.embed_documents(chunk_texts),
+        # Generate embeddings (sync, run in thread)
+        embeddings = await asyncio.to_thread(
+            self._embeddings.embed_documents, chunk_texts
         )
 
         # Store embeddings
@@ -589,10 +582,8 @@ class DocumentProcessingPipeline:
         raise last_error  # type: ignore[misc]
 
     async def _sync_to_async(self, fn, *args, **kwargs):
-        """Run a synchronous function in an executor."""
-        return await asyncio.get_event_loop().run_in_executor(
-            None, lambda: fn(*args, **kwargs)
-        )
+        """Run a synchronous function in a thread."""
+        return await asyncio.to_thread(fn, *args, **kwargs)
 
 
 def run_document_pipeline(
@@ -610,7 +601,7 @@ def run_document_pipeline(
     from core.infrastructure.db.repositories.embedding_repository import PgvectorEmbeddingRepository
     from core.infrastructure.db.repositories.file_repository import DjangoFileRepository
     from core.infrastructure.services.document_reader import DocumentReader
-    from core.infrastructure.services.embedding_service import LangChainEmbeddingProvider
+    from core.infrastructure.services.embedding_service import FastEmbedProvider, LangChainEmbeddingProvider
     from core.infrastructure.services.llm_factory import LLMFactory
     from core.infrastructure.services.ocr_engine import PaddleOCREngine
 
@@ -655,7 +646,7 @@ def run_document_pipeline(
             base_url=emb_config.base_url or None,
         )
     else:
-        embeddings = LangChainEmbeddingProvider()
+        embeddings = FastEmbedProvider()
 
     # ---- Instantiate and run the pipeline ----
     pipeline = DocumentProcessingPipeline(
