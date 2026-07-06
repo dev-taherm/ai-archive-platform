@@ -139,16 +139,47 @@ class DocumentProcessingPipeline:
             # Step 4: Run OCR if needed
             parsed_text = extraction.text
             if self._needs_ocr(file_record, extraction):
+                from datetime import timezone as _tz, datetime as _dt
+
+                ext = Path(file_record.path.raw).suffix.lower()
+                source_type = "image" if ext in IMAGE_EXTENSIONS else "pdf"
+
+                def _create_ocr_job():
+                    from apps.ocr.models import OCRJob
+                    return OCRJob.objects.create(
+                        file_id=file_record.id,
+                        document_id=document.id,
+                        status="processing",
+                        source_type=source_type,
+                    )
+                ocr_job = await self._sync_to_async(_create_ocr_job)
+                t_ocr = time.time()
+
                 try:
                     ocr_text = await self._run_ocr(file_record)
+                    ocr_ms = (time.time() - t_ocr) * 1000
+
+                    def _save_ocr_job(job, text, ms, status, error=""):
+                        job.extracted_text = (text or "")[:10000]
+                        job.processing_time_ms = ms
+                        job.completed_at = _dt.now(_tz.utc)
+                        job.status = status
+                        if error:
+                            job.error_message = error
+                        job.save()
+
                     if ocr_text and len(ocr_text.strip()) > len(parsed_text.strip()):
                         parsed_text = ocr_text
+                        await self._sync_to_async(_save_ocr_job, ocr_job, ocr_text, ocr_ms, "completed")
                         result.processing_log.append(
                             f"OCR: used OCR text ({len(ocr_text)} chars)"
                         )
                     else:
+                        await self._sync_to_async(_save_ocr_job, ocr_job, ocr_text, ocr_ms, "completed")
                         result.processing_log.append("OCR: skipped — parsed text is richer")
                 except Exception as ocr_err:
+                    ocr_ms = (time.time() - t_ocr) * 1000
+                    await self._sync_to_async(_save_ocr_job, ocr_job, "", ocr_ms, "failed", str(ocr_err))
                     logger.warning("OCR failed for file %s, continuing without OCR: %s", file_id, ocr_err)
                     result.processing_log.append(f"OCR: failed ({ocr_err}), continuing without OCR")
             else:

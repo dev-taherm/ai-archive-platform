@@ -14,6 +14,7 @@ import {
   Loader2,
   Plus,
   ChevronRight,
+  X,
 } from "lucide-react";
 import api from "@/lib/api";
 import { formatDateTime } from "@/lib/utils";
@@ -65,16 +66,71 @@ const stepStatusIcon: Record<string, typeof Clock> = {
   skipped: Clock,
 };
 
+const STEP_TYPES = [
+  { value: "scan", label: "Scan Folder" },
+  { value: "ocr", label: "OCR" },
+  { value: "classify", label: "Classify" },
+  { value: "summarize", label: "Summarize" },
+  { value: "extract_metadata", label: "Extract Metadata" },
+  { value: "embed", label: "Generate Embeddings" },
+  { value: "index", label: "Index to Vector Store" },
+  { value: "notify", label: "Notify" },
+  { value: "store", label: "Store Result" },
+];
+
+const TRIGGER_TYPES = [
+  { value: "manual", label: "Manual" },
+  { value: "on_upload", label: "On Upload" },
+  { value: "scheduled", label: "Scheduled" },
+];
+
+interface CreateFormState {
+  name: string;
+  description: string;
+  trigger_type: string;
+  steps: { type: string; name: string; config: Record<string, unknown> }[];
+}
+
+const emptyCreateForm: CreateFormState = {
+  name: "",
+  description: "",
+  trigger_type: "manual",
+  steps: [],
+};
+
 export default function WorkflowsPage() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [expandedWorkflow, setExpandedWorkflow] = useState<string | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
+  const [form, setForm] = useState<CreateFormState>(emptyCreateForm);
 
   const { data: workflows = [], isLoading } = useQuery<Workflow[]>({
     queryKey: ["workflows"],
     queryFn: async () => {
       const res = await api.get("/workflows");
       return Array.isArray(res.data) ? res.data : res.data.results || [];
+    },
+  });
+
+  const createMutation = useMutation({
+    mutationFn: async (data: CreateFormState) => {
+      const payload: Record<string, unknown> = {
+        name: data.name,
+        description: data.description,
+        trigger_type: data.trigger_type,
+        steps: data.steps.map((s, i) => ({
+          ...s,
+          name: s.name || `Step ${i + 1}`,
+        })),
+      };
+      const res = await api.post("/workflows", payload);
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["workflows"] });
+      setShowCreate(false);
+      setForm(emptyCreateForm);
     },
   });
 
@@ -104,6 +160,34 @@ export default function WorkflowsPage() {
       queryClient.invalidateQueries({ queryKey: ["workflows"] });
     },
   });
+
+  const addStep = () => {
+    setForm((prev) => ({
+      ...prev,
+      steps: [...prev.steps, { type: "classify", name: "", config: {} }],
+    }));
+  };
+
+  const removeStep = (index: number) => {
+    setForm((prev) => ({
+      ...prev,
+      steps: prev.steps.filter((_, i) => i !== index),
+    }));
+  };
+
+  const updateStep = (index: number, field: string, value: string) => {
+    setForm((prev) => ({
+      ...prev,
+      steps: prev.steps.map((s, i) =>
+        i === index ? { ...s, [field]: value } : s
+      ),
+    }));
+  };
+
+  const handleCreate = () => {
+    if (!form.name.trim()) return;
+    createMutation.mutate(form);
+  };
 
   const filtered = workflows.filter(
     (w) =>
@@ -135,12 +219,146 @@ export default function WorkflowsPage() {
             <RefreshCw className="mr-2 h-4 w-4" />
             Refresh
           </Button>
-          <Button>
+          <Button onClick={() => setShowCreate(!showCreate)}>
             <Plus className="mr-2 h-4 w-4" />
             New Workflow
           </Button>
         </div>
       </div>
+
+      {showCreate && (
+        <Card className="border-dashed">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle>Create Workflow</CardTitle>
+                <CardDescription>Define a new automation pipeline</CardDescription>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setShowCreate(false);
+                  setForm(emptyCreateForm);
+                }}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Name *</label>
+                <Input
+                  placeholder="e.g., Document Processing Pipeline"
+                  value={form.name}
+                  onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Description</label>
+                <Input
+                  placeholder="What this workflow does"
+                  value={form.description}
+                  onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Trigger</label>
+              <div className="flex gap-2">
+                {TRIGGER_TYPES.map((t) => (
+                  <Button
+                    key={t.value}
+                    variant={form.trigger_type === t.value ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setForm((p) => ({ ...p, trigger_type: t.value }))}
+                  >
+                    {t.label}
+                  </Button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-medium">Steps</label>
+                <Button variant="outline" size="sm" onClick={addStep}>
+                  <Plus className="mr-1 h-3 w-3" />
+                  Add Step
+                </Button>
+              </div>
+              {form.steps.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-2">No steps added yet. Click "Add Step" to begin.</p>
+              ) : (
+                <div className="space-y-2">
+                  {form.steps.map((step, i) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground w-6">#{i + 1}</span>
+                      <select
+                        value={step.type}
+                        onChange={(e) => updateStep(i, "type", e.target.value)}
+                        className="flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      >
+                        {STEP_TYPES.map((st) => (
+                          <option key={st.value} value={st.value}>
+                            {st.label}
+                          </option>
+                        ))}
+                      </select>
+                      <Input
+                        placeholder={`Step ${i + 1} name`}
+                        value={step.name}
+                        onChange={(e) => updateStep(i, "name", e.target.value)}
+                        className="flex-1"
+                      />
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => removeStep(i)}
+                        className="text-destructive"
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowCreate(false);
+                  setForm(emptyCreateForm);
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleCreate}
+                disabled={!form.name.trim() || createMutation.isPending}
+              >
+                {createMutation.isPending ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Plus className="mr-2 h-4 w-4" />
+                )}
+                Create Workflow
+              </Button>
+            </div>
+
+            {createMutation.isError && (
+              <p className="text-sm text-destructive">
+                Failed to create workflow. Please try again.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid gap-4 md:grid-cols-4">
         <Card>
