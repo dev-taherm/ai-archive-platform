@@ -35,6 +35,7 @@ langgraph>=0.2
 openai>=1.50
 google-generativeai>=0.8
 fastembed>=0.4
+aiohttp>=3.9
 
 # Document processing
 pymupdf>=1.24

@@ -187,11 +187,28 @@ class FastEmbedProvider:
         self._dim = self.DEFAULT_DIM
 
         # granite is not in fastembed's built-in list; register it on first use
-        if self._model_name not in TextEmbedding._models:
-            TextEmbedding.add_custom_model(
-                model=self._model_name,
-                dim=self.DEFAULT_DIM,
-                model_file="onnx/model.onnx",
+        try:
+            TextEmbedding(self._model_name)
+        except ValueError:
+            from fastembed.text.text_embedding import (
+                CustomTextEmbedding,
+                DenseModelDescription,
+                ModelSource,
+                PoolingType,
+            )
+
+            CustomTextEmbedding.add_model(
+                DenseModelDescription(
+                    model=self._model_name,
+                    sources=ModelSource(hf=self._model_name),
+                    dim=self.DEFAULT_DIM,
+                    model_file="onnx/model.onnx",
+                    description="IBM Granite multilingual embedding model",
+                    license="Apache-2.0",
+                    size_in_GB=0.195,
+                ),
+                pooling=PoolingType.MEAN,
+                normalization=True,
             )
 
         self._model = TextEmbedding(self._model_name)
