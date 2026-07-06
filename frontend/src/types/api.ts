@@ -132,6 +132,9 @@ export interface DocumentMetadata {
 export interface Document {
   id: string;
   file_id: string;
+  file_name: string;
+  file_path: string;
+  file_mime_type: string;
   doc_type: string;
   processing_status: "queued" | "extracting" | "classifying" | "indexing" | "completed" | "failed" | "retrying";
   title: string;

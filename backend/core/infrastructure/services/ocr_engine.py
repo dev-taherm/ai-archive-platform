@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import json
 import logging
 import os
+import subprocess
+import sys
 import tempfile
 from typing import Any
 
@@ -10,42 +13,46 @@ from core.domain.documents.value_objects import Confidence, Language
 
 logger = logging.getLogger(__name__)
 
+# Subprocess OCR timeout (seconds) — PaddleOCR can hang on large images
+_OCR_TIMEOUT = 120
+
 
 class PaddleOCREngine(OCRProvider):
     """PaddleOCR-based implementation of OCRProvider ABC.
 
     Uses PaddleOCR for text extraction from images and scanned PDFs.
+    OCR runs in a subprocess to isolate OOM crashes from the main Django process.
     Falls back to Tesseract when PaddleOCR is not installed.
     """
 
     def __init__(self, *, lang: str = "en", use_gpu: bool = False) -> None:
         self._lang = lang
         self._use_gpu = use_gpu
-        self._engine: Any = None
         self._tesseract_available: bool | None = None
 
-    def _get_engine(self) -> Any:
-        """Lazy-initialise the PaddleOCR engine."""
-        if self._engine is not None:
-            return self._engine
+    def _run_ocr_subprocess(self, temp_path: str) -> str:
+        """Run PaddleOCR in a subprocess to isolate OOM crashes."""
+        worker_script = os.path.join(os.path.dirname(__file__), "ocr_worker.py")
         try:
-            from paddleocr import PaddleOCR
-
-            self._engine = PaddleOCR(
-                lang=self._lang,
+            proc = subprocess.run(
+                [sys.executable, worker_script, temp_path, self._lang],
+                capture_output=True,
+                text=True,
+                timeout=_OCR_TIMEOUT,
             )
-            logger.info(
-                "PaddleOCR engine initialised (lang=%s, gpu=%s)",
-                self._lang,
-                self._use_gpu,
-            )
-        except ImportError:
-            logger.warning(
-                "PaddleOCR not installed — falling back to Tesseract. "
-                "Install with: pip install paddleocr paddlepaddle"
-            )
-            self._engine = None
-        return self._engine
+            if proc.returncode != 0:
+                logger.warning("OCR worker exited with code %d: %s", proc.returncode, proc.stderr[:500])
+                return ""
+            result = json.loads(proc.stdout.strip())
+            if result.get("error"):
+                logger.warning("OCR worker error: %s", result["error"])
+            return result.get("text", "")
+        except subprocess.TimeoutExpired:
+            logger.warning("OCR worker timed out after %ds", _OCR_TIMEOUT)
+            return ""
+        except (json.JSONDecodeError, OSError) as e:
+            logger.warning("OCR worker failed: %s", e)
+            return ""
 
     def _get_tesseract_lang(self, language_hint: Language | None = None) -> str:
         """Map Language enum to Tesseract language code."""
@@ -91,52 +98,36 @@ class PaddleOCREngine(OCRProvider):
         content_type: str,
         language_hint: Language | None = None,
     ) -> str:
-        # Try PaddleOCR first
-        engine = self._get_engine()
-        if engine is not None:
-            return await self._extract_with_paddle(content, content_type)
+        # Try PaddleOCR in subprocess first
+        text = await self._extract_with_paddle_subprocess(content, content_type)
+        if text and text.strip():
+            return text
 
-        # Fallback to Tesseract
+        # Fallback to Tesseract if PaddleOCR failed or returned empty
         if self._check_tesseract():
-            return await self._extract_with_tesseract(
-                content, content_type, language_hint=language_hint
-            )
+            logger.info("PaddleOCR returned empty, falling back to Tesseract")
+            return await self._extract_with_tesseract(content, content_type, language_hint)
 
-        logger.warning("No OCR engine available")
-        return ""
+        return text
 
-    async def _extract_with_paddle(self, content: bytes, content_type: str) -> str:
-        """Extract text using PaddleOCR."""
+    async def _extract_with_paddle_subprocess(self, content: bytes, content_type: str) -> str:
+        """Extract text using PaddleOCR in a subprocess for OOM isolation."""
         import asyncio
 
-        def _run_ocr() -> str:
+        def _run() -> str:
             suffix = _content_type_to_suffix(content_type)
             tmp_path = None
             try:
                 with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
                     tmp.write(content)
                     tmp_path = tmp.name
-
-                result = self._engine.ocr(tmp_path, cls=True)
-                if not result or not result[0]:
-                    return ""
-
-                lines = []
-                for line in result[0]:
-                    if line and len(line) >= 2:
-                        text = line[1][0]
-                        if text and text.strip():
-                            lines.append(text.strip())
-                return "\n".join(lines)
+                return self._run_ocr_subprocess(tmp_path)
             except Exception:
-                logger.exception("PaddleOCR extraction failed")
+                logger.exception("Subprocess OCR failed")
                 return ""
-            finally:
-                if tmp_path and os.path.exists(tmp_path):
-                    os.unlink(tmp_path)
 
         loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, _run_ocr)
+        return await loop.run_in_executor(None, _run)
 
     async def _extract_with_tesseract(
         self,

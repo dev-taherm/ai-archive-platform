@@ -142,7 +142,7 @@ class FileRecordViewSet(viewsets.GenericViewSet):
 
         try:
             file_record = self._file_service.get_file(file_id)
-            file_path = file_record.path
+            file_path = str(file_record.path)
 
             if not file_path or not os.path.exists(file_path):
                 return Response(

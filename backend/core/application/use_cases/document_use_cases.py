@@ -223,6 +223,12 @@ class DocumentUseCases:
             fields=fields,
         )
 
+        def _safe_int(val, default=0):
+            try:
+                return int(val) if val else default
+            except (ValueError, TypeError):
+                return default
+
         return DocumentMetadataDTO(
             title=extracted.get("title", document.metadata.title),
             author=extracted.get("author", document.metadata.author),
@@ -230,9 +236,9 @@ class DocumentUseCases:
             keywords=tuple(extracted.get("keywords", list(document.metadata.keywords))),
             creation_date=extracted.get("creation_date", document.metadata.creation_date),
             modification_date=extracted.get("modification_date", document.metadata.modification_date),
-            page_count=int(extracted.get("page_count", document.metadata.page_count)),
-            word_count=int(extracted.get("word_count", document.word_count)),
-            char_count=int(extracted.get("char_count", len(document.extracted_text))),
+            page_count=_safe_int(extracted.get("page_count"), document.metadata.page_count),
+            word_count=_safe_int(extracted.get("word_count"), document.word_count),
+            char_count=_safe_int(extracted.get("char_count"), len(document.extracted_text)),
             language=document.metadata.language.value,
             extra={k: v for k, v in extracted.items() if k not in fields},
         )

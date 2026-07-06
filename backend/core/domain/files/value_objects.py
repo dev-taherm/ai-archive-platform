@@ -11,6 +11,7 @@ class FileStatus(enum.Enum):
     PENDING = "pending"
     INDEXING = "indexing"
     INDEXED = "indexed"
+    COMPLETED = "completed"
     DUPLICATE = "duplicate"
     FAILED = "failed"
     DELETED = "deleted"

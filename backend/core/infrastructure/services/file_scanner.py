@@ -105,6 +105,15 @@ class FileScannerService(FileScanner):
             ):
                 continue
 
+            # Skip files inside ignored directories (e.g. node_modules/.pnpm/...)
+            if entry.is_file():
+                rel_parts = entry.relative_to(root).parts
+                if any(
+                    part in effective_ignore or self._should_ignore(part, effective_ignore)
+                    for part in rel_parts[:-1]
+                ):
+                    continue
+
             if entry.is_dir():
                 if not recursive:
                     continue

@@ -84,7 +84,7 @@ class ProviderConfig(models.Model):
     class ProviderType(models.TextChoices):
         OPENAI = "openai", "OpenAI"
         GOOGLE = "google", "Google Gemini"
-        OLLAMA = "ollama", "Ollama (Local)"
+        OLLAMA = "ollama", "Ollama"
 
     class Capability(models.TextChoices):
         LLM = "llm", "LLM"

@@ -26,6 +26,9 @@ class DocumentSerializer(serializers.Serializer):
 
     id = serializers.UUIDField(read_only=True)
     file_id = serializers.UUIDField(read_only=True)
+    file_name = serializers.SerializerMethodField()
+    file_path = serializers.SerializerMethodField()
+    file_mime_type = serializers.SerializerMethodField()
     doc_type = serializers.CharField(read_only=True)
     processing_status = serializers.CharField(read_only=True)
     title = serializers.CharField(read_only=True, default="")
@@ -45,6 +48,43 @@ class DocumentSerializer(serializers.Serializer):
     error_message = serializers.CharField(read_only=True, allow_null=True)
     created_at = serializers.DateTimeField(read_only=True)
     updated_at = serializers.DateTimeField(read_only=True)
+
+    def get_file_name(self, obj):
+        """Look up the original filename from the FileRecord."""
+        file_id = getattr(obj, "file_id", None)
+        if not file_id:
+            return ""
+        try:
+            from apps.files.models import FileRecord
+            fr = FileRecord.objects.get(id=file_id)
+            import os
+            return os.path.basename(fr.path)
+        except Exception:
+            return ""
+
+    def get_file_path(self, obj):
+        """Look up the full file path from the FileRecord."""
+        file_id = getattr(obj, "file_id", None)
+        if not file_id:
+            return ""
+        try:
+            from apps.files.models import FileRecord
+            fr = FileRecord.objects.get(id=file_id)
+            return fr.path
+        except Exception:
+            return ""
+
+    def get_file_mime_type(self, obj):
+        """Look up the MIME type from the FileRecord."""
+        file_id = getattr(obj, "file_id", None)
+        if not file_id:
+            return ""
+        try:
+            from apps.files.models import FileRecord
+            fr = FileRecord.objects.get(id=file_id)
+            return fr.mime_type
+        except Exception:
+            return ""
 
 
 class DocumentChunkSerializer(serializers.Serializer):

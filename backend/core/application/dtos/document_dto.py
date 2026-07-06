@@ -31,11 +31,7 @@ class DocumentDTO:
     @classmethod
     def from_entity(cls, document: Any) -> DocumentDTO:
         """Create a DTO from a Document domain entity."""
-        text_preview = (
-            document.extracted_text[:200] + "..."
-            if len(document.extracted_text) > 200
-            else document.extracted_text
-        )
+        text_preview = document.extracted_text
         return cls(
             id=document.id,
             file_id=document.file_id,

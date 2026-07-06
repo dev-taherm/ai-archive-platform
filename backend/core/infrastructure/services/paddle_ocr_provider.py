@@ -49,10 +49,14 @@ class PaddleOCRProvider(OCRProvider):
     def _get_engine(self):
         """Lazy-initialize PaddleOCR engine."""
         if self._engine is None:
-            from paddleocr import PaddleOCR
-            self._engine = PaddleOCR(lang=self._lang)
-            logger.info("PaddleOCR initialized with lang=%s", self._lang)
-        return self._engine
+            try:
+                from paddleocr import PaddleOCR
+                self._engine = PaddleOCR(lang=self._lang)
+                logger.info("PaddleOCR initialized with lang=%s", self._lang)
+            except Exception as e:
+                logger.warning("PaddleOCR init failed: %s — OCR unavailable", e)
+                self._engine = False
+        return self._engine if self._engine is not False else None
 
     def _bytes_to_temp_file(self, content: bytes) -> tuple[str, bool]:
         """Convert bytes to a temp file for PaddleOCR."""

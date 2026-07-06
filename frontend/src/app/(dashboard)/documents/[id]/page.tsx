@@ -1,6 +1,7 @@
 "use client";
 
 import { use } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import api from "@/lib/api";
@@ -25,6 +26,11 @@ import {
   Brain,
   Lightbulb,
   Info,
+  Download,
+  Eye,
+  X,
+  FileImage,
+  ChevronsUpDown,
 } from "lucide-react";
 import { formatDateTime } from "@/lib/utils";
 import type { Document, DocumentMetadata } from "@/types/api";
@@ -50,6 +56,8 @@ const entityTypeVariant: Record<string, "default" | "secondary" | "outline"> = {
 
 export default function DocumentDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState(false);
 
   const { data: doc, isLoading, error } = useQuery<Document>({
     queryKey: ["document", id],
@@ -107,6 +115,99 @@ export default function DocumentDetailPage({ params }: { params: Promise<{ id: s
           {doc.processing_status}
         </Badge>
       </div>
+
+      {/* Original File Info */}
+      {doc.file_name && (
+        <Card>
+          <CardContent className="pt-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <FileText className="h-5 w-5 text-muted-foreground" />
+                <div>
+                  <p className="text-sm font-medium">{doc.file_name}</p>
+                  <p className="text-xs text-muted-foreground">{doc.file_mime_type || "Unknown type"}</p>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                {doc.file_mime_type?.startsWith("image/") && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={async () => {
+                      const res = await api.get(`/files/${doc.file_id}/download`, { responseType: "blob" });
+                      const url = URL.createObjectURL(res.data);
+                      setPreviewUrl(url);
+                    }}
+                  >
+                    <Eye className="mr-1 h-3 w-3" />
+                    Preview
+                  </Button>
+                )}
+                {doc.file_mime_type === "application/pdf" && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={async () => {
+                      const res = await api.get(`/files/${doc.file_id}/download`, { responseType: "blob" });
+                      const url = URL.createObjectURL(res.data);
+                      setPreviewUrl(url);
+                    }}
+                  >
+                    <Eye className="mr-1 h-3 w-3" />
+                    Preview
+                  </Button>
+                )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={async () => {
+                    const res = await api.get(`/files/${doc.file_id}/download`, { responseType: "blob" });
+                    const blob = new Blob([res.data]);
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = doc.file_name;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                  }}
+                >
+                  <Download className="mr-1 h-3 w-3" />
+                  Download
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Preview Modal */}
+      {previewUrl && (
+        <div
+          className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"
+          onClick={() => { URL.revokeObjectURL(previewUrl); setPreviewUrl(null); }}
+        >
+          <div
+            className="bg-background rounded-lg max-w-4xl max-h-[90vh] overflow-auto p-6 w-full"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="font-medium">{doc.file_name}</h3>
+              <Button variant="ghost" size="sm" onClick={() => { URL.revokeObjectURL(previewUrl); setPreviewUrl(null); }}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            {doc.file_mime_type?.startsWith("image/") ? (
+              <img src={previewUrl} alt={doc.file_name} className="max-w-full max-h-[70vh] object-contain mx-auto" />
+            ) : doc.file_mime_type === "application/pdf" ? (
+              <iframe src={previewUrl} className="w-full h-[70vh] border rounded" title={doc.file_name} />
+            ) : (
+              <pre className="text-sm whitespace-pre-wrap bg-muted p-4 rounded max-h-[70vh] overflow-auto">
+                Preview not available
+              </pre>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Metadata Grid */}
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
@@ -369,11 +470,19 @@ export default function DocumentDetailPage({ params }: { params: Promise<{ id: s
       {/* Extracted Text Preview */}
       {doc.extracted_text_preview && (
         <Card>
-          <CardHeader>
+          <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="text-base">Extracted Text Preview</CardTitle>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setExpanded(!expanded)}
+            >
+              {expanded ? "Collapse" : "Expand"}
+              <ChevronsUpDown className="ml-1 h-4 w-4" />
+            </Button>
           </CardHeader>
           <CardContent>
-            <pre className="max-h-64 overflow-auto rounded-md bg-muted p-4 text-sm whitespace-pre-wrap">
+            <pre className={`${expanded ? "" : "max-h-64"} overflow-auto rounded-md bg-muted p-4 text-sm whitespace-pre-wrap`}>
               {doc.extracted_text_preview}
             </pre>
           </CardContent>

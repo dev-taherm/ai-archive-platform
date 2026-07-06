@@ -283,11 +283,19 @@ class OllamaLLMProvider(LLMProvider):
     async def _post(self, endpoint: str, payload: dict[str, Any]) -> dict[str, Any]:
         import aiohttp
 
+        headers: dict[str, str] = {}
+        if self._api_key:
+            headers["Authorization"] = f"Bearer {self._api_key}"
+
         async with aiohttp.ClientSession() as session:
             async with session.post(
-                f"{self._base_url}{endpoint}", json=payload
+                f"{self._base_url}{endpoint}", json=payload, headers=headers
             ) as resp:
-                return await resp.json()
+                data = await resp.json()
+                if resp.status != 200:
+                    error_msg = data.get("error", f"HTTP {resp.status}")
+                    raise Exception(f"Ollama error ({resp.status}): {error_msg}")
+                return data
 
     async def classify(
         self,

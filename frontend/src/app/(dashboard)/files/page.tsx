@@ -37,10 +37,12 @@ import {
   Download,
   Eye,
   X,
+  Loader2,
 } from "lucide-react";
 import { formatBytes, formatDateTime } from "@/lib/utils";
 import { ScanModal } from "@/components/features/files/scan-modal";
 import { UploadModal } from "@/components/features/files/upload-modal";
+import { useToast } from "@/hooks/use-toast";
 
 function getFileIcon(mimeType: string) {
   if (mimeType.startsWith("image/")) return FileImage;
@@ -61,24 +63,49 @@ function getStatusColor(status: string) {
 
 export default function FilesPage() {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   const [search, setSearch] = useState("");
   const [showScan, setShowScan] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
   const [actionMenu, setActionMenu] = useState<string | null>(null);
   const [previewFile, setPreviewFile] = useState<FileRecord | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   const isPreviewable = (mime: string) =>
     mime.startsWith("image/") ||
     mime.startsWith("text/") ||
     mime === "application/pdf";
 
-  const handleDownload = (fileId: string) => {
-    const a = document.createElement("a");
-    a.href = `/api/v1/files/${fileId}/download/`;
-    a.download = "";
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+  const handlePreview = async (file: FileRecord) => {
+    setPreviewFile(file);
+    try {
+      const res = await api.get(`/files/${file.id}/download`, { responseType: "blob" });
+      const url = URL.createObjectURL(new Blob([res.data]));
+      setPreviewUrl(url);
+    } catch {
+      setPreviewUrl(null);
+    }
+  };
+
+  const closePreview = () => {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setPreviewUrl(null);
+    setPreviewFile(null);
+  };
+
+  const handleDownload = async (fileId: string, fileName?: string) => {
+    try {
+      const res = await api.get(`/files/${fileId}/download`, { responseType: "blob" });
+      const blob = new Blob([res.data]);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = fileName || "";
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast({ title: "Download failed", variant: "destructive" });
+    }
     setActionMenu(null);
   };
 
@@ -102,13 +129,28 @@ export default function FilesPage() {
 
   const processMutation = useMutation({
     mutationFn: async (fileId: string) => {
-      const res = await api.post("/documents/process-pipeline", { file_id: fileId });
+      const res = await api.post("/documents/process-pipeline", { file_id: fileId }, { timeout: 120000 });
       return res.data;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["files"] });
       queryClient.invalidateQueries({ queryKey: ["documents"] });
       setActionMenu(null);
+      if (data.error) {
+        toast({ title: "Processing failed", description: data.error, variant: "destructive" });
+      } else {
+        toast({
+          title: "Document processed",
+          description: `Classification: ${data.classification || "N/A"}, Chunks: ${data.chunk_count ?? 0}`,
+        });
+      }
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Processing failed",
+        description: error?.response?.data?.detail || error?.message || "Server error",
+        variant: "destructive",
+      });
     },
   });
 
@@ -245,7 +287,7 @@ export default function FilesPage() {
                                 <button
                                   className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-muted"
                                   onClick={() => {
-                                    setPreviewFile(file);
+                                    handlePreview(file);
                                     setActionMenu(null);
                                   }}
                                 >
@@ -255,7 +297,7 @@ export default function FilesPage() {
                               )}
                               <button
                                 className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-muted"
-                                onClick={() => handleDownload(file.id)}
+                                onClick={() => handleDownload(file.id, file.path.split("/").pop())}
                               >
                                 <Download className="h-4 w-4" />
                                 Download
@@ -265,8 +307,12 @@ export default function FilesPage() {
                                 onClick={() => processMutation.mutate(file.id)}
                                 disabled={processMutation.isPending}
                               >
-                                <Play className="h-4 w-4" />
-                                Process Document
+                                {processMutation.isPending ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <Play className="h-4 w-4" />
+                                )}
+                                {processMutation.isPending ? "Processing..." : "Process Document"}
                               </button>
                               <button
                                 className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-destructive hover:bg-muted"
@@ -295,7 +341,7 @@ export default function FilesPage() {
       {previewFile && (
         <div
           className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"
-          onClick={() => setPreviewFile(null)}
+          onClick={closePreview}
         >
           <div
             className="bg-background rounded-lg max-w-4xl max-h-[90vh] overflow-auto p-6 w-full"
@@ -303,26 +349,30 @@ export default function FilesPage() {
           >
             <div className="flex justify-between items-center mb-4">
               <h3 className="font-medium">{previewFile.path.split("/").pop()}</h3>
-              <Button variant="ghost" size="sm" onClick={() => setPreviewFile(null)}>
+              <Button variant="ghost" size="sm" onClick={closePreview}>
                 <X className="h-4 w-4" />
               </Button>
             </div>
-            {previewFile.mime_type.startsWith("image/") ? (
-              <img
-                src={`/api/v1/files/${previewFile.id}/download/`}
-                alt={previewFile.path}
-                className="max-w-full max-h-[70vh] object-contain mx-auto"
-              />
-            ) : previewFile.mime_type === "application/pdf" ? (
-              <iframe
-                src={`/api/v1/files/${previewFile.id}/download/`}
-                className="w-full h-[70vh] border rounded"
-                title={previewFile.path}
-              />
+            {previewUrl ? (
+              previewFile.mime_type.startsWith("image/") ? (
+                <img
+                  src={previewUrl}
+                  alt={previewFile.path}
+                  className="max-w-full max-h-[70vh] object-contain mx-auto"
+                />
+              ) : previewFile.mime_type === "application/pdf" ? (
+                <iframe
+                  src={previewUrl}
+                  className="w-full h-[70vh] border rounded"
+                  title={previewFile.path}
+                />
+              ) : (
+                <pre className="text-sm whitespace-pre-wrap bg-muted p-4 rounded max-h-[70vh] overflow-auto">
+                  Preview not available for this file type
+                </pre>
+              )
             ) : (
-              <pre className="text-sm whitespace-pre-wrap bg-muted p-4 rounded max-h-[70vh] overflow-auto">
-                Preview not available for this file type
-              </pre>
+              <div className="flex justify-center py-8 text-muted-foreground">Loading preview...</div>
             )}
           </div>
         </div>

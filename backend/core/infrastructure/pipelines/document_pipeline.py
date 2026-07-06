@@ -139,16 +139,23 @@ class DocumentProcessingPipeline:
             # Step 4: Run OCR if needed
             parsed_text = extraction.text
             if self._needs_ocr(file_record, extraction):
-                ocr_text = await self._run_ocr(file_record)
-                if ocr_text and len(ocr_text.strip()) > len(parsed_text.strip()):
-                    parsed_text = ocr_text
-                    result.processing_log.append(
-                        f"OCR: used OCR text ({len(ocr_text)} chars)"
-                    )
-                else:
-                    result.processing_log.append("OCR: skipped — parsed text is richer")
+                try:
+                    ocr_text = await self._run_ocr(file_record)
+                    if ocr_text and len(ocr_text.strip()) > len(parsed_text.strip()):
+                        parsed_text = ocr_text
+                        result.processing_log.append(
+                            f"OCR: used OCR text ({len(ocr_text)} chars)"
+                        )
+                    else:
+                        result.processing_log.append("OCR: skipped — parsed text is richer")
+                except Exception as ocr_err:
+                    logger.warning("OCR failed for file %s, continuing without OCR: %s", file_id, ocr_err)
+                    result.processing_log.append(f"OCR: failed ({ocr_err}), continuing without OCR")
             else:
                 result.processing_log.append("OCR: not needed")
+
+            # Save extracted text to document (enables word_count, preview, keyword search)
+            object.__setattr__(document, "extracted_text", parsed_text[:10000])
 
             # Step 5: Classify document
             classification, confidence = await self._classify(parsed_text)
@@ -237,12 +244,14 @@ class DocumentProcessingPipeline:
         """Create a new Document entity in QUEUED status."""
         ext = Path(file_record.path.raw).suffix.lower()
         doc_type = DocumentType.from_extension(ext)
+        title = Path(file_record.path.raw).stem
 
         document = Document(
             file_id=file_record.id,
             doc_type=doc_type,
             processing_status=ProcessingStatus.QUEUED,
             metadata=DocumentMetadata(
+                title=title,
                 language=Language.UNKNOWN,
                 page_count=0,
             ),
@@ -629,6 +638,11 @@ def run_document_pipeline(
     )
 
     result = asyncio.run(pipeline.process(file_id))
+
+    # Update the file record status to match pipeline result
+    from apps.files.models import FileRecord as FileRecordModel
+    file_status = "completed" if result.status == "completed" else "failed"
+    FileRecordModel.objects.filter(id=file_id).update(status=file_status)
 
     return {
         "status": result.status,
