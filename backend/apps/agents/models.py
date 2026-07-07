@@ -37,16 +37,14 @@ class Agent(models.Model):
     # Configuration
     sync_interval_minutes = models.IntegerField(default=30)
     max_file_size_mb = models.IntegerField(default=100)
-    push_original_files = models.BooleanField(
-        default=False,
-        help_text="If true, agent pushes original file bytes. Otherwise only metadata.",
-    )
 
     # Platform info
     platform = models.CharField(max_length=50, blank=True, default="")
     hostname = models.CharField(max_length=255, blank=True, default="")
     ip_address = models.GenericIPAddressField(null=True, blank=True)
     agent_version = models.CharField(max_length=20, blank=True, default="")
+    parser_version = models.CharField(max_length=50, blank=True, default="")
+    ocr_engine = models.CharField(max_length=50, blank=True, default="")
     capabilities = models.JSONField(
         default=list,
         blank=True,

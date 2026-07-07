@@ -54,7 +54,6 @@ class SyncManager:
                 "agent_version": "0.1.0",
                 "capabilities": ["scan", "ocr", "parse", "embed"],
                 "sync_interval_minutes": self._config.sync.interval_minutes,
-                "push_original_files": self._config.sync.push_original_files,
             })
             resp.raise_for_status()
             data = resp.json()

@@ -33,25 +33,14 @@ class DocumentsConfig(AppConfig):
         from core.infrastructure.services.stub_providers import (
             StubLLMProvider,
         )
-        from core.infrastructure.services.parser_router import ParserRouter
-        from core.infrastructure.services.paddle_ocr_provider import PaddleOCRProvider
 
         llm_provider = StubLLMProvider()
-
-        try:
-            self._ocr_provider = PaddleOCRProvider(lang="ar", use_gpu=False)
-        except Exception:
-            logger.warning("PaddleOCR init failed, using stub")
-            from core.infrastructure.services.stub_providers import StubOCRProvider
-            self._ocr_provider = StubOCRProvider()
 
         use_cases = DocumentUseCases(
             document_repository=DjangoDocumentRepository(),
             file_repository=DjangoFileRepository(),
             embedding_repository=DjangoEmbeddingRepository(),
-            ocr_provider=self._ocr_provider,
             llm_provider=llm_provider,
-            document_reader=ParserRouter(),
         )
         self._document_service = DocumentService(use_cases)
 
@@ -60,8 +49,3 @@ class DocumentsConfig(AppConfig):
         """Lazy initialization of DocumentService."""
         self._ensure_wired()
         return self._document_service
-
-    @property
-    def ocr_provider(self):
-        self._ensure_wired()
-        return self._ocr_provider

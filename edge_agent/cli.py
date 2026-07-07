@@ -80,7 +80,6 @@ def _save_config(config: EdgeAgentConfig, path: Path) -> None:
         },
         "sync": {
             "interval_minutes": config.sync.interval_minutes,
-            "push_original_files": config.sync.push_original_files,
             "batch_size": config.sync.batch_size,
             "retry_attempts": config.sync.retry_attempts,
             "retry_delay_seconds": config.sync.retry_delay_seconds,

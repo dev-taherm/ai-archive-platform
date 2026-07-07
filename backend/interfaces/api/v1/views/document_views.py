@@ -194,8 +194,6 @@ class DocumentViewSet(viewsets.GenericViewSet):
         try:
             result = run_document_pipeline(
                 file_id=str(file_id),
-                file_path=file_record.path,
-                mime_type=file_record.mime_type,
             )
         except Exception as e:
             logger.exception("Pipeline failed: %s", e)

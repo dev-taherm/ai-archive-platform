@@ -31,7 +31,6 @@ parser:
   table_enable: true
 sync:
   interval_minutes: 30
-  push_original_files: false
   batch_size: 50
   retry_attempts: 3
   retry_delay_seconds: 60

@@ -9,29 +9,9 @@ logger = logging.getLogger(__name__)
 
 
 def _handle_ocr_step(step_config: dict, input_data: dict) -> dict:
-    """Execute OCR on a file."""
-    from core.infrastructure.services.ocr_engine import PaddleOCREngine
-
-    file_path = step_config.get("file_path") or input_data.get("file_path", "")
-    if not file_path:
-        return {"error": "No file path provided for OCR step"}
-
-    ocr = PaddleOCREngine()
-
-    import asyncio
-
-    try:
-        with open(file_path, "rb") as f:
-            content = f.read()
-
-        import mimetypes
-
-        content_type = mimetypes.guess_type(file_path)[0] or "application/octet-stream"
-
-        text = asyncio.run(ocr.extract_text(content, content_type=content_type))
-        return {"text": text, "text_length": len(text)}
-    except Exception as e:
-        return {"error": str(e)}
+    """OCR step is deprecated — OCR is now handled by the Edge Agent."""
+    logger.warning("OCR step requested in workflow but OCR is handled by Edge Agent")
+    return {"error": "OCR processing has been moved to the Edge Agent. Remove this step from your workflow."}
 
 
 def _handle_classify_step(step_config: dict, input_data: dict) -> dict:

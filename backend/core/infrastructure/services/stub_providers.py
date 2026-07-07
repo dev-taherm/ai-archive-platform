@@ -3,8 +3,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from core.application.interfaces.services import ChatResult, EmbeddingProvider, LLMProvider, OCRProvider
-from core.domain.documents.value_objects import Confidence, Language
+from core.application.interfaces.services import ChatResult, EmbeddingProvider, LLMProvider
 
 logger = logging.getLogger(__name__)
 
@@ -72,27 +71,5 @@ class StubEmbeddingProvider(EmbeddingProvider):
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
         logger.warning("Using stub embedding provider - returns zero vectors")
         return [[0.0] * self.dimension for _ in texts]
-
-
-class StubOCRProvider(OCRProvider):
-    """Stub OCR provider that returns placeholder text when no real provider is configured."""
-
-    def extract_text(
-        self,
-        content: bytes,
-        *,
-        content_type: str,
-        language_hint: Language | None = None,
-    ) -> str:
-        logger.warning("Using stub OCR provider - extract_text returns placeholder")
-        return f"[OCR requires PaddleOCR configuration. Content type: {content_type}]"
-
-    def detect_language(self, text: str) -> Language:
-        logger.warning("Using stub OCR provider - detect_language returns unknown")
-        return Language.UNKNOWN
-
-    def get_confidence(self, text: str) -> Confidence:
-        logger.warning("Using stub OCR provider - get_confidence returns 0.0")
-        return Confidence(value=0.0)
 
 

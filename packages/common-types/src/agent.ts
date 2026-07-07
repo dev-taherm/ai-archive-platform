@@ -33,7 +33,6 @@ export const AgentSchema = z.object({
   status: AgentStatusSchema.default("online"),
   sync_interval_minutes: z.number().default(30),
   max_file_size_mb: z.number().default(100),
-  push_original_files: z.boolean().default(false),
   platform: z.string().optional(),
   hostname: z.string().optional(),
   ip_address: z.string().optional(),
@@ -84,6 +83,5 @@ export const AgentRegistrationSchema = z.object({
   agent_version: z.string().optional(),
   capabilities: z.array(AgentCapabilitySchema).default(["scan", "ocr", "parse"]),
   sync_interval_minutes: z.number().default(30),
-  push_original_files: z.boolean().default(false),
 });
 export type AgentRegistration = z.infer<typeof AgentRegistrationSchema>;

@@ -11,8 +11,6 @@ import {
   Archive,
   ChevronLeft,
   MessageSquare,
-  Scan,
-  ScanText,
   BarChart3,
   GitBranch,
   Bot,
@@ -37,14 +35,9 @@ const navItems = [
     icon: FileText,
   },
   {
-    label: "Scan",
-    href: "/scan",
-    icon: Scan,
-  },
-  {
-    label: "OCR",
-    href: "/ocr",
-    icon: ScanText,
+    label: "Agents",
+    href: "/agents",
+    icon: Bot,
   },
   {
     label: "Search",
@@ -60,11 +53,6 @@ const navItems = [
     label: "Reports",
     href: "/reports",
     icon: BarChart3,
-  },
-  {
-    label: "Agents",
-    href: "/agents",
-    icon: Bot,
   },
   {
     label: "Chat",

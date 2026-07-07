@@ -43,7 +43,6 @@ INSTALLED_APPS: list[str] = [
     "apps.accounts.apps.AccountsConfig",
     "apps.files.apps.FilesConfig",
     "apps.documents.apps.DocumentsConfig",
-    "apps.ocr.apps.OCRConfig",
     "apps.ai.apps.AIConfig",
     "apps.search.apps.SearchConfig",
     "apps.workflows.apps.WorkflowsConfig",

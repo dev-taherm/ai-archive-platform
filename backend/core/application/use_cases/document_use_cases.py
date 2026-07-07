@@ -15,7 +15,7 @@ from core.application.interfaces.repositories import (
     EmbeddingRepository,
     FileRepository,
 )
-from core.application.interfaces.services import LLMProvider, OCRProvider
+from core.application.interfaces.services import LLMProvider
 from core.domain.common.events import DomainEventBus
 from core.domain.common.exceptions import EntityNotFound, ValidationException
 from core.domain.documents.entities import Document, DocumentChunk, DocumentMetadata
@@ -36,16 +36,12 @@ class DocumentUseCases:
         document_repository: DocumentRepository,
         file_repository: FileRepository,
         embedding_repository: EmbeddingRepository,
-        ocr_provider: OCRProvider,
         llm_provider: LLMProvider,
-        document_reader: Any = None,
     ) -> None:
         self._document_repository = document_repository
         self._file_repository = file_repository
         self._embedding_repository = embedding_repository
-        self._ocr_provider = ocr_provider
         self._llm_provider = llm_provider
-        self._document_reader = document_reader
 
     def process_document(self, file_id: uuid.UUID) -> DocumentDTO:
         file_record = self._file_repository.get_by_id(file_id)
@@ -60,44 +56,8 @@ class DocumentUseCases:
             page_count = 0
             doc_metadata: dict[str, Any] = {}
 
-            if self._document_reader is not None:
-                file_path = file_record.path.normalized
-                try:
-                    # Support both new ParserRouter (parse) and old DocumentReader (read)
-                    if hasattr(self._document_reader, 'parse'):
-                        result = self._document_reader.parse(file_path)
-                        extracted_text = result.markdown
-                        page_count = result.page_count
-                        doc_metadata = result.metadata
-                    elif hasattr(self._document_reader, 'read'):
-                        result = self._document_reader.read(file_path)
-                        extracted_text = result.text
-                        page_count = result.page_count
-                        doc_metadata = result.metadata
-                except Exception as e:
-                    logger.warning("DocumentReader failed for %s: %s", file_path, e)
-
-            if not extracted_text:
-                extracted_text = self._ocr_provider.extract_text(
-                    b"",
-                    content_type=file_record.mime_type.value,
-                )
-
-            from core.domain.documents.value_objects import Language as LangValue
-
-            lang_value = LangValue.UNKNOWN
-            try:
-                detected_lang = self._ocr_provider.detect_language(extracted_text)
-                lang_value = detected_lang
-            except Exception:
-                pass
-
-            title = doc_metadata.get("title", "")
-            author = doc_metadata.get("author", "")
-            subject = doc_metadata.get("subject", "")
-
-            if not title:
-                title = Path(file_record.path.normalized).stem
+            # Text is provided by the Edge Agent during sync — no file reading on server
+            title = Path(file_record.path.normalized).stem
 
             categories = [dt.value for dt in DocumentType]
             predicted_type_str, type_confidence = self._llm_provider.classify(
@@ -118,12 +78,12 @@ class DocumentUseCases:
                 {"document_id": str(document.id), "doc_type": predicted_type.value, "confidence": type_confidence},
             )
 
+            from core.domain.documents.value_objects import Language as LangValue
+
             metadata = DocumentMetadata(
                 title=title,
-                author=author,
-                subject=subject,
                 page_count=page_count,
-                language=lang_value,
+                language=LangValue.UNKNOWN,
             )
 
             document = Document(

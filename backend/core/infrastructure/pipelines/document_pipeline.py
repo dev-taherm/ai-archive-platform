@@ -13,7 +13,7 @@ from core.application.interfaces.repositories import (
     EmbeddingRepository,
     FileRepository,
 )
-from core.application.interfaces.services import EmbeddingProvider, LLMProvider, OCRProvider
+from core.application.interfaces.services import EmbeddingProvider, LLMProvider
 from core.domain.documents.entities import Document, DocumentMetadata
 from core.domain.documents.value_objects import (
     Confidence,
@@ -22,7 +22,6 @@ from core.domain.documents.value_objects import (
     ProcessingStatus,
 )
 from core.domain.files.entities import FileRecord
-from core.infrastructure.services.document_reader import DocumentReader
 
 logger = logging.getLogger(__name__)
 
@@ -85,8 +84,6 @@ class DocumentProcessingPipeline:
         file_repository: FileRepository,
         document_repository: DocumentRepository,
         embedding_repository: EmbeddingRepository,
-        document_reader: DocumentReader,
-        ocr_engine: OCRProvider,
         llm_provider: LLMProvider,
         embedding_provider: EmbeddingProvider,
         max_retries: int = 3,
@@ -95,22 +92,19 @@ class DocumentProcessingPipeline:
         self._file_repo = file_repository
         self._doc_repo = document_repository
         self._embedding_repo = embedding_repository
-        self._reader = document_reader
-        self._ocr = ocr_engine
         self._llm = llm_provider
         self._embeddings = embedding_provider
         self._max_retries = max_retries
         self._retry_base_delay = retry_base_delay
 
-    async def process(self, file_id: str, source: str = "agent") -> PipelineResult:
-        """Run the processing pipeline for a file.
+    async def process(self, file_id: str) -> PipelineResult:
+        """Run the processing pipeline for an agent-synced file.
 
-        For agent-synced files (default), uses pre-existing extracted text
-        from the document and skips file reading + OCR.
+        Uses pre-existing extracted text from the document (provided by the
+        Edge Agent during sync). No file reading or OCR on the server.
 
         Args:
             file_id: UUID string of the source file record.
-            source: "agent" (use pre-existing text) or "upload" (read from disk).
 
         Returns:
             PipelineResult with all processing outcomes.
@@ -118,7 +112,7 @@ class DocumentProcessingPipeline:
         t0 = time.time()
         result = PipelineResult(file_id=file_id)
         result.processing_log.append(f"PIPELINE: started for file {file_id}")
-        logger.info("Pipeline started: file_id=%s, source=%s", file_id, source)
+        logger.info("Pipeline started: file_id=%s", file_id)
 
         document: Document | None = None
 
@@ -134,69 +128,18 @@ class DocumentProcessingPipeline:
             result.document_id = str(document.id)
             result.processing_log.append(f"DOCUMENT: entity created {document.id}")
 
-            # Step 3: Get extracted text (from agent or local read)
-            if source == "agent" and document.extracted_text:
+            # Step 3: Get extracted text from agent-synced document
+            if document.extracted_text:
                 parsed_text = document.extracted_text
                 result.processing_log.append(
                     f"AGENT: using pre-existing text ({len(parsed_text)} chars)"
                 )
             else:
-                extraction = await self._read_content(file_record)
-                parsed_text = extraction.text
-                result.processing_log.append(
-                    f"READ: {len(parsed_text)} chars extracted"
-                )
+                parsed_text = ""
+                result.processing_log.append("AGENT: no extracted text found")
 
-            # Step 4: Run OCR if needed (only for non-agent files)
-            if source != "agent":
-                if self._needs_ocr(file_record, type("", (), {"text": parsed_text})()):
-                    from datetime import timezone as _tz, datetime as _dt
-
-                    ext = Path(file_record.path.raw).suffix.lower()
-                    source_type = "image" if ext in IMAGE_EXTENSIONS else "pdf"
-
-                    def _create_ocr_job():
-                        from apps.ocr.models import OCRJob
-                        return OCRJob.objects.create(
-                            file_id=file_record.id,
-                            document_id=document.id,
-                            status="processing",
-                            source_type=source_type,
-                        )
-                    ocr_job = await self._sync_to_async(_create_ocr_job)
-                    t_ocr = time.time()
-
-                    try:
-                        ocr_text = await self._run_ocr(file_record)
-                        ocr_ms = (time.time() - t_ocr) * 1000
-
-                        def _save_ocr_job(job, text, ms, status, error=""):
-                            job.extracted_text = (text or "")[:10000]
-                            job.processing_time_ms = ms
-                            job.completed_at = _dt.now(_tz.utc)
-                            job.status = status
-                            if error:
-                                job.error_message = error
-                            job.save()
-
-                        if ocr_text and len(ocr_text.strip()) > len(parsed_text.strip()):
-                            parsed_text = ocr_text
-                            await self._sync_to_async(_save_ocr_job, ocr_job, ocr_text, ocr_ms, "completed")
-                            result.processing_log.append(
-                                f"OCR: used OCR text ({len(ocr_text)} chars)"
-                            )
-                        else:
-                            await self._sync_to_async(_save_ocr_job, ocr_job, ocr_text, ocr_ms, "completed")
-                            result.processing_log.append("OCR: skipped — parsed text is richer")
-                    except Exception as ocr_err:
-                        ocr_ms = (time.time() - t_ocr) * 1000
-                        await self._sync_to_async(_save_ocr_job, ocr_job, "", ocr_ms, "failed", str(ocr_err))
-                        logger.warning("OCR failed for file %s, continuing without OCR: %s", file_id, ocr_err)
-                        result.processing_log.append(f"OCR: failed ({ocr_err}), continuing without OCR")
-                else:
-                    result.processing_log.append("OCR: not needed")
-            else:
-                result.processing_log.append("OCR: skipped (agent-synced file)")
+            # Step 4: OCR is handled by the Edge Agent — no server-side OCR
+            result.processing_log.append("OCR: handled by Edge Agent (skipped on server)")
 
             # Save extracted text to document (enables word_count, preview, keyword search)
             object.__setattr__(document, "extracted_text", parsed_text[:10000])
@@ -324,44 +267,6 @@ class DocumentProcessingPipeline:
         )
         logger.info("Document created: %s (file=%s)", saved.id, file_record.id)
         return saved
-
-    async def _read_content(self, file_record: FileRecord) -> Any:
-        """Read document content using DocumentReader (sync operation)."""
-        return await asyncio.to_thread(self._reader.read, file_record.path.raw)
-
-    def _needs_ocr(self, file_record: FileRecord, extraction: Any) -> bool:
-        """Determine if OCR is needed for this file."""
-        ext = Path(file_record.path.raw).suffix.lower()
-
-        # Images always need OCR
-        if ext in IMAGE_EXTENSIONS:
-            return True
-
-        # PDFs with no/little extracted text likely need OCR
-        if ext == ".pdf":
-            text = extraction.text.strip() if extraction.text else ""
-            if len(text) < 50:
-                return True
-
-        # Any file with insufficient text from parsing
-        text = extraction.text.strip() if extraction.text else ""
-        if len(text) < 50 and file_record.size.bytes > 1000:
-            return True
-
-        return False
-
-    async def _run_ocr(self, file_record: FileRecord) -> str:
-        """Run OCR on the file content with retry."""
-        content = await asyncio.to_thread(Path(file_record.path.raw).read_bytes)
-
-        mime_type = file_record.mime_type.value
-
-        async def _do_ocr() -> str:
-            return await self._ocr.extract_text(
-                content, content_type=mime_type
-            )
-
-        return await self._retry_async(_do_ocr, operation="ocr")
 
     async def _classify(self, text: str) -> tuple[str, float]:
         """Classify document using LLM with retry."""
@@ -647,8 +552,6 @@ class DocumentProcessingPipeline:
 
 def run_document_pipeline(
     file_id: str,
-    file_path: str,
-    mime_type: str,
     source: str = "agent",
 ) -> dict[str, Any]:
     """Convenience function that wires up all dependencies and runs the pipeline.
@@ -657,19 +560,15 @@ def run_document_pipeline(
 
     Args:
         file_id: UUID of the file record.
-        file_path: Local path to the file (used by old upload path).
-        mime_type: MIME type of the file.
-        source: ``"agent"`` (use pre-existing text) or ``"upload"`` (read from disk).
+        source: Kept for backward compat; only ``"agent"`` is supported.
     """
     from apps.ai.models import ProviderConfig
     from core.domain.ai.value_objects import AIProvider, ModelConfig
     from core.infrastructure.db.repositories.document_repository import DjangoDocumentRepository
     from core.infrastructure.db.repositories.embedding_repository import PgvectorEmbeddingRepository
     from core.infrastructure.db.repositories.file_repository import DjangoFileRepository
-    from core.infrastructure.services.document_reader import DocumentReader
     from core.infrastructure.services.embedding_service import FastEmbedProvider, LangChainEmbeddingProvider
     from core.infrastructure.services.llm_factory import LLMFactory
-    from core.infrastructure.services.ocr_engine import PaddleOCREngine
 
     # ---- Load active LLM provider from DB ----
     llm_config = (
@@ -719,13 +618,11 @@ def run_document_pipeline(
         file_repository=DjangoFileRepository(),
         document_repository=DjangoDocumentRepository(),
         embedding_repository=PgvectorEmbeddingRepository(),
-        document_reader=DocumentReader(),
-        ocr_engine=PaddleOCREngine(),
         llm_provider=llm,
         embedding_provider=embeddings,
     )
 
-    result = asyncio.run(pipeline.process(file_id, source=source))
+    result = asyncio.run(pipeline.process(file_id))
 
     # Update the file record status to match pipeline result
     from apps.files.models import FileRecord as FileRecordModel

@@ -113,7 +113,6 @@ class AgentViewSet(viewsets.ModelViewSet):
             "sync_interval_minutes": agent.sync_interval_minutes,
             "pending_commands": AgentCommandSerializer(pending, many=True).data,
             "config": {
-                "push_original_files": agent.push_original_files,
                 "max_file_size_mb": agent.max_file_size_mb,
             },
         })

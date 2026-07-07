@@ -60,7 +60,6 @@ class LLMConfig:
 @dataclass
 class SyncConfig:
     interval_minutes: int = 30
-    push_original_files: bool = False
     batch_size: int = 50
     retry_attempts: int = 3
     retry_delay_seconds: int = 60
@@ -174,7 +173,6 @@ def load_config(config_path: str | Path | None = None) -> EdgeAgentConfig:
     sync_raw = raw.get("sync", {})
     cfg.sync = SyncConfig(
         interval_minutes=sync_raw.get("interval_minutes", cfg.sync.interval_minutes),
-        push_original_files=sync_raw.get("push_original_files", cfg.sync.push_original_files),
         batch_size=sync_raw.get("batch_size", cfg.sync.batch_size),
         retry_attempts=sync_raw.get("retry_attempts", cfg.sync.retry_attempts),
         retry_delay_seconds=sync_raw.get("retry_delay_seconds", cfg.sync.retry_delay_seconds),
