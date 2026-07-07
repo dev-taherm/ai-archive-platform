@@ -15,6 +15,9 @@ class ChatMessageSerializer(serializers.Serializer):
     sources = serializers.ListField(
         child=serializers.DictField(), read_only=True, default=list
     )
+    tool_calls = serializers.ListField(
+        child=serializers.DictField(), read_only=True, default=list
+    )
     metadata = serializers.DictField(read_only=True, default=dict)
     tokens_used = serializers.IntegerField(read_only=True, default=0)
     model_used = serializers.CharField(read_only=True, default="")

@@ -92,6 +92,7 @@ class Document(BaseEntity):
     metadata: DocumentMetadata = field(default_factory=DocumentMetadata)
     classification_confidence: Confidence | None = None
     extracted_text: str = ""
+    summary: str = ""
     chunk_count: int = 0
     error_message: str | None = None
     retry_count: int = 0

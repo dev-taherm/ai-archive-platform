@@ -49,6 +49,7 @@ class ChatMessage(models.Model):
     role = models.CharField(max_length=20, choices=Role.choices)
     content = models.TextField()
     sources = models.JSONField(default=list, blank=True)
+    tool_calls = models.JSONField(default=list, blank=True)
     tokens_used = models.PositiveIntegerField(default=0)
     model_used = models.CharField(max_length=100, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)

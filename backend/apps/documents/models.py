@@ -56,6 +56,7 @@ class Document(models.Model):
     content_blocks = models.JSONField(default=list, blank=True)
     tables = models.JSONField(default=list, blank=True)
     images = models.JSONField(default=list, blank=True)
+    summary = models.TextField(blank=True, default="")
     error_message = models.TextField(blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -72,3 +73,55 @@ class Document(models.Model):
 
     def __str__(self) -> str:
         return self.title or f"Document({self.id})"
+
+
+class ExtractedEntity(models.Model):
+    """A named entity extracted from a document by the LLM pipeline."""
+
+    class EntityType(models.TextChoices):
+        PERSON = "person", "Person"
+        ORGANIZATION = "organization", "Organization"
+        DATE = "date", "Date"
+        AMOUNT = "amount", "Amount"
+        LOCATION = "location", "Location"
+        EMAIL = "email", "Email"
+        PHONE = "phone", "Phone"
+        REFERENCE_NUMBER = "reference_number", "Reference Number"
+        PROJECT_NAME = "project_name", "Project Name"
+
+    class Source(models.TextChoices):
+        PIPELINE = "pipeline", "Pipeline"
+        AGENT = "agent", "Agent"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    document = models.ForeignKey(
+        Document,
+        on_delete=models.CASCADE,
+        related_name="entities",
+    )
+    entity_type = models.CharField(
+        max_length=30,
+        choices=EntityType.choices,
+    )
+    name = models.CharField(max_length=500)
+    context = models.TextField(blank=True, default="")
+    confidence = models.FloatField(null=True, blank=True)
+    source = models.CharField(
+        max_length=20,
+        choices=Source.choices,
+        default=Source.PIPELINE,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "documents_extractedentity"
+        verbose_name = "Extracted Entity"
+        verbose_name_plural = "Extracted Entities"
+        indexes = [
+            models.Index(fields=["entity_type"], name="idx_entity_type"),
+            models.Index(fields=["name"], name="idx_entity_name"),
+            models.Index(fields=["document", "entity_type"], name="idx_entity_doc_type"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.entity_type}: {self.name}"

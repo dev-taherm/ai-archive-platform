@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import json
 import logging
 import time
 import uuid
+from typing import Any
 
 from apps.chat.models import ChatMessage, ChatSession
 from core.application.dtos.chat_dto import (
@@ -12,6 +14,8 @@ from core.application.dtos.chat_dto import (
 )
 
 logger = logging.getLogger(__name__)
+
+MAX_TOOL_ITERATIONS = 5
 
 
 def _get_llm_provider():
@@ -138,16 +142,22 @@ class ChatService:
         # RAG: retrieve relevant document context
         context_text = self._retrieve_context(message)
 
-        # Generate AI response
-        response_text = self._generate_response(message, context_text)
+        # Load conversation history for multi-turn tool-calling context
+        history = self._load_history(session_id)
+
+        # Generate AI response with tool-calling loop
+        response_text, tool_calls_data = self._generate_response(
+            message, context_text, history
+        )
 
         elapsed_ms = (time.monotonic() - start) * 1000
 
-        # Persist assistant response
+        # Persist assistant response with tool calls
         assistant_msg = ChatMessage.objects.create(
             session_id=session_id,
             role=ChatMessage.Role.ASSISTANT,
             content=response_text,
+            tool_calls=tool_calls_data,
         )
 
         return ChatResponseDTO(
@@ -156,6 +166,7 @@ class ChatService:
                 session_id=session_id,
                 role="assistant",
                 content=response_text,
+                tool_calls=tuple(tool_calls_data) if tool_calls_data else (),
             ),
             session_id=session_id,
             processing_time_ms=round(elapsed_ms, 2),
@@ -202,15 +213,61 @@ class ChatService:
             logger.debug("RAG context retrieval failed")
             return ""
 
-    def _generate_response(self, message: str, context: str) -> str:
-        """Generate AI response using LLM with optional RAG context."""
+    def _load_history(
+        self,
+        session_id: uuid.UUID,
+        *,
+        limit: int = 20,
+    ) -> list[dict[str, Any]]:
+        """Load recent conversation history as message dicts for the LLM.
+
+        Returns list of {"role": ..., "content": ...} dicts suitable for
+        passing to chat_with_tools(). Tool call messages are included as
+        assistant messages with tool_calls, and tool results as tool role
+        messages.
+        """
+        messages = ChatMessage.objects.filter(
+            session_id=session_id,
+        ).order_by("created_at")[-limit:]
+
+        history: list[dict[str, Any]] = []
+        for msg in messages:
+            if msg.role == "user":
+                history.append({"role": "user", "content": msg.content})
+            elif msg.role == "assistant":
+                entry: dict[str, Any] = {"role": "assistant", "content": msg.content}
+                if msg.tool_calls:
+                    entry["tool_calls"] = msg.tool_calls
+                history.append(entry)
+            elif msg.role == "tool":
+                history.append({
+                    "role": "tool",
+                    "tool_call_id": msg.metadata.get("tool_call_id", ""),
+                    "content": msg.content,
+                })
+
+        return history
+
+    def _generate_response(
+        self,
+        message: str,
+        context: str,
+        history: list[dict[str, Any]] | None = None,
+    ) -> tuple[str, list[dict[str, Any]]]:
+        """Generate AI response using LLM with tool-calling loop.
+
+        Returns:
+            Tuple of (response_text, tool_calls_data) where tool_calls_data
+            is a list of dicts describing each tool call made during generation.
+        """
         try:
             llm = _get_llm_provider()
         except Exception as e:
             logger.exception("Failed to load LLM provider")
             return (
                 f"Failed to load AI provider: {type(e).__name__}: {e}\n\n"
-                "Please check your AI provider configuration in Settings."
+                "Please check your AI provider configuration in Settings.",
+                [],
             )
 
         if llm is None:
@@ -219,29 +276,70 @@ class ChatService:
                     "I found relevant information in your documents, but no LLM "
                     "provider is configured to generate a response. Please configure "
                     "an AI provider in Settings.\n\n"
-                    f"Relevant context:\n{context[:2000]}"
+                    f"Relevant context:\n{context[:2000]}",
+                    [],
                 )
             return (
                 "No LLM provider is configured. Please set up an AI provider "
-                "in Settings to enable chat functionality."
+                "in Settings to enable chat functionality.",
+                [],
             )
 
-        import asyncio
+        # Import tool registry
+        from core.application.tools import registry
 
         system_prompt = (
             "You are an intelligent archive assistant. You help users search, "
             "understand, and manage their document archive. Be helpful, concise, "
             "and accurate. If you find relevant information in the provided context, "
             "use it to answer the user's question. If no context is provided, "
-            "answer based on your general knowledge."
+            "answer based on your general knowledge.\n\n"
+            "You have access to tools for searching documents, managing agents, "
+            "running workflows, and updating document metadata. Use tools when "
+            "the user asks you to perform actions or needs specific information "
+            "from the archive. Always explain what you're doing before and after "
+            "using a tool."
         )
 
         if context:
             system_prompt += f"\n\nRelevant document context:\n{context[:4000]}"
 
-        messages = [{"role": "user", "content": message}]
+        # Build message list: history + current user message
+        messages: list[dict[str, str]] = []
+        if history:
+            for h in history:
+                # For the LLM, flatten tool calls into content
+                if h["role"] == "assistant" and "tool_calls" in h:
+                    # Include tool call info in the message for context
+                    tc_desc = []
+                    for tc in h["tool_calls"]:
+                        tc_desc.append(f"[Called tool: {tc.get('name', '?')}]")
+                    combined = h.get("content", "") + " " + " ".join(tc_desc)
+                    messages.append({"role": "assistant", "content": combined.strip()})
+                elif h["role"] == "tool":
+                    # Include tool result as context
+                    messages.append({
+                        "role": "user",
+                        "content": f"[Tool result]: {h.get('content', '')}",
+                    })
+                elif h["role"] in ("user", "assistant"):
+                    messages.append({
+                        "role": h["role"],
+                        "content": h.get("content", ""),
+                    })
+
+        messages.append({"role": "user", "content": message})
+
+        # Get tool definitions (only if registry has tools)
+        tool_defs = registry.get_definitions() if registry.tool_names else None
+
+        # Tool-calling loop
+        all_tool_calls: list[dict[str, Any]] = []
+        final_content = ""
 
         try:
+            import asyncio
+
             loop = None
             try:
                 loop = asyncio.get_event_loop()
@@ -250,29 +348,108 @@ class ChatService:
             except RuntimeError:
                 loop = None
 
-            if loop is None:
-                import concurrent.futures
+            for iteration in range(MAX_TOOL_ITERATIONS):
+                if loop is None:
+                    import concurrent.futures
 
-                with concurrent.futures.ThreadPoolExecutor() as pool:
-                    response = pool.submit(
-                        asyncio.run,
-                        llm.chat(
+                    with concurrent.futures.ThreadPoolExecutor() as pool:
+                        result = pool.submit(
+                            asyncio.run,
+                            llm.chat_with_tools(
+                                messages,
+                                system_prompt=system_prompt,
+                                temperature=0.7,
+                                max_tokens=2000,
+                                tools=tool_defs,
+                            ),
+                        ).result(timeout=120)
+                else:
+                    result = loop.run_until_complete(
+                        llm.chat_with_tools(
                             messages,
                             system_prompt=system_prompt,
                             temperature=0.7,
                             max_tokens=2000,
-                        ),
-                    ).result(timeout=60)
-            else:
-                response = loop.run_until_complete(
-                    llm.chat(
-                        messages,
-                        system_prompt=system_prompt,
-                        temperature=0.7,
-                        max_tokens=2000,
+                            tools=tool_defs,
+                        )
                     )
-                )
-            return response
+
+                # No tool calls — we have the final response
+                if not result.tool_calls:
+                    final_content = result.content
+                    break
+
+                # Process tool calls
+                # Add assistant message with tool calls to context
+                assistant_entry: dict[str, Any] = {"role": "assistant", "content": result.content}
+                messages.append(assistant_entry)
+
+                for tc in result.tool_calls:
+                    logger.info(
+                        "Tool call: %s(%s) [iteration %d/%d]",
+                        tc.name,
+                        json.dumps(tc.arguments)[:200],
+                        iteration + 1,
+                        MAX_TOOL_ITERATIONS,
+                    )
+
+                    # Execute the tool
+                    import asyncio as _asyncio
+
+                    if loop is None:
+                        with concurrent.futures.ThreadPoolExecutor() as pool:
+                            tool_result = pool.submit(
+                                _asyncio.run,
+                                registry.execute(tc.name, tc.arguments),
+                            ).result(timeout=30)
+                    else:
+                        tool_result = loop.run_until_complete(
+                            registry.execute(tc.name, tc.arguments)
+                        )
+
+                    result_text = tool_result.get("result", str(tool_result))
+                    all_tool_calls.append({
+                        "id": tc.id,
+                        "name": tc.name,
+                        "arguments": tc.arguments,
+                        "result": result_text,
+                    })
+
+                    # Add tool result to messages for next iteration
+                    messages.append({
+                        "role": "user",
+                        "content": f"[Tool result for {tc.name}]: {result_text[:3000]}",
+                    })
+
+                # If we've done max iterations, generate a final text response
+                if iteration == MAX_TOOL_ITERATIONS - 1:
+                    if loop is None:
+                        with concurrent.futures.ThreadPoolExecutor() as pool:
+                            final_result = pool.submit(
+                                asyncio.run,
+                                llm.chat(
+                                    messages,
+                                    system_prompt=system_prompt,
+                                    temperature=0.7,
+                                    max_tokens=2000,
+                                ),
+                            ).result(timeout=60)
+                    else:
+                        final_result = loop.run_until_complete(
+                            llm.chat(
+                                messages,
+                                system_prompt=system_prompt,
+                                temperature=0.7,
+                                max_tokens=2000,
+                            )
+                        )
+                    final_content = final_result
+
+            if not final_content:
+                final_content = "I was unable to generate a response."
+
+            return final_content, all_tool_calls
+
         except Exception as e:
             logger.exception("LLM chat failed")
             error_type = type(e).__name__
@@ -280,7 +457,8 @@ class ChatService:
             return (
                 f"AI provider error ({error_type}): {error_msg}\n\n"
                 "Please verify your AI provider settings (API key, base URL, "
-                "model name) are correct."
+                "model name) are correct.",
+                all_tool_calls,
             )
 
     def get_history(
@@ -301,6 +479,7 @@ class ChatService:
                 role=msg.role,
                 content=msg.content,
                 sources=tuple(msg.sources) if isinstance(msg.sources, list) else (),
+                tool_calls=tuple(msg.tool_calls) if isinstance(msg.tool_calls, list) else (),
                 tokens_used=msg.tokens_used,
                 model_used=msg.model_used,
                 created_at=msg.created_at,

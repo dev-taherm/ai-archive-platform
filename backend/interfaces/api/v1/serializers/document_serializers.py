@@ -45,6 +45,8 @@ class DocumentSerializer(serializers.Serializer):
         child=serializers.CharField(), read_only=True, default=list
     )
     extracted_text_preview = serializers.CharField(read_only=True, default="")
+    summary = serializers.CharField(read_only=True, default="")
+    entities = serializers.SerializerMethodField()
     error_message = serializers.CharField(read_only=True, allow_null=True)
     created_at = serializers.DateTimeField(read_only=True)
     updated_at = serializers.DateTimeField(read_only=True)
@@ -86,6 +88,11 @@ class DocumentSerializer(serializers.Serializer):
         except Exception:
             return ""
 
+    def get_entities(self, obj):
+        """Return extracted entities for this document."""
+        entities = obj.entities.all() if hasattr(obj, "entities") else []
+        return ExtractedEntitySerializer(entities, many=True).data
+
 
 class DocumentChunkSerializer(serializers.Serializer):
     """Serializer for document chunk representation."""
@@ -98,6 +105,18 @@ class DocumentChunkSerializer(serializers.Serializer):
     end_offset = serializers.IntegerField(read_only=True)
     embedding_id = serializers.CharField(read_only=True, allow_null=True)
     metadata = serializers.DictField(read_only=True, default=dict)
+
+
+class ExtractedEntitySerializer(serializers.Serializer):
+    """Serializer for an extracted named entity."""
+
+    id = serializers.UUIDField(read_only=True)
+    entity_type = serializers.CharField(read_only=True)
+    name = serializers.CharField(read_only=True)
+    context = serializers.CharField(read_only=True, default="")
+    confidence = serializers.FloatField(read_only=True, allow_null=True)
+    source = serializers.CharField(read_only=True)
+    created_at = serializers.DateTimeField(read_only=True)
 
 
 class DocumentProcessSerializer(serializers.Serializer):
@@ -129,4 +148,23 @@ class DocumentExtractSerializer(serializers.Serializer):
         default=None,
         allow_null=True,
         help_text="Optional list of fields to extract.",
+    )
+
+
+class DocumentUpdateSerializer(serializers.Serializer):
+    """Serializer for partial document updates (PATCH)."""
+
+    title = serializers.CharField(max_length=500, required=False)
+    author = serializers.CharField(max_length=255, required=False)
+    subject = serializers.CharField(max_length=500, required=False)
+    doc_type = serializers.ChoiceField(
+        choices=[
+            "invoice", "contract", "report", "letter",
+            "memo", "receipt", "unknown",
+        ],
+        required=False,
+    )
+    tags = serializers.ListField(
+        child=serializers.CharField(max_length=100),
+        required=False,
     )

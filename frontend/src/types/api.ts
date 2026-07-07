@@ -195,6 +195,25 @@ export interface SearchResponse {
   search_type: string;
 }
 
+export interface SavedSearch {
+  id: string;
+  name: string;
+  query: string;
+  search_type: string;
+  filters: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface SearchHistoryEntry {
+  id: string;
+  query: string;
+  search_type: string;
+  result_count: number;
+  search_time_ms: number;
+  filters_used: Record<string, unknown>;
+  created_at: string;
+}
+
 // --- Dashboard ---
 
 export interface DashboardStats {
@@ -208,6 +227,10 @@ export interface DashboardStats {
   recent_uploads_count: number;
   storage_used_bytes: number;
   avg_processing_time_ms: number;
+  agents_total: number;
+  agents_online: number;
+  duplicate_files: number;
+  duplicate_groups: number;
 }
 
 export interface ActivityItem {
@@ -314,4 +337,19 @@ export interface Agent {
 export interface ApiError {
   detail: string;
   status_code?: number;
+}
+
+// --- Tools ---
+
+export interface ToolCall {
+  id: string;
+  name: string;
+  arguments: Record<string, unknown>;
+  result?: string;
+}
+
+export interface ToolDefinition {
+  name: string;
+  description: string;
+  parameters: Record<string, unknown>;
 }

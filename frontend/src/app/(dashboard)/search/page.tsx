@@ -1,9 +1,20 @@
 "use client";
 
 import { useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { Search as SearchIcon, FileText, Clock, Filter, X } from "lucide-react";
+import {
+  Search as SearchIcon,
+  FileText,
+  Clock,
+  Filter,
+  X,
+  BookmarkPlus,
+  Trash2,
+  ChevronLeft,
+  ChevronRight,
+  History,
+} from "lucide-react";
 import api from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,36 +25,102 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import type { SearchResponse, SearchRequest } from "@/types/api";
+import { useToast } from "@/hooks/use-toast";
+import type {
+  SearchResponse,
+  SearchRequest,
+  SavedSearch,
+  SearchHistoryEntry,
+} from "@/types/api";
 
 export default function SearchPage() {
   const [query, setQuery] = useState("");
   const [lastQuery, setLastQuery] = useState("");
   const [showFilters, setShowFilters] = useState(false);
   const [searchType, setSearchType] = useState<SearchRequest["search_type"]>("hybrid");
+  const [offset, setOffset] = useState(0);
   const [filters, setFilters] = useState({
     doc_types: "",
     languages: "",
     tags: "",
+    date_from: "",
+    date_to: "",
   });
+  const [saveName, setSaveName] = useState("");
+  const [showSave, setShowSave] = useState(false);
+  const maxResults = 20;
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
 
   const searchMutation = useMutation({
     mutationFn: async (searchQuery: string) => {
       const request: SearchRequest = {
         query: searchQuery,
         search_type: searchType,
-        max_results: 20,
+        max_results: maxResults,
+        offset,
       };
 
-      if (filters.doc_types || filters.languages || filters.tags) {
-        request.filters = {};
-        if (filters.doc_types) request.filters.doc_types = filters.doc_types.split(",").map((s) => s.trim());
-        if (filters.languages) request.filters.languages = filters.languages.split(",").map((s) => s.trim());
-        if (filters.tags) request.filters.tags = filters.tags.split(",").map((s) => s.trim());
-      }
+      const activeFilters: Record<string, unknown> = {};
+      if (filters.doc_types) activeFilters.doc_types = filters.doc_types.split(",").map((s) => s.trim());
+      if (filters.languages) activeFilters.languages = filters.languages.split(",").map((s) => s.trim());
+      if (filters.tags) activeFilters.tags = filters.tags.split(",").map((s) => s.trim());
+      if (filters.date_from) activeFilters.date_from = filters.date_from;
+      if (filters.date_to) activeFilters.date_to = filters.date_to;
+      if (Object.keys(activeFilters).length > 0) request.filters = activeFilters;
 
       const response = await api.post<SearchResponse>("/search/search", request);
       return response.data;
+    },
+  });
+
+  const { data: savedSearches } = useQuery<SavedSearch[]>({
+    queryKey: ["search", "saved"],
+    queryFn: async () => {
+      const res = await api.get("/search/saved");
+      return res.data;
+    },
+  });
+
+  const { data: history } = useQuery<SearchHistoryEntry[]>({
+    queryKey: ["search", "history"],
+    queryFn: async () => {
+      const res = await api.get("/search/history", { params: { limit: 10 } });
+      return res.data;
+    },
+  });
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      const res = await api.post("/search/saved", {
+        name: saveName,
+        query: lastQuery,
+        search_type: searchType,
+        filters: filters.doc_types || filters.languages || filters.tags
+          ? {
+              ...(filters.doc_types && { doc_types: filters.doc_types.split(",").map((s) => s.trim()) }),
+              ...(filters.languages && { languages: filters.languages.split(",").map((s) => s.trim()) }),
+              ...(filters.tags && { tags: filters.tags.split(",").map((s) => s.trim()) }),
+            }
+          : {},
+      });
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["search", "saved"] });
+      setSaveName("");
+      setShowSave(false);
+      toast({ title: "Search saved" });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await api.delete("/search/saved", { data: { id } });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["search", "saved"] });
+      toast({ title: "Saved search removed" });
     },
   });
 
@@ -51,8 +128,19 @@ export default function SearchPage() {
     e.preventDefault();
     if (!query.trim()) return;
     setLastQuery(query);
+    setOffset(0);
     searchMutation.mutate(query);
   };
+
+  const handlePageChange = (newOffset: number) => {
+    setOffset(newOffset);
+    if (lastQuery) searchMutation.mutate(lastQuery);
+  };
+
+  const totalPages = searchMutation.data
+    ? Math.ceil(searchMutation.data.total_count / maxResults)
+    : 0;
+  const currentPage = Math.floor(offset / maxResults) + 1;
 
   return (
     <div className="space-y-6">
@@ -104,7 +192,7 @@ export default function SearchPage() {
                   </Badge>
                 ))}
               </div>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs text-muted-foreground">Doc Types (comma separated)</label>
                   <Input
@@ -132,93 +220,249 @@ export default function SearchPage() {
                     className="mt-1"
                   />
                 </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-xs text-muted-foreground">From</label>
+                    <Input
+                      type="date"
+                      value={filters.date_from}
+                      onChange={(e) => setFilters((f) => ({ ...f, date_from: e.target.value }))}
+                      className="mt-1"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground">To</label>
+                    <Input
+                      type="date"
+                      value={filters.date_to}
+                      onChange={(e) => setFilters((f) => ({ ...f, date_to: e.target.value }))}
+                      className="mt-1"
+                    />
+                  </div>
+                </div>
               </div>
             </CardContent>
           </Card>
         )}
       </form>
 
-      {searchMutation.data && (
+      <div className="grid gap-6 lg:grid-cols-[1fr_280px]">
         <div className="space-y-4">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Clock className="h-4 w-4" />
-            <span>
-              Found {searchMutation.data.total_count} results for &quot;{lastQuery}&quot; in{" "}
-              {searchMutation.data.search_time_ms.toFixed(0)}ms
-            </span>
-            <Badge variant="outline" className="ml-2">
-              {searchMutation.data.search_type}
-            </Badge>
-          </div>
+          {searchMutation.data && (
+            <>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Clock className="h-4 w-4" />
+                  <span>
+                    Found {searchMutation.data.total_count} results for &quot;{lastQuery}&quot; in{" "}
+                    {searchMutation.data.search_time_ms.toFixed(0)}ms
+                  </span>
+                  <Badge variant="outline" className="ml-2">
+                    {searchMutation.data.search_type}
+                  </Badge>
+                </div>
+                {lastQuery && (
+                  <div className="flex items-center gap-2">
+                    {showSave ? (
+                      <div className="flex items-center gap-2">
+                        <Input
+                          placeholder="Search name"
+                          value={saveName}
+                          onChange={(e) => setSaveName(e.target.value)}
+                          className="h-8 w-40 text-sm"
+                        />
+                        <Button
+                          size="sm"
+                          onClick={() => saveMutation.mutate()}
+                          disabled={!saveName.trim() || saveMutation.isPending}
+                        >
+                          Save
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => setShowSave(false)}>
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <Button size="sm" variant="outline" onClick={() => setShowSave(true)}>
+                        <BookmarkPlus className="mr-2 h-4 w-4" />
+                        Save Search
+                      </Button>
+                    )}
+                  </div>
+                )}
+              </div>
 
-          {searchMutation.data.results.length === 0 ? (
+              {searchMutation.data.results.length === 0 ? (
+                <Card>
+                  <CardContent className="flex flex-col items-center justify-center py-12">
+                    <SearchIcon className="mb-4 h-12 w-12 text-muted-foreground" />
+                    <p className="text-lg font-medium">No results found</p>
+                    <p className="text-sm text-muted-foreground">
+                      Try different keywords or adjust your filters
+                    </p>
+                  </CardContent>
+                </Card>
+              ) : (
+                <div className="space-y-3">
+                  {searchMutation.data.results.map((result, i) => (
+                    <Link
+                      key={`${result.document_id}-${i}`}
+                      href={`/documents/${result.document_id}`}
+                    >
+                      <Card className="cursor-pointer transition-colors hover:bg-muted/50">
+                        <CardHeader className="pb-2">
+                          <div className="flex items-center justify-between">
+                            <CardTitle className="flex items-center gap-2 text-base">
+                              <FileText className="h-4 w-4" />
+                              {result.title}
+                            </CardTitle>
+                            <div className="flex items-center gap-2">
+                              <Badge variant="outline" className="text-xs">
+                                {result.match_source}
+                              </Badge>
+                              <span className="text-xs text-muted-foreground">
+                                {(result.score * 100).toFixed(1)}%
+                              </span>
+                            </div>
+                          </div>
+                        </CardHeader>
+                        <CardContent>
+                          <p className="text-sm text-muted-foreground line-clamp-3">
+                            {result.snippet}
+                          </p>
+                          <div className="mt-2 flex gap-2">
+                            {result.doc_type && (
+                              <Badge variant="secondary" className="text-xs">
+                                {result.doc_type}
+                              </Badge>
+                            )}
+                            {result.language && (
+                              <Badge variant="secondary" className="text-xs">
+                                {result.language}
+                              </Badge>
+                            )}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </Link>
+                  ))}
+                </div>
+              )}
+
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between pt-2">
+                  <span className="text-sm text-muted-foreground">
+                    Page {currentPage} of {totalPages}
+                  </span>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handlePageChange(offset - maxResults)}
+                      disabled={offset === 0}
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                      Prev
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handlePageChange(offset + maxResults)}
+                      disabled={currentPage >= totalPages}
+                    >
+                      Next
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {searchMutation.isError && (
             <Card>
               <CardContent className="flex flex-col items-center justify-center py-12">
-                <SearchIcon className="mb-4 h-12 w-12 text-muted-foreground" />
-                <p className="text-lg font-medium">No results found</p>
-                <p className="text-sm text-muted-foreground">
-                  Try different keywords or adjust your filters
+                <p className="text-sm text-destructive">
+                  Search failed. Please try again.
                 </p>
               </CardContent>
             </Card>
-          ) : (
-            <div className="space-y-3">
-              {searchMutation.data.results.map((result, i) => (
-                <Link
-                  key={`${result.document_id}-${i}`}
-                  href={`/documents/${result.document_id}`}
-                >
-                  <Card className="cursor-pointer transition-colors hover:bg-muted/50">
-                    <CardHeader className="pb-2">
-                      <div className="flex items-center justify-between">
-                        <CardTitle className="flex items-center gap-2 text-base">
-                          <FileText className="h-4 w-4" />
-                          {result.title}
-                        </CardTitle>
-                        <div className="flex items-center gap-2">
-                          <Badge variant="outline" className="text-xs">
-                            {result.match_source}
-                          </Badge>
-                          <span className="text-xs text-muted-foreground">
-                            {(result.score * 100).toFixed(1)}%
-                          </span>
-                        </div>
-                      </div>
-                    </CardHeader>
-                    <CardContent>
-                      <p className="text-sm text-muted-foreground line-clamp-3">
-                        {result.snippet}
-                      </p>
-                      <div className="mt-2 flex gap-2">
-                        {result.doc_type && (
-                          <Badge variant="secondary" className="text-xs">
-                            {result.doc_type}
-                          </Badge>
-                        )}
-                        {result.language && (
-                          <Badge variant="secondary" className="text-xs">
-                            {result.language}
-                          </Badge>
-                        )}
-                      </div>
-                    </CardContent>
-                  </Card>
-                </Link>
-              ))}
-            </div>
           )}
         </div>
-      )}
 
-      {searchMutation.isError && (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-12">
-            <p className="text-sm text-destructive">
-              Search failed. Please try again.
-            </p>
-          </CardContent>
-        </Card>
-      )}
+        <div className="space-y-4">
+          {history && history.length > 0 && (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="flex items-center gap-2 text-sm">
+                  <History className="h-4 w-4" />
+                  Recent Searches
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-1">
+                {history.map((entry) => (
+                  <button
+                    key={entry.id}
+                    className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-sm hover:bg-muted"
+                    onClick={() => {
+                      setQuery(entry.query);
+                      setLastQuery(entry.query);
+                      setSearchType(entry.search_type as SearchRequest["search_type"]);
+                      setOffset(0);
+                      searchMutation.mutate(entry.query);
+                    }}
+                  >
+                    <span className="truncate">{entry.query}</span>
+                    <Badge variant="outline" className="ml-2 text-xs shrink-0">
+                      {entry.result_count}
+                    </Badge>
+                  </button>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+
+          {savedSearches && savedSearches.length > 0 && (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="flex items-center gap-2 text-sm">
+                  <BookmarkPlus className="h-4 w-4" />
+                  Saved Searches
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-1">
+                {savedSearches.map((saved) => (
+                  <div key={saved.id} className="flex items-center justify-between rounded-md px-2 py-1.5 hover:bg-muted">
+                    <button
+                      className="flex-1 text-left"
+                      onClick={() => {
+                        setQuery(saved.query);
+                        setLastQuery(saved.query);
+                        setSearchType(saved.search_type as SearchRequest["search_type"]);
+                        setOffset(0);
+                        searchMutation.mutate(saved.query);
+                      }}
+                    >
+                      <span className="text-sm font-medium">{saved.name}</span>
+                      <span className="block text-xs text-muted-foreground truncate">
+                        {saved.query}
+                      </span>
+                    </button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 shrink-0"
+                      onClick={() => deleteMutation.mutate(saved.id)}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

@@ -1,9 +1,29 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
 from typing import Any
 
 from core.domain.documents.value_objects import Confidence, Language
+
+
+@dataclass
+class ToolCall:
+    """A tool/function call requested by the LLM."""
+
+    id: str
+    name: str
+    arguments: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class ChatResult:
+    """Result from an LLM chat call, potentially including tool calls."""
+
+    content: str = ""
+    tool_calls: list[ToolCall] = field(default_factory=list)
+    finish_reason: str = ""
+    tokens_used: int = 0
 
 
 class OCRProvider(ABC):
@@ -78,7 +98,34 @@ class LLMProvider(ABC):
         """Generate a concise summary of the given text."""
 
     @abstractmethod
-    def chat(
+    def chat_with_tools(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        system_prompt: str | None = None,
+        temperature: float = 0.7,
+        max_tokens: int = 2000,
+        tools: list[dict[str, Any]] | None = None,
+    ) -> ChatResult:
+        """Chat with the LLM, optionally requesting tool calls.
+
+        When tools are provided, the LLM may return tool_calls in the result
+        instead of (or in addition to) content. The caller should execute the
+        requested tools and feed results back in subsequent messages.
+
+        Args:
+            messages: Conversation history (role + content dicts).
+            system_prompt: Optional system instruction.
+            temperature: Sampling temperature.
+            max_tokens: Maximum response tokens.
+            tools: Optional list of tool definitions in OpenAI function-calling format:
+                   [{"type": "function", "function": {"name": ..., "description": ..., "parameters": ...}}]
+
+        Returns:
+            ChatResult with content and/or tool_calls.
+        """
+
+    async def chat(
         self,
         messages: list[dict[str, str]],
         *,
@@ -86,7 +133,18 @@ class LLMProvider(ABC):
         temperature: float = 0.7,
         max_tokens: int = 2000,
     ) -> str:
-        """Have a conversational exchange with the LLM."""
+        """Have a conversational exchange with the LLM.
+
+        Convenience wrapper around chat_with_tools() for callers that don't need
+        tool-calling support.
+        """
+        result = await self.chat_with_tools(
+            messages,
+            system_prompt=system_prompt,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+        return result.content
 
     def extract_entities(
         self,

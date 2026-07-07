@@ -2,10 +2,12 @@
 
 import { use } from "react";
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -14,6 +16,16 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   ArrowLeft,
   FileText,
@@ -29,10 +41,12 @@ import {
   Download,
   Eye,
   X,
-  FileImage,
   ChevronsUpDown,
+  Pencil,
+  Trash2,
 } from "lucide-react";
 import { formatDateTime } from "@/lib/utils";
+import { useToast } from "@/hooks/use-toast";
 import type { Document, DocumentMetadata } from "@/types/api";
 
 const statusVariant: Record<string, "default" | "secondary" | "destructive" | "success" | "warning"> = {
@@ -56,8 +70,16 @@ const entityTypeVariant: Record<string, "default" | "secondary" | "outline"> = {
 
 export default function DocumentDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
+  const router = useRouter();
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editTitle, setEditTitle] = useState("");
+  const [editDocType, setEditDocType] = useState("");
+  const [editTags, setEditTags] = useState("");
+  const [showDelete, setShowDelete] = useState(false);
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
 
   const { data: doc, isLoading, error } = useQuery<Document>({
     queryKey: ["document", id],
@@ -75,6 +97,43 @@ export default function DocumentDetailPage({ params }: { params: Promise<{ id: s
     },
     enabled: !!doc,
   });
+
+  const updateMutation = useMutation({
+    mutationFn: async (data: { title?: string; doc_type?: string; tags?: string[] }) => {
+      const res = await api.patch(`/documents/${id}`, data);
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["document", id] });
+      setEditing(false);
+      toast({ title: "Document updated" });
+    },
+    onError: () => {
+      toast({ title: "Failed to update document", variant: "destructive" });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async () => {
+      await api.delete(`/documents/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["documents"] });
+      setShowDelete(false);
+      toast({ title: "Document deleted" });
+      router.push("/documents");
+    },
+    onError: () => {
+      toast({ title: "Failed to delete document", variant: "destructive" });
+    },
+  });
+
+  const startEditing = () => {
+    setEditTitle(doc?.title || "");
+    setEditDocType(doc?.doc_type || "unknown");
+    setEditTags(doc?.tags?.join(", ") || "");
+    setEditing(true);
+  };
 
   if (isLoading) {
     return (
@@ -114,7 +173,93 @@ export default function DocumentDetailPage({ params }: { params: Promise<{ id: s
         <Badge variant={statusVariant[doc.processing_status] || "secondary"}>
           {doc.processing_status}
         </Badge>
+        <Button variant="outline" size="sm" onClick={startEditing} disabled={editing}>
+          <Pencil className="mr-1 h-3 w-3" />
+          Edit
+        </Button>
+        <Button variant="outline" size="sm" onClick={() => setShowDelete(true)}>
+          <Trash2 className="mr-1 h-3 w-3" />
+          Delete
+        </Button>
       </div>
+
+      {/* Inline Edit Form */}
+      {editing && (
+        <Card className="border-dashed border-primary/50">
+          <CardHeader>
+            <CardTitle className="text-base">Edit Document</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Title</label>
+                <Input
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  placeholder="Document title"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Document Type</label>
+                <Input
+                  value={editDocType}
+                  onChange={(e) => setEditDocType(e.target.value)}
+                  placeholder="e.g. contract, report"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Tags (comma-separated)</label>
+              <Input
+                value={editTags}
+                onChange={(e) => setEditTags(e.target.value)}
+                placeholder="tag1, tag2, tag3"
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" size="sm" onClick={() => setEditing(false)}>
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => {
+                  const tags = editTags.split(",").map((t) => t.trim()).filter(Boolean);
+                  updateMutation.mutate({
+                    title: editTitle || undefined,
+                    doc_type: editDocType || undefined,
+                    tags: tags.length > 0 ? tags : undefined,
+                  });
+                }}
+                disabled={updateMutation.isPending}
+              >
+                {updateMutation.isPending ? "Saving..." : "Save Changes"}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={showDelete} onOpenChange={setShowDelete}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Document</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete "{doc.title || doc.file_name}"? This action cannot be undone.
+              The document and all its data will be permanently removed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deleteMutation.mutate()}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleteMutation.isPending ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Original File Info */}
       {doc.file_name && (
@@ -482,9 +627,23 @@ export default function DocumentDetailPage({ params }: { params: Promise<{ id: s
             </Button>
           </CardHeader>
           <CardContent>
-            <pre className={`${expanded ? "" : "max-h-64"} overflow-auto rounded-md bg-muted p-4 text-sm whitespace-pre-wrap`}>
-              {doc.extracted_text_preview}
-            </pre>
+            <div className={`${expanded ? "" : "max-h-64"} overflow-auto rounded-md bg-muted p-4 text-sm`}>
+              {doc.extracted_text_preview.includes("**") || doc.extracted_text_preview.includes("#") || doc.extracted_text_preview.includes("- ") ? (
+                <div className="prose prose-sm dark:prose-invert max-w-none whitespace-pre-wrap">
+                  {doc.extracted_text_preview.split("\n").map((line, i) => {
+                    if (line.startsWith("# ")) return <h1 key={i} className="text-lg font-bold mt-2 mb-1">{line.slice(2)}</h1>;
+                    if (line.startsWith("## ")) return <h2 key={i} className="text-base font-semibold mt-2 mb-1">{line.slice(3)}</h2>;
+                    if (line.startsWith("### ")) return <h3 key={i} className="text-sm font-semibold mt-2 mb-1">{line.slice(4)}</h3>;
+                    if (line.startsWith("- ")) return <li key={i} className="ml-4">{line.slice(2)}</li>;
+                    if (line.startsWith("* ")) return <li key={i} className="ml-4">{line.slice(2)}</li>;
+                    if (line.trim() === "") return <br key={i} />;
+                    return <p key={i} className="whitespace-pre-wrap">{line}</p>;
+                  })}
+                </div>
+              ) : (
+                <pre className="whitespace-pre-wrap">{doc.extracted_text_preview}</pre>
+              )}
+            </div>
           </CardContent>
         </Card>
       )}

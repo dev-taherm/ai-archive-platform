@@ -86,6 +86,7 @@ class DjangoDocumentRepository(DocumentRepository):
                 else None
             ),
             extracted_text=obj.extracted_text,
+            summary=getattr(obj, "summary", ""),
             chunk_count=obj.chunk_count,
             error_message=obj.error_message,
             retry_count=0,
@@ -120,6 +121,7 @@ class DjangoDocumentRepository(DocumentRepository):
                 else None
             ),
             "extracted_text": document.extracted_text,
+            "summary": document.summary,
             "chunk_count": document.chunk_count,
             "error_message": document.error_message or "",
             "tags": list(document.tags),

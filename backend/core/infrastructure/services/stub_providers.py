@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from core.application.interfaces.services import EmbeddingProvider, LLMProvider, OCRProvider
+from core.application.interfaces.services import ChatResult, EmbeddingProvider, LLMProvider, OCRProvider
 from core.domain.documents.value_objects import Confidence, Language
 
 logger = logging.getLogger(__name__)
@@ -42,16 +42,20 @@ class StubLLMProvider(LLMProvider):
         logger.warning("Using stub LLM provider - summarize returns placeholder")
         return f"[Summary requires LLM provider configuration. Text length: {len(text)} chars]"
 
-    def chat(
+    def chat_with_tools(
         self,
         messages: list[dict[str, str]],
         *,
         system_prompt: str | None = None,
         temperature: float = 0.7,
         max_tokens: int = 2000,
-    ) -> str:
+        tools: list[dict[str, Any]] | None = None,
+    ) -> ChatResult:
         logger.warning("Using stub LLM provider - chat returns placeholder")
-        return "Chat functionality requires LLM provider configuration. Please set OPENAI_API_KEY or GOOGLE_API_KEY."
+        return ChatResult(
+            content="Chat functionality requires LLM provider configuration. Please set OPENAI_API_KEY or GOOGLE_API_KEY.",
+            finish_reason="stop",
+        )
 
 
 class StubEmbeddingProvider(EmbeddingProvider):

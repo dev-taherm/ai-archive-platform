@@ -85,3 +85,29 @@ class SearchResponseSerializer(serializers.Serializer):
     search_time_ms = serializers.FloatField()
     search_type = serializers.CharField(default="hybrid")
     applied_filters = SearchFiltersSerializer(read_only=True)
+
+
+class SavedSearchSerializer(serializers.Serializer):
+    """Serializer for saved searches."""
+
+    id = serializers.UUIDField(read_only=True)
+    name = serializers.CharField(max_length=255)
+    query = serializers.CharField()
+    search_type = serializers.ChoiceField(
+        choices=["hybrid", "semantic", "keyword"],
+        default="hybrid",
+    )
+    filters = serializers.DictField(required=False, default=dict)
+    created_at = serializers.DateTimeField(read_only=True)
+
+
+class SearchHistorySerializer(serializers.Serializer):
+    """Serializer for search history entries."""
+
+    id = serializers.UUIDField(read_only=True)
+    query = serializers.CharField()
+    search_type = serializers.CharField()
+    result_count = serializers.IntegerField()
+    search_time_ms = serializers.FloatField()
+    filters_used = serializers.DictField(default=dict)
+    created_at = serializers.DateTimeField(read_only=True)

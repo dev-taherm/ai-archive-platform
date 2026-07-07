@@ -220,10 +220,18 @@ class DocumentProcessingPipeline:
             result.entities = entities
             result.processing_log.append(f"ENTITIES: extracted {len(entities)} entities")
 
+            # Persist entities to database
+            if entities:
+                await self._save_entities(document.id, entities, source="pipeline")
+
             # Step 7: Generate summary
             summary = await self._summarize(parsed_text, classification)
             result.summary = summary
             result.processing_log.append(f"SUMMARY: {len(summary)} chars")
+
+            # Persist summary to document
+            if summary:
+                object.__setattr__(document, "summary", summary)
 
             # Step 8: Chunk text
             chunks = self._chunk_text(parsed_text)
@@ -518,6 +526,35 @@ class DocumentProcessingPipeline:
         await self._retry_async(
             lambda: self._sync_to_async(self._doc_repo.save, document),
             operation="save_document",
+        )
+
+    async def _save_entities(
+        self,
+        document_id: uuid.UUID,
+        entities: list[dict[str, Any]],
+        source: str = "pipeline",
+    ) -> None:
+        """Persist extracted entities to the database."""
+        from apps.documents.models import ExtractedEntity
+
+        def _do_save() -> None:
+            ExtractedEntity.objects.filter(document_id=document_id).delete()
+            ExtractedEntity.objects.bulk_create([
+                ExtractedEntity(
+                    document_id=document_id,
+                    entity_type=e.get("type", "unknown"),
+                    name=e.get("name", ""),
+                    context=e.get("context", ""),
+                    confidence=e.get("confidence"),
+                    source=source,
+                )
+                for e in entities
+                if e.get("name")
+            ])
+
+        await self._retry_async(
+            lambda: self._sync_to_async(_do_save),
+            operation="save_entities",
         )
 
     async def _handle_failure(self, document: Document, error: Exception) -> None:

@@ -236,6 +236,7 @@ class AgentViewSet(viewsets.ModelViewSet):
                         char_count=file_data.get("char_count", 0),
                         page_count=file_data.get("page_count", 0),
                         extracted_text=file_data.get("extracted_text", "")[:10000],
+                        summary=file_data.get("summary", ""),
                         markdown=file_data.get("markdown", ""),
                         content_blocks=file_data.get("content_blocks", []),
                         tables=file_data.get("tables", []),
@@ -247,6 +248,24 @@ class AgentViewSet(viewsets.ModelViewSet):
                         ocr_engine=file_data.get("ocr_engine", ""),
                         tags=file_data.get("metadata", {}).get("tags", []),
                     )
+
+                    # Persist extracted entities
+                    entities = file_data.get("entities", [])
+                    if entities:
+                        from apps.documents.models import ExtractedEntity
+                        ExtractedEntity.objects.bulk_create([
+                            ExtractedEntity(
+                                document=doc,
+                                entity_type=e.get("type", "unknown"),
+                                name=e.get("name", ""),
+                                context=e.get("context", ""),
+                                confidence=e.get("confidence"),
+                                source="agent",
+                            )
+                            for e in entities
+                            if e.get("name")
+                        ])
+
                     document_ids.append(str(doc.id))
                     accepted += 1
                 except Exception as e:

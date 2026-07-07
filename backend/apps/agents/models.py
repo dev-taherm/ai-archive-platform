@@ -114,6 +114,10 @@ class AgentCommand(models.Model):
         PROCESS = "process", "Process"
         CONFIG_UPDATE = "config_update", "Config Update"
         SHUTDOWN = "shutdown", "Shutdown"
+        UPDATE = "update", "Update Agent"
+        RESTART = "restart", "Restart Agent"
+        START_SCAN = "start_scan", "Start Continuous Scan"
+        STOP_SCAN = "stop_scan", "Stop Continuous Scan"
 
     class CommandStatus(models.TextChoices):
         PENDING = "pending", "Pending"

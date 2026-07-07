@@ -103,6 +103,8 @@ class SyncManager:
                 "processing_version": f.get("processing_version", ""),
                 "parser_version": f.get("parser_version", ""),
                 "ocr_engine": f.get("ocr_engine", ""),
+                "summary": f.get("summary", ""),
+                "entities": self._get_entities_for_file(f["id"]),
             }
             files_payload.append(entry)
 
@@ -132,6 +134,45 @@ class SyncManager:
 
     def close(self) -> None:
         self._client.close()
+
+    def _get_entities_for_file(self, file_id: str) -> list[dict[str, Any]]:
+        """Get extracted entities for a file from the local DB."""
+        try:
+            entities = self._db.get_entities(file_id)
+            return [
+                {
+                    "entity_type": e.get("entity_type", ""),
+                    "name": e.get("name", ""),
+                    "context": e.get("context", ""),
+                    "confidence": e.get("confidence"),
+                    "source": e.get("source", "agent"),
+                }
+                for e in entities
+            ]
+        except Exception:
+            return []
+
+    def report_command_result(
+        self,
+        command_id: str,
+        *,
+        status: str = "completed",
+        result: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Report the result of a command execution back to the platform."""
+        payload: dict[str, Any] = {
+            "command_id": command_id,
+            "status": status,
+        }
+        if result is not None:
+            payload["result"] = result
+
+        resp = self._client.post(
+            f"/api/v1/agents/{self._config.agent_id}/commands",
+            json=payload,
+        )
+        resp.raise_for_status()
+        return resp.json()
 
 
 def _safe_json(value: str | dict | None) -> dict:

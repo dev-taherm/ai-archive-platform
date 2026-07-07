@@ -9,6 +9,8 @@ from rest_framework.response import Response
 from core.domain.common.exceptions import DomainException
 from interfaces.api.v1.serializers.search_serializers import (
     SearchQuerySerializer,
+    SavedSearchSerializer,
+    SearchHistorySerializer,
 )
 
 logger = logging.getLogger(__name__)
@@ -51,6 +53,12 @@ class SearchView(viewsets.GenericViewSet):
             min_score = request.query_params.get("min_score")
             if min_score:
                 filters_data["min_score"] = float(min_score)
+            date_from = request.query_params.get("date_from")
+            if date_from:
+                filters_data["date_from"] = date_from
+            date_to = request.query_params.get("date_to")
+            if date_to:
+                filters_data["date_to"] = date_to
             if filters_data:
                 data["filters"] = filters_data
         else:
@@ -107,6 +115,21 @@ class SearchView(viewsets.GenericViewSet):
                     "metadata": r.metadata,
                 })
 
+            # Log the search
+            try:
+                from apps.search.models import SearchLog
+
+                SearchLog.objects.create(
+                    user_id=request.user.pk if request.user.is_authenticated else None,
+                    query=validated["query"],
+                    search_type=validated.get("search_type", "hybrid"),
+                    result_count=response_dto.total_count,
+                    search_time_ms=response_dto.search_time_ms,
+                    filters_used=filters_data,
+                )
+            except Exception:
+                logger.debug("Failed to log search")
+
             return Response(
                 {
                     "query": response_dto.query,
@@ -121,6 +144,61 @@ class SearchView(viewsets.GenericViewSet):
             return Response(
                 {"detail": e.message}, status=status.HTTP_400_BAD_REQUEST
             )
+
+    @action(detail=False, methods=["get"], url_path="history")
+    def history(self, request):
+        """Return recent search history for the current user."""
+        limit = min(int(request.query_params.get("limit", 20)), 100)
+        from apps.search.models import SearchLog
+
+        logs = SearchLog.objects.filter(
+            user_id=request.user.pk
+        ).order_by("-created_at")[:limit]
+
+        return Response(
+            SearchHistorySerializer(logs, many=True).data,
+            status=status.HTTP_200_OK,
+        )
+
+    @action(detail=False, methods=["get", "post", "delete"], url_path="saved")
+    def saved(self, request):
+        """Manage saved searches."""
+        from apps.search.models import SavedSearch
+
+        if request.method == "GET":
+            searches = SavedSearch.objects.filter(
+                user=request.user
+            ).order_by("-created_at")
+            return Response(
+                SavedSearchSerializer(searches, many=True).data,
+                status=status.HTTP_200_OK,
+            )
+
+        if request.method == "DELETE":
+            search_id = request.data.get("id") or request.query_params.get("id")
+            if not search_id:
+                return Response(
+                    {"detail": "id is required."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            deleted, _ = SavedSearch.objects.filter(
+                id=search_id, user=request.user
+            ).delete()
+            if deleted:
+                return Response(status=status.HTTP_204_NO_CONTENT)
+            return Response(
+                {"detail": "Saved search not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # POST — create saved search
+        serializer = SavedSearchSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        saved = serializer.save(user=request.user)
+        return Response(
+            SavedSearchSerializer(saved).data,
+            status=status.HTTP_201_CREATED,
+        )
 
     @action(detail=False, methods=["get", "post"], url_path="quick-search")
     def quick_search(self, request):

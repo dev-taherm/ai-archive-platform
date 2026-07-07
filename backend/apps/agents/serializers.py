@@ -151,6 +151,10 @@ class SyncFileSerializer(serializers.Serializer):
     processing_version = serializers.CharField(required=False, default="", allow_blank=True)
     parser_version = serializers.CharField(required=False, default="", allow_blank=True)
     ocr_engine = serializers.CharField(required=False, default="", allow_blank=True)
+    entities = serializers.ListField(
+        child=serializers.DictField(), required=False, default=list
+    )
+    summary = serializers.CharField(required=False, default="", allow_blank=True)
 
 
 class AgentSyncSerializer(serializers.Serializer):

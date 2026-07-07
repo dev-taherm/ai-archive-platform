@@ -23,6 +23,7 @@ from edge_agent import __version__
 from edge_agent.config import EdgeAgentConfig, load_config, ServerConfig
 from edge_agent.core.scanner import FileScanner
 from edge_agent.db.local_db import LocalDB
+from edge_agent.llm.client import LLMClient
 from edge_agent.parsers.router import ParserRouter
 from edge_agent.ocr.engine import OCREngine
 from edge_agent.sync.manager import SyncManager
@@ -88,6 +89,14 @@ def _save_config(config: EdgeAgentConfig, path: Path) -> None:
             "enabled": config.watcher.enabled,
             "recursive": config.watcher.recursive,
             "debounce_seconds": config.watcher.debounce_seconds,
+        },
+        "llm": {
+            "provider": config.llm.provider,
+            "model": config.llm.model,
+            "api_key": config.llm.api_key,
+            "base_url": config.llm.base_url,
+            "temperature": config.llm.temperature,
+            "max_tokens": config.llm.max_tokens,
         },
     }
     with open(path, "w") as f:
@@ -331,6 +340,7 @@ def cmd_status(args: argparse.Namespace, config: EdgeAgentConfig) -> None:
     """Show agent status."""
     db = LocalDB(config.db_path)
     stats = db.get_stats()
+    entity_stats = db.get_entity_stats()
     print(f"Edge Agent v{__version__}")
     print(f"  Agent:    {config.agent_name}")
     print(f"  Agent ID: {config.agent_id or '(not registered)'}")
@@ -340,11 +350,356 @@ def cmd_status(args: argparse.Namespace, config: EdgeAgentConfig) -> None:
     print("  Files:")
     for key, val in stats.items():
         print(f"    {key}: {val}")
+    if entity_stats:
+        print()
+        print("  Entities:")
+        for etype, count in sorted(entity_stats.items()):
+            print(f"    {etype}: {count}")
     db.close()
 
 
+def _extract_entities_batch(
+    db: LocalDB,
+    llm: LLMClient,
+    batch_size: int = 10,
+    force: bool = False,
+) -> dict:
+    """Batch-extract entities from all completed files that lack entities.
+
+    Args:
+        db: Local database.
+        llm: LLM client for extraction.
+        batch_size: Number of files to process per batch.
+        force: If True, re-extract even files that already have entities.
+
+    Returns:
+        Stats dict with extracted counts.
+    """
+    files = db.list_files(status="completed", synced=0, limit=10000)
+    if not files:
+        # Also get synced files if force=True
+        if force:
+            files = db.list_files(status="completed", limit=10000)
+        else:
+            return {"processed": 0, "entities_found": 0}
+
+    processed = 0
+    total_entities = 0
+
+    for f in files:
+        file_id = f["id"]
+        text = f.get("extracted_text", "")
+        if not text or len(text.strip()) < 50:
+            continue
+
+        # Skip files that already have entities (unless force)
+        if not force:
+            existing = db.get_entities(file_id)
+            if existing:
+                continue
+
+        logger.info("Extracting entities from: %s", f.get("local_path", file_id))
+        try:
+            entities = llm.extract_entities(text)
+            if entities:
+                ent_dicts = [
+                    {
+                        "entity_type": e.entity_type,
+                        "name": e.name,
+                        "context": e.context,
+                        "confidence": e.confidence,
+                        "source": "agent",
+                    }
+                    for e in entities
+                ]
+                db.save_entities(file_id, ent_dicts)
+                total_entities += len(ent_dicts)
+                logger.info("  Found %d entities", len(ent_dicts))
+            processed += 1
+        except Exception:
+            logger.exception("  Entity extraction failed for %s", f.get("local_path"))
+
+        if processed >= batch_size:
+            break
+
+    return {"processed": processed, "entities_found": total_entities}
+
+
+def cmd_extract(args: argparse.Namespace, config: EdgeAgentConfig) -> None:
+    """Batch-extract entities from processed files using LLM."""
+    if not config.llm.api_key and config.llm.provider != "ollama":
+        print(f"ERROR: LLM API key not configured for {config.llm.provider}")
+        print("  Set llm.api_key in config or EDGE_LLM_API_KEY env var")
+        sys.exit(1)
+
+    db = LocalDB(config.db_path)
+    llm = LLMClient(config.llm)
+    force = getattr(args, "force", False)
+    batch_size = getattr(args, "batch", 10)
+
+    print(f"Extracting entities (provider={config.llm.provider}, model={config.llm.model})...")
+    result = _extract_entities_batch(db, llm, batch_size=batch_size, force=force)
+    print(f"  Files processed: {result['processed']}")
+    print(f"  Entities found:  {result['entities_found']}")
+
+    entity_stats = db.get_entity_stats()
+    if entity_stats:
+        print()
+        print("  By type:")
+        for etype, count in sorted(entity_stats.items()):
+            print(f"    {etype}: {count}")
+
+    db.close()
+
+
+# ---------------------------------------------------------------------------
+# Command dispatch — executes commands received from the SaaS platform
+# ---------------------------------------------------------------------------
+
+def _execute_scan(
+    db: LocalDB,
+    scanner: FileScanner,
+    parser: ParserRouter,
+    ocr: OCREngine,
+    config: EdgeAgentConfig,
+    payload: dict,
+) -> dict:
+    """Execute a scan command: scan one or all folders."""
+    folder = payload.get("folder_path")
+    folders = [folder] if folder else config.folders
+    scanned = 0
+    processed = 0
+
+    for f in folders:
+        if not Path(f).exists():
+            logger.warning("Folder does not exist: %s", f)
+            continue
+        for file_info in scanner.scan_folder(f, recursive=True):
+            _process_file(
+                file_info, db, parser, ocr,
+                agent_version=config.agent_version,
+                processing_version=PROCESSING_VERSION,
+                parser_version=config.parser.backend,
+                ocr_engine=config.ocr.engine,
+            )
+            scanned += 1
+            processed += 1
+
+    return {"scanned": scanned, "processed": processed}
+
+
+def _execute_sync(
+    db: LocalDB,
+    config: EdgeAgentConfig,
+) -> dict:
+    """Execute a sync command: push pending files to the platform."""
+    sync = SyncManager(config, db)
+    try:
+        result = sync.sync_with_retry()
+        return result
+    finally:
+        sync.close()
+
+
+def _execute_process(
+    db: LocalDB,
+    scanner: FileScanner,
+    parser: ParserRouter,
+    ocr: OCREngine,
+    config: EdgeAgentConfig,
+    payload: dict,
+) -> dict:
+    """Execute a process command: process a single file by path."""
+    file_path = payload.get("file_path", "")
+    if not file_path:
+        return {"error": "No file_path in payload"}
+
+    file_info = scanner.scan_single(file_path)
+    if not file_info:
+        return {"error": f"Could not scan {file_path}"}
+
+    _process_file(
+        file_info, db, parser, ocr,
+        agent_version=config.agent_version,
+        processing_version=PROCESSING_VERSION,
+        parser_version=config.parser.backend,
+        ocr_engine=config.ocr.engine,
+    )
+    return {"processed": file_path, "status": "completed"}
+
+
+def _execute_config_update(
+    config: EdgeAgentConfig,
+    payload: dict,
+) -> dict:
+    """Execute a config_update command: update local configuration."""
+    updated_fields = []
+    if "sync_interval_minutes" in payload:
+        config.sync.interval_minutes = payload["sync_interval_minutes"]
+        updated_fields.append("sync_interval_minutes")
+    if "max_file_size_mb" in payload:
+        config.scanner.max_file_size_mb = payload["max_file_size_mb"]
+        updated_fields.append("max_file_size_mb")
+    if "folders" in payload:
+        config.folders = payload["folders"]
+        updated_fields.append("folders")
+    return {"updated": updated_fields}
+
+
+def _execute_shutdown() -> dict:
+    """Execute a shutdown command: signal the agent to stop."""
+    logger.info("Shutdown command received")
+    return {"status": "shutting_down"}
+
+
+def _execute_update(config: EdgeAgentConfig, payload: dict) -> dict:
+    """Execute an update command: pull latest and restart."""
+    import subprocess
+    import sys
+
+    repo_path = payload.get("repo_path", str(Path(__file__).parent.parent))
+    try:
+        result = subprocess.run(
+            ["git", "pull"],
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if result.returncode == 0:
+            logger.info("Update pulled successfully: %s", result.stdout.strip())
+            # Restart the current process
+            os.execv(sys.executable, [sys.executable] + sys.argv)
+        return {"status": "update_failed", "error": result.stderr}
+    except Exception as e:
+        return {"status": "update_failed", "error": str(e)}
+
+
+def _execute_restart() -> dict:
+    """Execute a restart command: restart the current process."""
+    import os
+    import sys
+
+    logger.info("Restart command received")
+    os.execv(sys.executable, [sys.executable] + sys.argv)
+    # Unreachable, but just in case
+    return {"status": "restarting"}
+
+
+def _execute_start_scan(config: EdgeAgentConfig, payload: dict) -> dict:
+    """Execute a start_scan command: mark folders for continuous scanning."""
+    folders = payload.get("folders", config.folders)
+    logger.info("Continuous scan started for: %s", folders)
+    return {"status": "scan_started", "folders": folders}
+
+
+def _execute_stop_scan() -> dict:
+    """Execute a stop_scan command: stop continuous scanning."""
+    logger.info("Continuous scan stopped")
+    return {"status": "scan_stopped"}
+
+
+def dispatch_commands(
+    commands: list[dict],
+    db: LocalDB,
+    scanner: FileScanner,
+    parser: ParserRouter,
+    ocr: OCREngine,
+    config: EdgeAgentConfig,
+    sync: SyncManager | None = None,
+) -> list[dict]:
+    """Process a list of commands from the server.
+
+    Returns list of results for reporting back to the platform.
+    """
+    results = []
+    for cmd in commands:
+        cmd_id = cmd.get("id", "")
+        cmd_type = cmd.get("command_type", "")
+        payload = cmd.get("payload", {})
+
+        logger.info("Dispatching command: %s (id=%s)", cmd_type, cmd_id)
+
+        try:
+            if cmd_type == "scan":
+                result = _execute_scan(db, scanner, parser, ocr, config, payload)
+            elif cmd_type == "sync":
+                result = _execute_sync(db, config)
+            elif cmd_type == "process":
+                result = _execute_process(db, scanner, parser, ocr, config, payload)
+            elif cmd_type == "config_update":
+                result = _execute_config_update(config, payload)
+            elif cmd_type == "shutdown":
+                result = _execute_shutdown()
+            elif cmd_type == "update":
+                result = _execute_update(config, payload)
+            elif cmd_type == "restart":
+                result = _execute_restart()
+            elif cmd_type == "start_scan":
+                result = _execute_start_scan(config, payload)
+            elif cmd_type == "stop_scan":
+                result = _execute_stop_scan()
+            else:
+                result = {"error": f"Unknown command type: {cmd_type}"}
+
+            results.append({"command_id": cmd_id, "status": "completed", "result": result})
+
+            # Report back to server
+            if sync:
+                try:
+                    sync.report_command_result(cmd_id, status="completed", result=result)
+                except Exception as e:
+                    logger.warning("Failed to report command result: %s", e)
+
+        except Exception as e:
+            logger.exception("Command %s failed", cmd_type)
+            error_result = {"error": str(e)}
+            results.append({"command_id": cmd_id, "status": "failed", "result": error_result})
+            if sync:
+                try:
+                    sync.report_command_result(cmd_id, status="failed", result=error_result)
+                except Exception:
+                    logger.warning("Failed to report command failure")
+
+    return results
+
+
+def _heartbeat_loop(
+    sync: SyncManager,
+    db: LocalDB,
+    scanner: FileScanner,
+    parser: ParserRouter,
+    ocr: OCREngine,
+    config: EdgeAgentConfig,
+    stop_event: Any,
+) -> None:
+    """Periodic heartbeat loop: sends heartbeat, receives and dispatches commands."""
+    interval_seconds = config.sync.interval_minutes * 60
+    logger.info(
+        "Heartbeat loop started (interval=%d minutes)",
+        config.sync.interval_minutes,
+    )
+
+    while not stop_event.is_set():
+        try:
+            response = sync.heartbeat()
+            pending_commands = response.get("pending_commands", [])
+
+            if pending_commands:
+                logger.info("Received %d command(s)", len(pending_commands))
+                dispatch_commands(
+                    pending_commands, db, scanner, parser, ocr, config, sync=sync,
+                )
+        except Exception as e:
+            logger.warning("Heartbeat failed: %s", e)
+
+        stop_event.wait(interval_seconds)
+
+
 def cmd_run(args: argparse.Namespace, config: EdgeAgentConfig) -> None:
-    """Full loop: process pending files, sync, then watch."""
+    """Full loop: process pending files, sync, then watch + heartbeat."""
+    import threading
+
     db = LocalDB(config.db_path)
     scanner = FileScanner(
         ignore_patterns=config.scanner.ignore_patterns,
@@ -364,19 +719,37 @@ def cmd_run(args: argparse.Namespace, config: EdgeAgentConfig) -> None:
                               parser_version=config.parser.backend,
                               ocr_engine=config.ocr.engine)
 
-    # Sync
+    # Initial sync + start heartbeat thread
+    sync = None
+    stop_event = threading.Event()
+    heartbeat_thread = None
+
     if config.server.api_key:
         sync = SyncManager(config, db)
         try:
             sync.sync_with_retry()
         except Exception as e:
             logger.warning("Initial sync failed: %s", e)
-        sync.close()
 
-    db.close()
+        heartbeat_thread = threading.Thread(
+            target=_heartbeat_loop,
+            args=(sync, db, scanner, parser, ocr, config, stop_event),
+            daemon=True,
+            name="heartbeat",
+        )
+        heartbeat_thread.start()
+        logger.info("Heartbeat thread started")
 
-    # Start watching
+    # cmd_watch creates its own db/scanner/parser/ocr and blocks
     cmd_watch(args, config)
+
+    # Cleanup after watch exits (SIGINT/SIGTERM)
+    stop_event.set()
+    if heartbeat_thread:
+        heartbeat_thread.join(timeout=5)
+    if sync:
+        sync.close()
+    db.close()
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -414,6 +787,11 @@ def build_parser() -> argparse.ArgumentParser:
     # status
     sub.add_parser("status", help="Show agent status")
 
+    # extract
+    p_extract = sub.add_parser("extract", help="Batch-extract entities from processed files")
+    p_extract.add_argument("--batch", type=int, default=10, help="Max files to process (default: 10)")
+    p_extract.add_argument("--force", action="store_true", help="Re-extract even files with existing entities")
+
     # run
     p_run = sub.add_parser("run", help="Full loop: scan + process + sync + watch")
     p_run.add_argument("--folders", nargs="+", help="Folders to watch")
@@ -445,6 +823,7 @@ def main() -> None:
         "sync": cmd_sync,
         "watch": cmd_watch,
         "status": cmd_status,
+        "extract": cmd_extract,
         "run": cmd_run,
     }
 

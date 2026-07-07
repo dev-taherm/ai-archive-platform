@@ -131,6 +131,7 @@ class DjangoDocumentRepository(DocumentRepository):
                 else None
             ),
             extracted_text=orm.extracted_text,
+            summary=getattr(orm, "summary", ""),
             chunk_count=orm.chunk_count,
             error_message=orm.error_message or None,
             tags=tuple(orm.tags),
@@ -184,6 +185,7 @@ class DjangoDocumentRepository(DocumentRepository):
             ),
             tags=list(entity.tags),
             extracted_text=entity.extracted_text,
+            summary=entity.summary,
             error_message=entity.error_message or "",
         )
         # Set fields that may not exist on older ORM instances

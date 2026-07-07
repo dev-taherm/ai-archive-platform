@@ -42,6 +42,10 @@ class DashboardView(viewsets.GenericViewSet):
                 "recent_uploads_count": 0,
                 "storage_used_bytes": 0,
                 "avg_processing_time_ms": 0.0,
+                "agents_total": 0,
+                "agents_online": 0,
+                "duplicate_files": 0,
+                "duplicate_groups": 0,
             }
 
             # File counts
@@ -111,9 +115,9 @@ class DashboardView(viewsets.GenericViewSet):
 
             # Search count
             try:
-                from apps.search.models import SearchHistory
+                from apps.search.models import SearchLog
 
-                stats_data["total_searches"] = SearchHistory.objects.count()
+                stats_data["total_searches"] = SearchLog.objects.count()
             except Exception:
                 pass
 
@@ -122,6 +126,31 @@ class DashboardView(viewsets.GenericViewSet):
                 from apps.chat.models import ChatSession
 
                 stats_data["total_chat_sessions"] = ChatSession.objects.count()
+            except Exception:
+                pass
+
+            # Agent counts
+            try:
+                from apps.agents.models import Agent
+
+                stats_data["agents_total"] = Agent.objects.count()
+                stats_data["agents_online"] = Agent.objects.filter(
+                    status="online"
+                ).count()
+            except Exception:
+                pass
+
+            # Duplicate files
+            try:
+                from apps.files.models import FileRecord as FileModel
+
+                stats_data["duplicate_files"] = FileModel.objects.filter(
+                    duplicate_group_id__isnull=False
+                ).count()
+                dup_groups = FileModel.objects.filter(
+                    duplicate_group_id__isnull=False
+                ).aggregate(groups=Count("duplicate_group_id", distinct=True))
+                stats_data["duplicate_groups"] = dup_groups["groups"] or 0
             except Exception:
                 pass
 
@@ -243,11 +272,11 @@ class DashboardView(viewsets.GenericViewSet):
 
         # Search Activity (area chart)
         try:
-            from apps.search.models import SearchHistory
+            from apps.search.models import SearchLog
             from django.db.models.functions import TruncDate
 
             data = (
-                SearchHistory.objects.filter(created_at__gte=since)
+                SearchLog.objects.filter(created_at__gte=since)
                 .annotate(date=TruncDate("created_at"))
                 .values("date")
                 .annotate(count=Count("id"))

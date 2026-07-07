@@ -17,6 +17,7 @@ from interfaces.api.v1.views.workflow_views import WorkflowViewSet
 from interfaces.api.v1.views.ocr_views import OcrJobViewSet
 from interfaces.api.v1.views.report_views import ReportView
 from interfaces.api.v1.views.provider_views import ProviderConfigViewSet
+from interfaces.api.v1.views.tool_views import ToolViewSet
 from apps.apikeys.views import ApiKeyViewSet
 from apps.agents.views import AgentViewSet
 
@@ -36,6 +37,7 @@ router.register(r"search", SearchView, basename="search")
 router.register(r"providers", ProviderConfigViewSet, basename="provider")
 router.register(r"api-keys", ApiKeyViewSet, basename="api-key")
 router.register(r"agents", AgentViewSet, basename="agent")
+router.register(r"tools", ToolViewSet, basename="tool")
 
 # Custom URL patterns for non-standard REST paths the frontend expects
 urlpatterns = [

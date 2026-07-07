@@ -56,6 +56,22 @@ CREATE TABLE IF NOT EXISTS sync_log (
 );
 
 CREATE INDEX IF NOT EXISTS idx_sync_log_batch ON sync_log(sync_batch_id);
+
+CREATE TABLE IF NOT EXISTS entities (
+    id TEXT PRIMARY KEY,
+    file_id TEXT NOT NULL,
+    entity_type TEXT NOT NULL,
+    name TEXT NOT NULL,
+    context TEXT NOT NULL DEFAULT '',
+    confidence REAL,
+    source TEXT NOT NULL DEFAULT 'agent',
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (file_id) REFERENCES files(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_entities_file ON entities(file_id);
+CREATE INDEX IF NOT EXISTS idx_entities_type ON entities(entity_type);
+CREATE INDEX IF NOT EXISTS idx_entities_name ON entities(name);
 """
 
 _MIGRATIONS = """
@@ -225,6 +241,51 @@ class LocalDB:
         return {"total": total, "synced": synced, "pending": pending, "processing": processing, "completed": completed, "failed": failed}
 
     def delete_file(self, file_id: str) -> bool:
+        # Also delete associated entities
+        self._conn.execute("DELETE FROM entities WHERE file_id=?", (file_id,))
         cursor = self._conn.execute("DELETE FROM files WHERE id=?", (file_id,))
         self._conn.commit()
         return cursor.rowcount > 0
+
+    def save_entities(self, file_id: str, entities: list[dict[str, Any]]) -> None:
+        """Save extracted entities for a file. Replaces existing entities."""
+        self._conn.execute("DELETE FROM entities WHERE file_id=?", (file_id,))
+        now = self._now()
+        for ent in entities:
+            ent_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{file_id}:{ent.get('entity_type', '')}:{ent.get('name', '')}"))
+            self._conn.execute("""
+                INSERT INTO entities (id, file_id, entity_type, name, context, confidence, source, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                ent_id, file_id,
+                ent.get("entity_type", ""),
+                ent.get("name", ""),
+                ent.get("context", ""),
+                ent.get("confidence"),
+                ent.get("source", "agent"),
+                now,
+            ))
+        self._conn.commit()
+
+    def get_entities(self, file_id: str) -> list[dict[str, Any]]:
+        """Get all entities for a file."""
+        rows = self._conn.execute(
+            "SELECT * FROM entities WHERE file_id=? ORDER BY entity_type, name",
+            (file_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_all_entities(self, limit: int = 10000) -> list[dict[str, Any]]:
+        """Get all entities across all files."""
+        rows = self._conn.execute(
+            "SELECT * FROM entities ORDER BY entity_type, name LIMIT ?",
+            (limit,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_entity_stats(self) -> dict[str, int]:
+        """Get entity counts by type."""
+        rows = self._conn.execute(
+            "SELECT entity_type, COUNT(*) as cnt FROM entities GROUP BY entity_type"
+        ).fetchall()
+        return {r["entity_type"]: r["cnt"] for r in rows}

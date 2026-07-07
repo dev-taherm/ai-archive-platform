@@ -12,6 +12,12 @@ interface Message {
   role: "user" | "assistant";
   content: string;
   sources?: Array<{ document_id: string; title: string; snippet: string }>;
+  tool_calls?: Array<{
+    id: string;
+    name: string;
+    arguments: Record<string, unknown>;
+    result?: string;
+  }>;
 }
 
 export default function ChatInterface() {
@@ -56,6 +62,7 @@ export default function ChatInterface() {
         role: "assistant",
         content: res.data.message?.content || res.data.assistant_message || "No response",
         sources: res.data.message?.sources,
+        tool_calls: res.data.message?.tool_calls,
       };
       setMessages((prev) => [...prev, assistantMessage]);
     } catch {

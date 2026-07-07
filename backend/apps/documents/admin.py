@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from django.contrib import admin
 
-from apps.documents.models import Document
+from apps.documents.models import Document, ExtractedEntity
 
 
 @admin.register(Document)
@@ -27,3 +27,19 @@ class DocumentAdmin(admin.ModelAdmin):
         "updated_at",
     )
     ordering = ("-created_at",)
+
+
+@admin.register(ExtractedEntity)
+class ExtractedEntityAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "entity_type",
+        "name",
+        "document",
+        "source",
+        "created_at",
+    )
+    list_filter = ("entity_type", "source")
+    search_fields = ("name", "context")
+    readonly_fields = ("id", "created_at")
+    raw_id_fields = ("document",)

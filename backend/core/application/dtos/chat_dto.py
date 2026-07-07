@@ -15,6 +15,7 @@ class ChatMessageDTO:
     role: str = "user"
     content: str = ""
     sources: tuple[dict[str, Any], ...] = ()
+    tool_calls: tuple[dict[str, Any], ...] = ()
     metadata: dict[str, Any] = field(default_factory=dict)
     tokens_used: int = 0
     model_used: str = ""

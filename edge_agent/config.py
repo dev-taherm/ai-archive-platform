@@ -48,6 +48,16 @@ class ParserConfig:
 
 
 @dataclass
+class LLMConfig:
+    provider: str = "openai"
+    model: str = "gpt-4o-mini"
+    api_key: str = ""
+    base_url: str = ""
+    temperature: float = 0.3
+    max_tokens: int = 4096
+
+
+@dataclass
 class SyncConfig:
     interval_minutes: int = 30
     push_original_files: bool = False
@@ -74,6 +84,7 @@ class EdgeAgentConfig:
     scanner: ScannerConfig = field(default_factory=ScannerConfig)
     ocr: OCRConfig = field(default_factory=OCRConfig)
     parser: ParserConfig = field(default_factory=ParserConfig)
+    llm: LLMConfig = field(default_factory=LLMConfig)
     sync: SyncConfig = field(default_factory=SyncConfig)
     watcher: WatcherConfig = field(default_factory=WatcherConfig)
     folders: list[str] = field(default_factory=list)
@@ -146,6 +157,17 @@ def load_config(config_path: str | Path | None = None) -> EdgeAgentConfig:
         language=parser_raw.get("language", cfg.parser.language),
         formula_enable=parser_raw.get("formula_enable", cfg.parser.formula_enable),
         table_enable=parser_raw.get("table_enable", cfg.parser.table_enable),
+    )
+
+    # LLM
+    llm_raw = raw.get("llm", {})
+    cfg.llm = LLMConfig(
+        provider=llm_raw.get("provider", os.getenv("EDGE_LLM_PROVIDER", cfg.llm.provider)),
+        model=llm_raw.get("model", os.getenv("EDGE_LLM_MODEL", cfg.llm.model)),
+        api_key=llm_raw.get("api_key", os.getenv("EDGE_LLM_API_KEY", cfg.llm.api_key)),
+        base_url=llm_raw.get("base_url", os.getenv("EDGE_LLM_BASE_URL", cfg.llm.base_url)),
+        temperature=llm_raw.get("temperature", cfg.llm.temperature),
+        max_tokens=llm_raw.get("max_tokens", cfg.llm.max_tokens),
     )
 
     # Sync

@@ -14,6 +14,8 @@ from interfaces.api.v1.serializers.document_serializers import (
     DocumentMetadataSerializer,
     DocumentProcessSerializer,
     DocumentSerializer,
+    DocumentUpdateSerializer,
+    ExtractedEntitySerializer,
 )
 
 logger = logging.getLogger(__name__)
@@ -37,6 +39,8 @@ class DocumentViewSet(viewsets.GenericViewSet):
             return DocumentClassifySerializer
         if self.action == "extract":
             return DocumentExtractSerializer
+        if self.action in ("partial_update", "update"):
+            return DocumentUpdateSerializer
         return DocumentSerializer
 
     @property
@@ -76,6 +80,63 @@ class DocumentViewSet(viewsets.GenericViewSet):
             return Response(
                 {"detail": e.message}, status=status.HTTP_404_NOT_FOUND
             )
+
+    def partial_update(self, request, pk=None):
+        """PATCH /documents/{pk}/ — update title, author, subject, doc_type, tags."""
+        import uuid as _uuid
+        from apps.documents.models import Document as DocModel
+
+        try:
+            document_id = _uuid.UUID(str(pk))
+        except ValueError:
+            return Response(
+                {"detail": "Invalid document ID."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        serializer = DocumentUpdateSerializer(data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            doc = DocModel.objects.get(id=document_id)
+        except DocModel.DoesNotExist:
+            return Response(
+                {"detail": "Document not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        update_fields = []
+        for field, value in serializer.validated_data.items():
+            setattr(doc, field, value)
+            update_fields.append(field)
+        if update_fields:
+            doc.save(update_fields=update_fields)
+
+        return Response(DocumentSerializer(doc).data, status=status.HTTP_200_OK)
+
+    def destroy(self, request, pk=None):
+        """DELETE /documents/{pk}/ — delete a document."""
+        import uuid as _uuid
+        from apps.documents.models import Document as DocModel
+
+        try:
+            document_id = _uuid.UUID(str(pk))
+        except ValueError:
+            return Response(
+                {"detail": "Invalid document ID."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            doc = DocModel.objects.get(id=document_id)
+        except DocModel.DoesNotExist:
+            return Response(
+                {"detail": "Document not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        doc.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=False, methods=["post"])
     def process(self, request):
@@ -181,6 +242,32 @@ class DocumentViewSet(viewsets.GenericViewSet):
             return Response(
                 {"detail": e.message}, status=status.HTTP_404_NOT_FOUND
             )
+
+    @action(detail=True, methods=["get"], url_path="entities")
+    def entities(self, request, pk=None):
+        """List extracted entities for a document."""
+        import uuid as _uuid
+        from apps.documents.models import Document as DocModel
+
+        try:
+            document_id = _uuid.UUID(str(pk))
+        except ValueError:
+            return Response(
+                {"detail": "Invalid document ID."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            doc = DocModel.objects.get(id=document_id)
+        except DocModel.DoesNotExist:
+            return Response(
+                {"detail": "Document not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        entities = doc.entities.all().order_by("entity_type", "name")
+        serializer = ExtractedEntitySerializer(entities, many=True)
+        return Response(serializer.data)
 
     @action(detail=True, methods=["post"])
     def classify(self, request, pk=None):

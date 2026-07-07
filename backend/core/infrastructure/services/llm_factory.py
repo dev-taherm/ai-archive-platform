@@ -4,7 +4,7 @@ import logging
 import os
 from typing import Any
 
-from core.application.interfaces.services import LLMProvider
+from core.application.interfaces.services import ChatResult, LLMProvider, ToolCall
 from core.domain.ai.value_objects import ModelConfig
 
 logger = logging.getLogger(__name__)
@@ -128,26 +128,53 @@ class OpenAILLMProvider(LLMProvider):
         )
         return response.choices[0].message.content.strip()
 
-    async def chat(
+    async def chat_with_tools(
         self,
         messages: list[dict[str, str]],
         *,
         system_prompt: str | None = None,
         temperature: float = 0.7,
         max_tokens: int = 2000,
-    ) -> str:
+        tools: list[dict[str, Any]] | None = None,
+    ) -> ChatResult:
         client = self._get_client()
-        full_messages: list[dict[str, str]] = []
+        full_messages: list[dict[str, Any]] = []
         if system_prompt:
             full_messages.append({"role": "system", "content": system_prompt})
         full_messages.extend(messages)
-        response = await client.chat.completions.create(
-            model=self._config.model_name,
-            messages=full_messages,
-            temperature=temperature,
-            max_tokens=max_tokens,
+
+        kwargs: dict[str, Any] = {
+            "model": self._config.model_name,
+            "messages": full_messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+        }
+        if tools:
+            kwargs["tools"] = tools
+
+        response = await client.chat.completions.create(**kwargs)
+
+        message = response.choices[0].message
+        content = (message.content or "").strip()
+        tool_calls: list[ToolCall] = []
+
+        if message.tool_calls:
+            for tc in message.tool_calls:
+                import json
+
+                try:
+                    args = json.loads(tc.function.arguments)
+                except (json.JSONDecodeError, TypeError):
+                    args = {}
+                tool_calls.append(
+                    ToolCall(id=tc.id, name=tc.function.name, arguments=args)
+                )
+
+        return ChatResult(
+            content=content,
+            tool_calls=tool_calls,
+            finish_reason=response.choices[0].finish_reason or "",
         )
-        return response.choices[0].message.content.strip()
 
 
 class GoogleLLMProvider(LLMProvider):
@@ -239,14 +266,15 @@ class GoogleLLMProvider(LLMProvider):
         )
         return response.text.strip()
 
-    async def chat(
+    async def chat_with_tools(
         self,
         messages: list[dict[str, str]],
         *,
         system_prompt: str | None = None,
         temperature: float = 0.7,
         max_tokens: int = 2000,
-    ) -> str:
+        tools: list[dict[str, Any]] | None = None,
+    ) -> ChatResult:
         client = self._get_client()
         history: list[dict[str, Any]] = []
         if system_prompt:
@@ -257,11 +285,55 @@ class GoogleLLMProvider(LLMProvider):
             history.append({"role": role, "parts": [msg["content"]]})
         chat_session = client.start_chat(history=history)
         last_msg = messages[-1]["content"] if messages else ""
-        response = chat_session.send_message(
-            last_msg,
-            generation_config={"max_output_tokens": max_tokens, "temperature": temperature},
+
+        gen_config: dict[str, Any] = {
+            "max_output_tokens": max_tokens,
+            "temperature": temperature,
+        }
+
+        # Convert OpenAI-format tools to Google format
+        google_tools = None
+        if tools:
+            func_declarations = []
+            for tool in tools:
+                func_def = tool.get("function", tool)
+                func_declarations.append({
+                    "name": func_def["name"],
+                    "description": func_def.get("description", ""),
+                    "parameters": func_def.get("parameters", {}),
+                })
+            google_tools = [{"function_declarations": func_declarations}]
+
+        kwargs: dict[str, Any] = {"generation_config": gen_config}
+        if google_tools:
+            kwargs["tools"] = google_tools
+
+        response = chat_session.send_message(last_msg, **kwargs)
+
+        content = (response.text or "").strip() if response.text else ""
+        tool_calls: list[ToolCall] = []
+
+        # Check for function calls in the response
+        if hasattr(response, "candidates") and response.candidates:
+            candidate = response.candidates[0]
+            if hasattr(candidate, "content") and candidate.content:
+                for part in candidate.content.parts:
+                    if hasattr(part, "function_call") and part.function_call:
+                        fc = part.function_call
+                        args = dict(fc.args) if fc.args else {}
+                        tool_calls.append(
+                            ToolCall(
+                                id=f"call_{fc.name}",
+                                name=fc.name,
+                                arguments=args,
+                            )
+                        )
+
+        return ChatResult(
+            content=content,
+            tool_calls=tool_calls,
+            finish_reason="stop" if not tool_calls else "tool_calls",
         )
-        return response.text.strip()
 
 
 class OllamaLLMProvider(LLMProvider):
@@ -366,25 +438,52 @@ class OllamaLLMProvider(LLMProvider):
         })
         return result.get("response", "").strip()
 
-    async def chat(
+    async def chat_with_tools(
         self,
         messages: list[dict[str, str]],
         *,
         system_prompt: str | None = None,
         temperature: float = 0.7,
         max_tokens: int = 2000,
-    ) -> str:
+        tools: list[dict[str, Any]] | None = None,
+    ) -> ChatResult:
         ollama_messages: list[dict[str, str]] = []
         if system_prompt:
             ollama_messages.append({"role": "system", "content": system_prompt})
         ollama_messages.extend(messages)
-        result = await self._post("/api/chat", {
+
+        payload: dict[str, Any] = {
             "model": self._config.model_name,
             "messages": ollama_messages,
             "stream": False,
             "options": {"temperature": temperature, "num_predict": max_tokens},
-        })
-        return result.get("message", {}).get("content", "").strip()
+        }
+        if tools:
+            payload["tools"] = tools
+
+        result = await self._post("/api/chat", payload)
+
+        message = result.get("message", {})
+        content = message.get("content", "").strip()
+        tool_calls: list[ToolCall] = []
+
+        ollama_tool_calls = message.get("tool_calls", [])
+        for tc in ollama_tool_calls:
+            func = tc.get("function", {})
+            args = func.get("arguments", {})
+            tool_calls.append(
+                ToolCall(
+                    id=f"call_{func.get('name', 'unknown')}",
+                    name=func.get("name", ""),
+                    arguments=args,
+                )
+            )
+
+        return ChatResult(
+            content=content,
+            tool_calls=tool_calls,
+            finish_reason="stop" if not tool_calls else "tool_calls",
+        )
 
 
 class LLMFactory:

@@ -6,6 +6,8 @@ import {
   HardDrive,
   AlertCircle,
   FolderOpen,
+  Bot,
+  Copy,
 } from "lucide-react";
 import api from "@/lib/api";
 import { formatBytes } from "@/lib/utils";
@@ -75,6 +77,21 @@ export default function DashboardPage() {
           }
           icon={AlertCircle}
           description="Files or documents requiring attention"
+        />
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <StatsCard
+          title="Agents Online"
+          value={`${stats?.agents_online ?? 0} / ${stats?.agents_total ?? 0}`}
+          icon={Bot}
+          description="Connected edge agents"
+        />
+        <StatsCard
+          title="Duplicate Files"
+          value={stats?.duplicate_files ?? 0}
+          icon={Copy}
+          description={`Across ${stats?.duplicate_groups ?? 0} groups`}
         />
       </div>
 

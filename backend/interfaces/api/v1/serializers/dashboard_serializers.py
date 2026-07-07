@@ -25,6 +25,10 @@ class DashboardStatsSerializer(serializers.Serializer):
     )
     storage_used_bytes = serializers.IntegerField(read_only=True)
     avg_processing_time_ms = serializers.FloatField(read_only=True)
+    agents_total = serializers.IntegerField(read_only=True)
+    agents_online = serializers.IntegerField(read_only=True)
+    duplicate_files = serializers.IntegerField(read_only=True)
+    duplicate_groups = serializers.IntegerField(read_only=True)
 
 
 class ChartDataPointSerializer(serializers.Serializer):

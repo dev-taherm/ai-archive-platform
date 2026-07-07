@@ -108,6 +108,17 @@ class ExtractionResult:
 
 
 @dataclass(frozen=True)
+class ExtractedEntity:
+    """A named entity extracted from a document."""
+
+    entity_type: str = ""
+    name: str = ""
+    context: str = ""
+    confidence: float | None = None
+    source: str = "agent"
+
+
+@dataclass(frozen=True)
 class DocumentProcessedEvent:
     tenant_id: str = ""
     agent_id: str = ""
@@ -128,6 +139,8 @@ class DocumentProcessedEvent:
     word_count: int = 0
     char_count: int = 0
     page_count: int = 0
+    summary: str = ""
+    entities: list[ExtractedEntity] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
