@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import {
@@ -14,6 +14,10 @@ import {
   ChevronLeft,
   ChevronRight,
   History,
+  Sparkles,
+  Globe,
+  Tag,
+  Hash,
 } from "lucide-react";
 import api from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -32,6 +36,112 @@ import type {
   SavedSearch,
   SearchHistoryEntry,
 } from "@/types/api";
+
+function HighlightedText({ text, query }: { text: string; query: string }) {
+  if (!query.trim()) return <>{text}</>;
+  const words = query.trim().split(/\s+/).filter(Boolean);
+  const escapedWords = words.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  const regex = new RegExp(`(${escapedWords.join("|")})`, "gi");
+  const parts = text.split(regex);
+  return (
+    <>
+      {parts.map((part, i) =>
+        regex.test(part) ? (
+          <mark key={i} className="bg-yellow-200 text-foreground dark:bg-yellow-800 dark:text-foreground rounded px-0.5">
+            {part}
+          </mark>
+        ) : (
+          <span key={i}>{part}</span>
+        )
+      )}
+    </>
+  );
+}
+
+function FacetsCard({ data }: { data: SearchResponse }) {
+  const facets = useMemo(() => {
+    const docTypes: Record<string, number> = {};
+    const languages: Record<string, number> = {};
+    const matchSources: Record<string, number> = {};
+    data.results.forEach((r) => {
+      if (r.doc_type) docTypes[r.doc_type] = (docTypes[r.doc_type] || 0) + 1;
+      if (r.language) languages[r.language] = (languages[r.language] || 0) + 1;
+      if (r.match_source) matchSources[r.match_source] = (matchSources[r.match_source] || 0) + 1;
+    });
+    return { docTypes, languages, matchSources };
+  }, [data]);
+
+  const hasFacets =
+    Object.keys(facets.docTypes).length > 0 ||
+    Object.keys(facets.languages).length > 0 ||
+    Object.keys(facets.matchSources).length > 0;
+
+  if (!hasFacets) return null;
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="flex items-center gap-2 text-sm">
+          <Filter className="h-4 w-4" />
+          Result Facets
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {Object.keys(facets.matchSources).length > 0 && (
+          <div>
+            <p className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1">
+              <Sparkles className="h-3 w-3" /> Match Source
+            </p>
+            <div className="space-y-1">
+              {Object.entries(facets.matchSources)
+                .sort((a, b) => b[1] - a[1])
+                .map(([source, count]) => (
+                  <div key={source} className="flex items-center justify-between text-sm">
+                    <Badge variant="outline" className="text-xs">{source}</Badge>
+                    <span className="text-muted-foreground">{count}</span>
+                  </div>
+                ))}
+            </div>
+          </div>
+        )}
+        {Object.keys(facets.docTypes).length > 0 && (
+          <div>
+            <p className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1">
+              <FileText className="h-3 w-3" /> Document Type
+            </p>
+            <div className="space-y-1">
+              {Object.entries(facets.docTypes)
+                .sort((a, b) => b[1] - a[1])
+                .map(([type, count]) => (
+                  <div key={type} className="flex items-center justify-between text-sm">
+                    <span className="capitalize">{type}</span>
+                    <span className="text-muted-foreground">{count}</span>
+                  </div>
+                ))}
+            </div>
+          </div>
+        )}
+        {Object.keys(facets.languages).length > 0 && (
+          <div>
+            <p className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1">
+              <Globe className="h-3 w-3" /> Language
+            </p>
+            <div className="space-y-1">
+              {Object.entries(facets.languages)
+                .sort((a, b) => b[1] - a[1])
+                .map(([lang, count]) => (
+                  <div key={lang} className="flex items-center justify-between text-sm">
+                    <span>{lang.toUpperCase()}</span>
+                    <span className="text-muted-foreground">{count}</span>
+                  </div>
+                ))}
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
 
 export default function SearchPage() {
   const [query, setQuery] = useState("");
@@ -314,9 +424,9 @@ export default function SearchPage() {
                           <div className="flex items-center justify-between">
                             <CardTitle className="flex items-center gap-2 text-base">
                               <FileText className="h-4 w-4" />
-                              {result.title}
+                              <HighlightedText text={result.title || "Untitled"} query={lastQuery} />
                             </CardTitle>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 shrink-0">
                               <Badge variant="outline" className="text-xs">
                                 {result.match_source}
                               </Badge>
@@ -328,8 +438,17 @@ export default function SearchPage() {
                         </CardHeader>
                         <CardContent>
                           <p className="text-sm text-muted-foreground line-clamp-3">
-                            {result.snippet}
+                            <HighlightedText text={result.snippet} query={lastQuery} />
                           </p>
+                          {result.highlights && result.highlights.length > 0 && (
+                            <div className="mt-2 space-y-1">
+                              {result.highlights.slice(0, 2).map((h, hi) => (
+                                <p key={hi} className="text-xs text-muted-foreground italic">
+                                  &hellip;<HighlightedText text={h} query={lastQuery} />&hellip;
+                                </p>
+                              ))}
+                            </div>
+                          )}
                           <div className="mt-2 flex gap-2">
                             {result.doc_type && (
                               <Badge variant="secondary" className="text-xs">
@@ -391,6 +510,10 @@ export default function SearchPage() {
         </div>
 
         <div className="space-y-4">
+          {searchMutation.data && searchMutation.data.results.length > 0 && (
+            <FacetsCard data={searchMutation.data} />
+          )}
+
           {history && history.length > 0 && (
             <Card>
               <CardHeader className="pb-2">

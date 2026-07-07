@@ -14,6 +14,7 @@ import {
   BarChart3,
   GitBranch,
   Bot,
+  Brain,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/stores/ui-store";
@@ -33,6 +34,11 @@ const navItems = [
     label: "Documents",
     href: "/documents",
     icon: FileText,
+  },
+  {
+    label: "AI Workspace",
+    href: "/ai-workspace",
+    icon: Brain,
   },
   {
     label: "Agents",

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   GitBranch,
@@ -429,7 +430,13 @@ export default function WorkflowsPage() {
                     <div className="flex items-center gap-3">
                       <GitBranch className="h-5 w-5 text-muted-foreground" />
                       <div>
-                        <p className="font-medium">{workflow.name}</p>
+                        <Link
+                          href={`/workflows/${workflow.id}`}
+                          className="font-medium hover:underline"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {workflow.name}
+                        </Link>
                         <p className="text-sm text-muted-foreground">
                           {workflow.description || "No description"}
                         </p>

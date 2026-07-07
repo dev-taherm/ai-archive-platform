@@ -13,6 +13,7 @@ import api from "@/lib/api";
 import { formatBytes } from "@/lib/utils";
 import { StatsCard } from "@/components/features/dashboard/stats-card";
 import { RecentActivity } from "@/components/features/dashboard/recent-activity";
+import Recommendations from "@/components/features/dashboard/recommendations";
 import {
   FileTypeChart,
   FileStatusChart,
@@ -94,6 +95,8 @@ export default function DashboardPage() {
           description={`Across ${stats?.duplicate_groups ?? 0} groups`}
         />
       </div>
+
+      <Recommendations />
 
       <div className="grid gap-6 md:grid-cols-2">
         <FileTypeChart

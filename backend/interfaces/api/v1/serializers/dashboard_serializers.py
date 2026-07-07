@@ -71,3 +71,29 @@ class ActivityListSerializer(serializers.Serializer):
 
     activities = ActivitySerializer(many=True, read_only=True)
     total_count = serializers.IntegerField(read_only=True)
+
+
+class RecommendationSerializer(serializers.Serializer):
+    """Serializer for a single AI recommendation."""
+
+    id = serializers.CharField(read_only=True)
+    type = serializers.ChoiceField(
+        choices=["action", "insight", "warning"],
+        read_only=True,
+    )
+    title = serializers.CharField(read_only=True)
+    description = serializers.CharField(read_only=True)
+    action_label = serializers.CharField(read_only=True, allow_null=True)
+    action_url = serializers.CharField(read_only=True, allow_null=True)
+    priority = serializers.ChoiceField(
+        choices=["high", "medium", "low"],
+        read_only=True,
+    )
+    count = serializers.IntegerField(read_only=True, allow_null=True)
+
+
+class RecommendationListSerializer(serializers.Serializer):
+    """Serializer for list of recommendations."""
+
+    recommendations = RecommendationSerializer(many=True, read_only=True)
+    generated_at = serializers.DateTimeField(read_only=True)

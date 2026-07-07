@@ -54,6 +54,12 @@ class MockDocumentRepository(DocumentRepository):
     def get_by_id(self, document_id: uuid.UUID) -> Any | None:
         return self._docs.get(document_id)
 
+    def get_by_file_id(self, file_id: uuid.UUID) -> Any | None:
+        for doc in self._docs.values():
+            if getattr(doc, "file_id", None) == file_id:
+                return doc
+        return None
+
     def save(self, document: Any) -> Any:
         self._docs[document.id] = document
         return document

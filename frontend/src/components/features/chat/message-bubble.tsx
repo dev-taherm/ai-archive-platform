@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ChevronDown, ChevronRight, Wrench } from "lucide-react";
+import { ChevronDown, ChevronRight, Wrench, Copy, Check } from "lucide-react";
 
 interface ToolCall {
   id: string;
@@ -19,6 +19,139 @@ interface Message {
   content: string;
   sources?: Array<{ document_id: string; title: string; snippet: string }>;
   tool_calls?: ToolCall[];
+}
+
+function SimpleMarkdown({ content }: { content: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const renderInline = (text: string) => {
+    const parts = text.split(/(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*|\[([^\]]+)\]\(([^)]+)\))/g);
+    return parts.map((part, i) => {
+      if (part.startsWith("`") && part.endsWith("`")) {
+        return (
+          <code key={i} className="bg-muted px-1.5 py-0.5 rounded text-xs font-mono">
+            {part.slice(1, -1)}
+          </code>
+        );
+      }
+      if (part.startsWith("**") && part.endsWith("**")) {
+        return <strong key={i}>{part.slice(2, -2)}</strong>;
+      }
+      if (part.startsWith("*") && part.endsWith("*") && !part.startsWith("**")) {
+        return <em key={i}>{part.slice(1, -1)}</em>;
+      }
+      const linkMatch = part.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
+      if (linkMatch) {
+        return (
+          <a key={i} href={linkMatch[2]} target="_blank" rel="noopener noreferrer" className="text-primary underline">
+            {linkMatch[1]}
+          </a>
+        );
+      }
+      return part;
+    });
+  };
+
+  const lines = content.split("\n");
+  const elements: React.ReactNode[] = [];
+  let inCodeBlock = false;
+  let codeContent = "";
+  let codeLang = "";
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    if (line.startsWith("```")) {
+      if (inCodeBlock) {
+        elements.push(
+          <div key={`code-${i}`} className="my-2 rounded-lg overflow-hidden border bg-muted/50">
+            <div className="flex items-center justify-between px-3 py-1 text-xs text-muted-foreground border-b">
+              <span>{codeLang || "code"}</span>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(codeContent);
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 2000);
+                }}
+                className="flex items-center gap-1 hover:text-foreground"
+              >
+                {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                {copied ? "Copied" : "Copy"}
+              </button>
+            </div>
+            <pre className="p-3 text-xs overflow-x-auto">
+              <code>{codeContent}</code>
+            </pre>
+          </div>
+        );
+        codeContent = "";
+        codeLang = "";
+        inCodeBlock = false;
+      } else {
+        inCodeBlock = true;
+        codeLang = line.slice(3).trim();
+      }
+      continue;
+    }
+
+    if (inCodeBlock) {
+      codeContent += (codeContent ? "\n" : "") + line;
+      continue;
+    }
+
+    if (line.startsWith("### ")) {
+      elements.push(
+        <h3 key={i} className="text-sm font-semibold mt-3 mb-1">
+          {renderInline(line.slice(4))}
+        </h3>
+      );
+    } else if (line.startsWith("## ")) {
+      elements.push(
+        <h2 key={i} className="text-base font-semibold mt-4 mb-2">
+          {renderInline(line.slice(3))}
+        </h2>
+      );
+    } else if (line.startsWith("# ")) {
+      elements.push(
+        <h1 key={i} className="text-lg font-bold mt-4 mb-2">
+          {renderInline(line.slice(2))}
+        </h1>
+      );
+    } else if (line.startsWith("- ") || line.startsWith("* ")) {
+      elements.push(
+        <li key={i} className="ml-4 list-disc text-sm">
+          {renderInline(line.slice(2))}
+        </li>
+      );
+    } else if (/^\d+\.\s/.test(line)) {
+      const match = line.match(/^(\d+)\.\s(.*)$/);
+      if (match) {
+        elements.push(
+          <li key={i} className="ml-4 list-decimal text-sm">
+            {renderInline(match[2])}
+          </li>
+        );
+      }
+    } else if (line.startsWith("> ")) {
+      elements.push(
+        <blockquote key={i} className="border-l-2 border-primary/30 pl-3 text-sm text-muted-foreground italic">
+          {renderInline(line.slice(2))}
+        </blockquote>
+      );
+    } else if (line.startsWith("---")) {
+      elements.push(<hr key={i} className="my-2 border-border" />);
+    } else if (line.trim() === "") {
+      elements.push(<div key={i} className="h-2" />);
+    } else {
+      elements.push(
+        <p key={i} className="text-sm leading-relaxed">
+          {renderInline(line)}
+        </p>
+      );
+    }
+  }
+
+  return <div className="space-y-1">{elements}</div>;
 }
 
 function ToolCallCard({ toolCall }: { toolCall: ToolCall }) {
@@ -72,13 +205,17 @@ export default function MessageBubble({ message }: { message: Message }) {
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
       <Card
-        className={`max-w-[80%] p-3 ${
+        className={`max-w-[85%] p-3 ${
           isUser
             ? "bg-primary text-primary-foreground"
             : "bg-muted"
         }`}
       >
-        <p className="whitespace-pre-wrap text-sm">{message.content}</p>
+        {isUser ? (
+          <p className="whitespace-pre-wrap text-sm">{message.content}</p>
+        ) : (
+          <SimpleMarkdown content={message.content} />
+        )}
         {message.tool_calls && message.tool_calls.length > 0 && (
           <div className="mt-2 pt-2 border-t border-border/50">
             <p className="text-xs font-medium mb-1 flex items-center gap-1">

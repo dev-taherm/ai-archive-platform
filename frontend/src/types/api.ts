@@ -318,6 +318,7 @@ export interface Agent {
   status: "online" | "offline" | "syncing" | "error";
   platform: string;
   hostname: string;
+  ip_address: string;
   agent_version: string;
   capabilities: string[];
   last_seen: string | null;
@@ -352,4 +353,22 @@ export interface ToolDefinition {
   name: string;
   description: string;
   parameters: Record<string, unknown>;
+}
+
+// --- Recommendations ---
+
+export interface Recommendation {
+  id: string;
+  type: "action" | "insight" | "warning";
+  title: string;
+  description: string;
+  action_label: string | null;
+  action_url: string | null;
+  priority: "high" | "medium" | "low";
+  count: number | null;
+}
+
+export interface RecommendationList {
+  recommendations: Recommendation[];
+  generated_at: string;
 }

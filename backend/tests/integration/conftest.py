@@ -212,3 +212,106 @@ def sample_txt_upload_file():
         content=b"This is a test text file with some content for testing.",
         content_type="text/plain",
     )
+
+
+# ---------------------------------------------------------------------------
+# Agent fixtures
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def sample_agent(test_user):
+    from apps.agents.models import Agent
+    return Agent.objects.create(
+        user=test_user,
+        agent_id="test-agent-01",
+        name="Test Agent",
+        status="offline",
+        platform="linux",
+        hostname="test-host",
+        agent_version="0.1.0",
+        capabilities=["scan", "ocr", "parse"],
+        sync_interval_minutes=30,
+        max_file_size_mb=100,
+    )
+
+
+@pytest.fixture
+def sample_agent_folder(sample_agent):
+    from apps.agents.models import AgentFolder
+    return AgentFolder.objects.create(
+        agent=sample_agent,
+        local_path="/home/user/documents",
+        label="Documents",
+        is_active=True,
+        file_count=10,
+    )
+
+
+@pytest.fixture
+def sample_agent_command(sample_agent):
+    from apps.agents.models import AgentCommand
+    return AgentCommand.objects.create(
+        agent=sample_agent,
+        command_type="sync",
+        payload={},
+        status="pending",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Report fixtures
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def sample_report(test_user):
+    from apps.reports.models import Report
+    return Report.objects.create(
+        report_type="archive_summary",
+        title="Test Report",
+        status="completed",
+        generated_by=test_user,
+        data={"total_files": 42, "total_documents": 10},
+    )
+
+
+# ---------------------------------------------------------------------------
+# API Key fixtures
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def sample_api_key(test_user):
+    from apps.apikeys.models import ApiKey
+    key_instance, raw_key = ApiKey.create_key(test_user, name="test-key")
+    return key_instance
+
+
+# ---------------------------------------------------------------------------
+# Search fixtures
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def sample_saved_search(test_user):
+    from apps.search.models import SavedSearch
+    return SavedSearch.objects.create(
+        user=test_user,
+        name="My Search",
+        query="invoice 2024",
+        search_type="hybrid",
+        filters={"doc_type": "invoice"},
+    )
+
+
+@pytest.fixture
+def sample_search_log(test_user):
+    from apps.search.models import SearchLog
+    return SearchLog.objects.create(
+        user_id=test_user.pk,
+        query="test query",
+        search_type="hybrid",
+        result_count=5,
+        search_time_ms=12.5,
+    )

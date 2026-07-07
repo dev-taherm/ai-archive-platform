@@ -347,3 +347,79 @@ class TestDocumentModelCreation:
         assert doc.language == "unknown"
         assert doc.word_count == 0
         assert doc.page_count == 0
+
+
+@pytest.mark.django_db
+class TestDocumentUpdateEndpoint:
+    """Tests for PATCH /api/v1/documents/{id}."""
+
+    def test_patch_title(self, auth_client, sample_document):
+        resp = auth_client.patch(
+            f"/api/v1/documents/{sample_document.id}",
+            {"title": "Updated Title"},
+            format="json",
+        )
+        assert resp.status_code == 200
+        assert resp.data["title"] == "Updated Title"
+
+    def test_patch_tags(self, auth_client, sample_document):
+        resp = auth_client.patch(
+            f"/api/v1/documents/{sample_document.id}",
+            {"tags": ["new-tag", "updated"]},
+            format="json",
+        )
+        assert resp.status_code == 200
+        assert resp.data["tags"] == ["new-tag", "updated"]
+
+    def test_patch_nonexistent(self, auth_client):
+        resp = auth_client.patch(
+            "/api/v1/documents/00000000-0000-0000-0000-000000000000",
+            {"title": "x"},
+            format="json",
+        )
+        assert resp.status_code == 404
+
+
+@pytest.mark.django_db
+class TestDocumentDeleteEndpoint:
+    """Tests for DELETE /api/v1/documents/{id}."""
+
+    def test_delete_document(self, auth_client, sample_document):
+        doc_id = sample_document.id
+        resp = auth_client.delete(f"/api/v1/documents/{doc_id}")
+        assert resp.status_code == 204
+        assert not Document.objects.filter(id=doc_id).exists()
+
+    def test_delete_nonexistent(self, auth_client):
+        resp = auth_client.delete(
+            "/api/v1/documents/00000000-0000-0000-0000-000000000000"
+        )
+        assert resp.status_code == 404
+
+
+@pytest.mark.django_db
+class TestDocumentEntitiesEndpoint:
+    """Tests for GET /api/v1/documents/{id}/entities."""
+
+    def test_entities_no_entities(self, auth_client, sample_document):
+        resp = auth_client.get(
+            f"/api/v1/documents/{sample_document.id}/entities"
+        )
+        assert resp.status_code == 200
+        assert resp.data == []
+
+    def test_entities_with_data(self, auth_client, sample_document):
+        from apps.documents.models import ExtractedEntity
+        ExtractedEntity.objects.create(
+            document=sample_document,
+            entity_type="PERSON",
+            name="John Doe",
+            context="Author",
+            confidence=0.9,
+        )
+        resp = auth_client.get(
+            f"/api/v1/documents/{sample_document.id}/entities"
+        )
+        assert resp.status_code == 200
+        assert len(resp.data) == 1
+        assert resp.data[0]["name"] == "John Doe"

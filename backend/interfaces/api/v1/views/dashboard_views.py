@@ -10,6 +10,8 @@ from interfaces.api.v1.serializers.dashboard_serializers import (
     ActivitySerializer,
     ChartDataSerializer,
     DashboardStatsSerializer,
+    RecommendationSerializer,
+    RecommendationListSerializer,
 )
 
 logger = logging.getLogger(__name__)
@@ -345,5 +347,191 @@ class DashboardView(viewsets.GenericViewSet):
                 "activities": ActivitySerializer(activities, many=True).data,
                 "total_count": len(activities),
             },
+            status=status.HTTP_200_OK,
+        )
+
+    @action(detail=False, methods=["get"])
+    def recommendations(self, request):
+        """Generate AI-powered recommendations based on current system state."""
+        from django.utils import timezone
+        from datetime import timedelta
+
+        recommendations = []
+        rec_id = 0
+
+        # 1. Failed documents → suggest reprocessing
+        try:
+            from apps.documents.models import Document as DocumentModel
+
+            failed_count = DocumentModel.objects.filter(
+                processing_status="failed"
+            ).count()
+            if failed_count > 0:
+                recommendations.append({
+                    "id": f"rec-{rec_id}",
+                    "type": "action",
+                    "title": "Reprocess failed documents",
+                    "description": f"{failed_count} document{'s' if failed_count != 1 else ''} failed processing. Reprocessing may resolve transient errors.",
+                    "action_label": "Reprocess All",
+                    "action_url": "/documents?status=failed",
+                    "priority": "high",
+                    "count": failed_count,
+                })
+                rec_id += 1
+        except Exception:
+            pass
+
+        # 2. Queued documents → processing backlog
+        try:
+            from apps.documents.models import Document as DocumentModel
+
+            queued_count = DocumentModel.objects.filter(
+                processing_status="queued"
+            ).count()
+            if queued_count > 0:
+                recommendations.append({
+                    "id": f"rec-{rec_id}",
+                    "type": "insight",
+                    "title": "Processing backlog detected",
+                    "description": f"{queued_count} document{'s' if queued_count != 1 else ''} are queued for processing. Consider checking your AI provider configuration or increasing processing capacity.",
+                    "action_label": "View Documents",
+                    "action_url": "/documents?status=queued",
+                    "priority": "medium",
+                    "count": queued_count,
+                })
+                rec_id += 1
+        except Exception:
+            pass
+
+        # 3. Duplicate files
+        try:
+            from apps.files.models import FileRecord as FileModel
+
+            dup_count = FileModel.objects.filter(
+                duplicate_group_id__isnull=False
+            ).count()
+            if dup_count > 0:
+                recommendations.append({
+                    "id": f"rec-{rec_id}",
+                    "type": "warning",
+                    "title": "Duplicate files detected",
+                    "description": f"{dup_count} file{'s' if dup_count != 1 else ''} are duplicates. Review and remove unnecessary copies to save storage.",
+                    "action_label": "View Duplicates",
+                    "action_url": "/ai-workspace?tab=duplicates",
+                    "priority": "medium",
+                    "count": dup_count,
+                })
+                rec_id += 1
+        except Exception:
+            pass
+
+        # 4. Documents without summaries
+        try:
+            from apps.documents.models import Document as DocumentModel
+
+            completed = DocumentModel.objects.filter(
+                processing_status="completed"
+            ).count()
+            with_summary = DocumentModel.objects.filter(
+                processing_status="completed",
+                summary__isnull=False,
+            ).exclude(summary="").count()
+            missing = completed - with_summary
+            if missing > 0 and completed > 0:
+                recommendations.append({
+                    "id": f"rec-{rec_id}",
+                    "type": "insight",
+                    "title": "Documents without AI summaries",
+                    "description": f"{missing} of {completed} completed documents lack AI summaries. Generate summaries to improve search and discovery.",
+                    "action_label": "AI Workspace",
+                    "action_url": "/ai-workspace?tab=summaries",
+                    "priority": "low",
+                    "count": missing,
+                })
+                rec_id += 1
+        except Exception:
+            pass
+
+        # 5. Stale agents (no heartbeat in >1 hour)
+        try:
+            from apps.agents.models import Agent
+
+            threshold = timezone.now() - timedelta(hours=1)
+            stale = Agent.objects.filter(
+                status="online",
+                last_seen__lt=threshold,
+            ).count()
+            if stale > 0:
+                recommendations.append({
+                    "id": f"rec-{rec_id}",
+                    "type": "warning",
+                    "title": "Agents may be offline",
+                    "description": f"{stale} agent{'s' if stale != 1 else ''} marked online but haven't sent a heartbeat recently. They may have lost connectivity.",
+                    "action_label": "View Agents",
+                    "action_url": "/agents",
+                    "priority": "high",
+                    "count": stale,
+                })
+                rec_id += 1
+        except Exception:
+            pass
+
+        # 6. No AI providers configured
+        try:
+            from apps.providers.models import ProviderConfig
+
+            active_providers = ProviderConfig.objects.filter(
+                is_active=True
+            ).count()
+            if active_providers == 0:
+                recommendations.append({
+                    "id": f"rec-{rec_id}",
+                    "type": "action",
+                    "title": "Configure an AI provider",
+                    "description": "No active AI providers found. Add an AI provider (OpenAI, Google, or Ollama) to enable document processing, classification, and search.",
+                    "action_label": "Settings",
+                    "action_url": "/settings",
+                    "priority": "high",
+                    "count": None,
+                })
+                rec_id += 1
+        except Exception:
+            pass
+
+        # 7. Documents without entities (richness indicator)
+        try:
+            from apps.documents.models import Document as DocumentModel
+
+            completed = DocumentModel.objects.filter(
+                processing_status="completed"
+            ).count()
+            with_entities = DocumentModel.objects.filter(
+                processing_status="completed",
+                entities__isnull=False,
+            ).distinct().count()
+            without = completed - with_entities
+            if without > 3 and completed > 0:
+                pct = (without / completed) * 100
+                recommendations.append({
+                    "id": f"rec-{rec_id}",
+                    "type": "insight",
+                    "title": "Entity extraction coverage",
+                    "description": f"{without} of {completed} documents ({pct:.0f}%) lack extracted entities. Enable entity extraction to build a knowledge graph.",
+                    "action_label": "AI Workspace",
+                    "action_url": "/ai-workspace?tab=entities",
+                    "priority": "low",
+                    "count": without,
+                })
+                rec_id += 1
+        except Exception:
+            pass
+
+        from django.utils import timezone as tz
+
+        return Response(
+            RecommendationListSerializer({
+                "recommendations": RecommendationSerializer(recommendations, many=True).data,
+                "generated_at": tz.now(),
+            }).data,
             status=status.HTTP_200_OK,
         )

@@ -254,3 +254,72 @@ class TestQuickSearchEndpoint:
             status.HTTP_200_OK,
             status.HTTP_400_BAD_REQUEST,
         ]
+
+
+@pytest.mark.django_db
+class TestSearchHistoryEndpoint:
+    """Tests for GET /api/v1/search/history."""
+
+    def test_history_empty(self, auth_client):
+        resp = auth_client.get("/api/v1/search/history")
+        assert resp.status_code == 200
+        assert isinstance(resp.data, list)
+
+    def test_history_with_log(self, auth_client, sample_search_log):
+        resp = auth_client.get("/api/v1/search/history")
+        assert resp.status_code == 200
+        assert len(resp.data) == 1
+
+    def test_history_limit(self, auth_client, sample_search_log):
+        resp = auth_client.get("/api/v1/search/history?limit=1")
+        assert resp.status_code == 200
+
+    def test_history_unauthenticated(self, api_client):
+        resp = api_client.get("/api/v1/search/history")
+        assert resp.status_code == 401
+
+
+@pytest.mark.django_db
+class TestSavedSearchEndpoint:
+    """Tests for GET/POST/DELETE /api/v1/search/saved."""
+
+    def test_list_saved_empty(self, auth_client):
+        resp = auth_client.get("/api/v1/search/saved")
+        assert resp.status_code == 200
+        assert isinstance(resp.data, list)
+
+    def test_list_saved_with_data(self, auth_client, sample_saved_search):
+        resp = auth_client.get("/api/v1/search/saved")
+        assert resp.status_code == 200
+        assert len(resp.data) == 1
+        assert resp.data[0]["name"] == "My Search"
+
+    def test_create_saved_search(self, auth_client):
+        resp = auth_client.post(
+            "/api/v1/search/saved",
+            {"name": "My Search", "query": "invoice 2024", "search_type": "hybrid"},
+            format="json",
+        )
+        assert resp.status_code == 201
+        assert resp.data["name"] == "My Search"
+
+    def test_create_saved_search_missing_fields(self, auth_client):
+        resp = auth_client.post("/api/v1/search/saved", {}, format="json")
+        assert resp.status_code == 400
+
+    def test_delete_saved_search(self, auth_client, sample_saved_search):
+        resp = auth_client.delete(
+            f"/api/v1/search/saved?id={sample_saved_search.id}"
+        )
+        assert resp.status_code == 204
+
+    def test_delete_saved_search_not_found(self, auth_client):
+        import uuid
+        resp = auth_client.delete(
+            f"/api/v1/search/saved?id={uuid.uuid4()}"
+        )
+        assert resp.status_code == 404
+
+    def test_saved_search_unauthenticated(self, api_client):
+        resp = api_client.get("/api/v1/search/saved")
+        assert resp.status_code == 401
