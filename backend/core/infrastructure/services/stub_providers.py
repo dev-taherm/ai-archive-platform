@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Sequence
+from typing import Any
 
-from core.application.interfaces.services import EmbeddingProvider, LLMProvider, OCRProvider, StorageBackend
+from core.application.interfaces.services import EmbeddingProvider, LLMProvider, OCRProvider
 from core.domain.documents.value_objects import Confidence, Language
 
 logger = logging.getLogger(__name__)
@@ -92,42 +92,3 @@ class StubOCRProvider(OCRProvider):
         return Confidence(value=0.0)
 
 
-class StubStorageBackend(StorageBackend):
-    """Stub storage backend that stores files in memory for development."""
-
-    def __init__(self) -> None:
-        self._storage: dict[str, bytes] = {}
-
-    def save(
-        self,
-        content: bytes,
-        path: str,
-        *,
-        content_type: str | None = None,
-        metadata: dict[str, Any] | None = None,
-    ) -> str:
-        self._storage[path] = content
-        return path
-
-    def retrieve(self, path: str) -> bytes:
-        return self._storage.get(path, b"")
-
-    def delete(self, path: str) -> bool:
-        if path in self._storage:
-            del self._storage[path]
-            return True
-        return False
-
-    def list(
-        self,
-        prefix: str = "",
-        *,
-        limit: int = 1000,
-    ) -> Sequence[str]:
-        return [k for k in self._storage if k.startswith(prefix)][:limit]
-
-    def get_url(self, path: str, *, expires_in: int = 3600) -> str:
-        return f"file://{path}"
-
-    def exists(self, path: str) -> bool:
-        return path in self._storage

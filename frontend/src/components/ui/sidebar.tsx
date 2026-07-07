@@ -15,6 +15,7 @@ import {
   ScanText,
   BarChart3,
   GitBranch,
+  Bot,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/stores/ui-store";
@@ -59,6 +60,11 @@ const navItems = [
     label: "Reports",
     href: "/reports",
     icon: BarChart3,
+  },
+  {
+    label: "Agents",
+    href: "/agents",
+    icon: Bot,
   },
   {
     label: "Chat",

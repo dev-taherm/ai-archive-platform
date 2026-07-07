@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-import base64
 import logging
-from datetime import timedelta
+from pathlib import Path
 
-from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 from rest_framework import permissions, status, viewsets
@@ -178,19 +176,20 @@ class AgentViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"], url_path="sync")
     def sync(self, request, agent_id=None):
-        """Receive file metadata and optional original files from agent."""
+        """Receive pre-processed file data from agent. No original files or binaries."""
         agent = self.get_object()
         serializer = AgentSyncSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
         files_data = data["files"]
-        original_files = data.get("original_files", {})
         accepted = 0
         rejected = 0
         errors = []
+        document_ids: list[str] = []
 
         from apps.files.models import FileRecord
+        from apps.documents.models import Document
 
         with transaction.atomic():
             for file_data in files_data:
@@ -198,7 +197,7 @@ class AgentViewSet(viewsets.ModelViewSet):
                     local_path = file_data["local_path"]
                     file_hash = file_data["file_hash"]
 
-                    # Create or update FileRecord
+                    # Create or update FileRecord with pre-processed metadata
                     fr, created = FileRecord.objects.update_or_create(
                         content_hash=file_hash,
                         defaults={
@@ -212,42 +211,43 @@ class AgentViewSet(viewsets.ModelViewSet):
                             "metadata": {
                                 **file_data.get("metadata", {}),
                                 "agent_id": str(agent.agent_id),
+                                "agent_version": file_data.get("agent_version", ""),
+                                "processing_version": file_data.get("processing_version", ""),
+                                "parser_version": file_data.get("parser_version", ""),
+                                "ocr_engine": file_data.get("ocr_engine", ""),
+                                "ocr_used": file_data.get("ocr_used", False),
                                 "extracted_text": file_data.get("extracted_text", ""),
                                 "markdown": file_data.get("markdown", ""),
-                                "classification": file_data.get("classification", {}),
-                                "entities": file_data.get("entities", []),
-                                "summary": file_data.get("summary", ""),
-                                "chunk_count": file_data.get("chunk_count", 0),
-                                "ocr_used": file_data.get("ocr_used", False),
+                                "content_blocks": file_data.get("content_blocks", []),
+                                "tables": file_data.get("tables", []),
+                                "images": file_data.get("images", []),
                             },
                         },
                     )
 
-                    # Store embeddings if provided
-                    embeddings = file_data.get("embeddings", [])
-                    if embeddings:
-                        from apps.ai.models import Embedding
-
-                        emb_id = f"{fr.id}_chunk_0"
-                        Embedding.objects.update_or_create(
-                            vector_id=emb_id,
-                            defaults={
-                                "embedding": embeddings,
-                                "document_id": str(fr.id),
-                                "file_id": str(fr.id),
-                                "chunk_index": 0,
-                            },
-                        )
-
-                    # Save original file if requested and provided
-                    if local_path in original_files:
-                        raw_b64 = original_files[local_path]
-                        file_bytes = base64.b64decode(raw_b64)
-                        from core.infrastructure.storage.local import LocalStorage
-
-                        storage = LocalStorage()
-                        storage.save(file_bytes, f"agent/{agent.agent_id}/{local_path}")
-
+                    # Create Document with pre-populated fields from agent
+                    doc = Document.objects.create(
+                        file_id=fr.id,
+                        doc_type=Document.DocType.UNKNOWN,
+                        processing_status=Document.Status.PENDING,
+                        title=Path(local_path).stem,
+                        language=file_data.get("language", "unknown"),
+                        word_count=file_data.get("word_count", 0),
+                        char_count=file_data.get("char_count", 0),
+                        page_count=file_data.get("page_count", 0),
+                        extracted_text=file_data.get("extracted_text", "")[:10000],
+                        markdown=file_data.get("markdown", ""),
+                        content_blocks=file_data.get("content_blocks", []),
+                        tables=file_data.get("tables", []),
+                        images=file_data.get("images", []),
+                        ocr_used=file_data.get("ocr_used", False),
+                        agent_version=file_data.get("agent_version", ""),
+                        processing_version=file_data.get("processing_version", ""),
+                        parser_version=file_data.get("parser_version", ""),
+                        ocr_engine=file_data.get("ocr_engine", ""),
+                        tags=file_data.get("metadata", {}).get("tags", []),
+                    )
+                    document_ids.append(str(doc.id))
                     accepted += 1
                 except Exception as e:
                     rejected += 1
@@ -270,5 +270,6 @@ class AgentViewSet(viewsets.ModelViewSet):
             "accepted": accepted,
             "rejected": rejected,
             "errors": errors,
+            "document_ids": document_ids,
             "pending_commands": AgentCommandSerializer(pending, many=True).data,
         })

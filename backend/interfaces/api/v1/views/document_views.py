@@ -119,11 +119,11 @@ class DocumentViewSet(viewsets.GenericViewSet):
             )
 
         # Look up file record to get path and mime type
-        from core.infrastructure.db.repositories.file_repository import DjangoFileRepository
-        file_repo = DjangoFileRepository()
-        file_record = file_repo.get_by_id(file_id)
+        from apps.files.models import FileRecord as FileRecordModel
 
-        if not file_record:
+        try:
+            file_record = FileRecordModel.objects.get(id=file_id)
+        except FileRecordModel.DoesNotExist:
             return Response(
                 {"detail": "File not found."},
                 status=status.HTTP_404_NOT_FOUND,
@@ -133,8 +133,8 @@ class DocumentViewSet(viewsets.GenericViewSet):
         try:
             result = run_document_pipeline(
                 file_id=str(file_id),
-                file_path=str(file_record.path.normalized),
-                mime_type=file_record.mime_type.value,
+                file_path=file_record.path,
+                mime_type=file_record.mime_type,
             )
         except Exception as e:
             logger.exception("Pipeline failed: %s", e)

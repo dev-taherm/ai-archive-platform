@@ -5,10 +5,7 @@ from interfaces.api.v1.serializers.auth_serializers import (
     UserSerializer,
 )
 from interfaces.api.v1.serializers.file_serializers import (
-    FileOperationSerializer,
     FileRecordSerializer,
-    FileUploadSerializer,
-    ScanFolderSerializer,
 )
 from interfaces.api.v1.serializers.document_serializers import (
     DocumentChunkSerializer,
@@ -53,9 +50,6 @@ __all__ = [
     "TokenRefreshSerializer",
     "UserSerializer",
     "FileRecordSerializer",
-    "FileUploadSerializer",
-    "ScanFolderSerializer",
-    "FileOperationSerializer",
     "DocumentSerializer",
     "DocumentMetadataSerializer",
     "DocumentChunkSerializer",

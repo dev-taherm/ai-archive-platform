@@ -1,50 +1,9 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Iterator
-from typing import Any, Sequence
+from typing import Any
 
 from core.domain.documents.value_objects import Confidence, Language
-
-
-class StorageBackend(ABC):
-    """Abstract interface for file storage operations."""
-
-    @abstractmethod
-    def save(
-        self,
-        content: bytes,
-        path: str,
-        *,
-        content_type: str | None = None,
-        metadata: dict[str, Any] | None = None,
-    ) -> str:
-        """Store content at the given path. Returns the storage key."""
-
-    @abstractmethod
-    def retrieve(self, path: str) -> bytes:
-        """Retrieve content from storage by path."""
-
-    @abstractmethod
-    def delete(self, path: str) -> bool:
-        """Delete content from storage. Returns True if deleted."""
-
-    @abstractmethod
-    def list(
-        self,
-        prefix: str = "",
-        *,
-        limit: int = 1000,
-    ) -> Sequence[str]:
-        """List storage keys matching the prefix."""
-
-    @abstractmethod
-    def get_url(self, path: str, *, expires_in: int = 3600) -> str:
-        """Generate a pre-signed URL for the given path."""
-
-    @abstractmethod
-    def exists(self, path: str) -> bool:
-        """Check whether content exists at the given path."""
 
 
 class OCRProvider(ABC):
@@ -168,37 +127,3 @@ class EmbeddingProvider(ABC):
         return "unknown"
 
 
-class FileScanner(ABC):
-    """Abstract interface for filesystem scanning and watching."""
-
-    @abstractmethod
-    def scan_folder(
-        self,
-        path: str,
-        *,
-        recursive: bool = True,
-        patterns: list[str] | None = None,
-        ignore_patterns: list[str] | None = None,
-    ) -> Iterator[dict[str, Any]]:
-        """Scan a folder and yield file metadata for each discovered file."""
-
-    @abstractmethod
-    def watch_folder(
-        self,
-        path: str,
-        *,
-        recursive: bool = True,
-        callback: Any | None = None,
-    ) -> None:
-        """Begin watching a folder for changes.
-
-        Calls the callback with (event_type, path) tuples when files change.
-        """
-
-    @abstractmethod
-    def stop_watching(self, path: str) -> None:
-        """Stop watching a folder for changes."""
-
-    @abstractmethod
-    def is_watching(self, path: str) -> bool:
-        """Check if a folder is currently being watched."""

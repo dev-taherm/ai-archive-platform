@@ -133,22 +133,26 @@ class SyncFileSerializer(serializers.Serializer):
     metadata = serializers.DictField(required=False, default=dict)
     extracted_text = serializers.CharField(required=False, default="")
     markdown = serializers.CharField(required=False, default="")
-    classification = serializers.DictField(required=False, default=dict)
-    entities = serializers.ListField(required=False, default=list)
-    summary = serializers.CharField(required=False, default="", allow_blank=True)
-    embeddings = serializers.ListField(
-        child=serializers.FloatField(), required=False, default=list
+    content_blocks = serializers.ListField(
+        child=serializers.DictField(), required=False, default=list
     )
-    processing_status = serializers.CharField(required=False, default="completed")
-    chunk_count = serializers.IntegerField(required=False, default=0)
+    tables = serializers.ListField(
+        child=serializers.DictField(), required=False, default=list
+    )
+    images = serializers.ListField(
+        child=serializers.DictField(), required=False, default=list
+    )
+    language = serializers.CharField(required=False, default="unknown")
+    word_count = serializers.IntegerField(required=False, default=0)
+    char_count = serializers.IntegerField(required=False, default=0)
+    page_count = serializers.IntegerField(required=False, default=0)
     ocr_used = serializers.BooleanField(required=False, default=False)
+    agent_version = serializers.CharField(required=False, default="", allow_blank=True)
+    processing_version = serializers.CharField(required=False, default="", allow_blank=True)
+    parser_version = serializers.CharField(required=False, default="", allow_blank=True)
+    ocr_engine = serializers.CharField(required=False, default="", allow_blank=True)
 
 
 class AgentSyncSerializer(serializers.Serializer):
     files = SyncFileSerializer(many=True)
     stats = serializers.DictField(required=False, default=dict)
-    original_files = serializers.DictField(
-        required=False,
-        default=dict,
-        help_text="Mapping of local_path -> base64 file bytes (optional).",
-    )

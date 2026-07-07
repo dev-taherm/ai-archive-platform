@@ -75,7 +75,7 @@ class SyncManager:
         return resp.json()
 
     def sync_files(self, batch_size: int | None = None) -> dict[str, Any]:
-        """Push pending file metadata to the platform."""
+        """Push pre-processed file data to the platform. No chunks or embeddings."""
         batch = self._db.get_pending_sync(batch_size=batch_size or self._config.sync.batch_size)
         if not batch:
             return {"synced": 0, "message": "Nothing to sync"}
@@ -91,10 +91,18 @@ class SyncManager:
                 "metadata": _safe_json(f.get("metadata", "{}")),
                 "extracted_text": f.get("extracted_text", ""),
                 "markdown": f.get("markdown", ""),
-                "classification": _safe_json(f.get("classification", "{}")),
-                "summary": f.get("summary", ""),
-                "processing_status": f.get("processing_status", "pending"),
-                "chunk_count": f.get("chunk_count", 0),
+                "content_blocks": f.get("content_blocks", []),
+                "tables": f.get("tables", []),
+                "images": f.get("images", []),
+                "language": f.get("language", "unknown"),
+                "word_count": f.get("word_count", 0),
+                "char_count": f.get("char_count", 0),
+                "page_count": f.get("page_count", 0),
+                "ocr_used": f.get("ocr_used", False),
+                "agent_version": f.get("agent_version", ""),
+                "processing_version": f.get("processing_version", ""),
+                "parser_version": f.get("parser_version", ""),
+                "ocr_engine": f.get("ocr_engine", ""),
             }
             files_payload.append(entry)
 

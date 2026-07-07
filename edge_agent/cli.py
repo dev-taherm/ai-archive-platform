@@ -22,13 +22,14 @@ from pathlib import Path
 from edge_agent import __version__
 from edge_agent.config import EdgeAgentConfig, load_config, ServerConfig
 from edge_agent.core.scanner import FileScanner
-from edge_agent.core.chunker import chunk_text
 from edge_agent.db.local_db import LocalDB
 from edge_agent.parsers.router import ParserRouter
 from edge_agent.ocr.engine import OCREngine
 from edge_agent.sync.manager import SyncManager
 
 logger = logging.getLogger("edge_agent")
+
+PROCESSING_VERSION = "edge-document-pipeline-v2"
 
 
 def setup_logging(config: EdgeAgentConfig) -> None:
@@ -64,6 +65,7 @@ def _save_config(config: EdgeAgentConfig, path: Path) -> None:
             "max_file_size_mb": config.scanner.max_file_size_mb,
         },
         "ocr": {
+            "engine": config.ocr.engine,
             "lang": config.ocr.lang,
             "use_gpu": config.ocr.use_gpu,
             "timeout_seconds": config.ocr.timeout_seconds,
@@ -97,8 +99,16 @@ def _process_file(
     db: LocalDB,
     parser: ParserRouter,
     ocr: OCREngine,
+    agent_version: str = "",
+    processing_version: str = "",
+    parser_version: str = "",
+    ocr_engine: str = "",
 ) -> None:
-    """Process a single file: parse, OCR if needed, chunk, store in DB."""
+    """Process a single file: parse, OCR if needed, store pre-processed data in DB.
+
+    Chunking and embedding are SaaS-only responsibilities — the edge agent
+    only sends extracted text and structural metadata.
+    """
     file_id = db.upsert_file(file_info)
     record = db.get_file(file_id)
     if not record:
@@ -120,20 +130,22 @@ def _process_file(
                 if ocr_text and len(ocr_text) > len(text):
                     text = ocr_text
 
-        chunks = chunk_text(text)
-        metadata = {
-            "parse_method": parsed.parse_method,
-            "page_count": parsed.page_count,
-            "word_count": parsed.word_count,
-            "table_count": len(parsed.tables),
-            "image_count": len(parsed.images),
-        }
         db.update_file(
             file_id,
             extracted_text=text[:10000],
             markdown=text,
-            metadata=metadata,
-            chunk_count=len(chunks),
+            content_blocks=[b.to_dict() if hasattr(b, "to_dict") else vars(b) for b in parsed.content_blocks],
+            tables=[t.to_dict() if hasattr(t, "to_dict") else vars(t) for t in parsed.tables],
+            images=[i.to_dict() if hasattr(i, "to_dict") else vars(i) for i in parsed.images],
+            language=getattr(parsed, "language", "unknown"),
+            word_count=parsed.word_count,
+            char_count=parsed.char_count,
+            page_count=parsed.page_count,
+            ocr_used=bool(ocr_text and len(ocr_text) > len(text)),
+            agent_version=agent_version,
+            processing_version=processing_version,
+            parser_version=parser_version,
+            ocr_engine=ocr_engine,
             processing_status="completed",
         )
     except Exception as e:
@@ -198,7 +210,11 @@ def cmd_scan(args: argparse.Namespace, config: EdgeAgentConfig) -> None:
 
     count = 0
     for file_info in scanner.scan_folder(folder, recursive=args.recursive):
-        _process_file(file_info, db, parser, ocr)
+        _process_file(file_info, db, parser, ocr,
+                      agent_version=config.agent_version,
+                      processing_version=PROCESSING_VERSION,
+                      parser_version=config.parser.backend,
+                      ocr_engine=config.ocr.engine if hasattr(config.ocr, "engine") else "paddleocr")
         count += 1
         if count % 100 == 0:
             print(f"  Processed {count} files...")
@@ -223,7 +239,11 @@ def cmd_process(args: argparse.Namespace, config: EdgeAgentConfig) -> None:
         print(f"ERROR: Could not scan {args.file}")
         sys.exit(1)
 
-    _process_file(file_info, db, parser, ocr)
+    _process_file(file_info, db, parser, ocr,
+                  agent_version=config.agent_version,
+                  processing_version=PROCESSING_VERSION,
+                  parser_version=config.parser.backend,
+                  ocr_engine=config.ocr.engine)
     record = db.get_file_by_hash(file_info["content_hash"])
     if record:
         print(json.dumps({
@@ -231,7 +251,6 @@ def cmd_process(args: argparse.Namespace, config: EdgeAgentConfig) -> None:
             "path": record["local_path"],
             "status": record["processing_status"],
             "text_length": len(record["extracted_text"]),
-            "chunks": record["chunk_count"],
         }, indent=2))
     db.close()
 
@@ -275,7 +294,11 @@ def cmd_watch(args: argparse.Namespace, config: EdgeAgentConfig) -> None:
             file_info = scanner.scan_single(path)
             if file_info:
                 logger.info("File %s: %s", event_type, path)
-                _process_file(file_info, db, parser, ocr)
+                _process_file(file_info, db, parser, ocr,
+                              agent_version=config.agent_version,
+                              processing_version=PROCESSING_VERSION,
+                              parser_version=config.parser.backend,
+                              ocr_engine=config.ocr.engine)
         elif event_type == "deleted":
             record = db.get_file_by_path(path)
             if record:
@@ -335,7 +358,11 @@ def cmd_run(args: argparse.Namespace, config: EdgeAgentConfig) -> None:
         if Path(folder).exists():
             logger.info("Initial scan of %s", folder)
             for file_info in scanner.scan_folder(folder, recursive=True):
-                _process_file(file_info, db, parser, ocr)
+                _process_file(file_info, db, parser, ocr,
+                              agent_version=config.agent_version,
+                              processing_version=PROCESSING_VERSION,
+                              parser_version=config.parser.backend,
+                              ocr_engine=config.ocr.engine)
 
     # Sync
     if config.server.api_key:

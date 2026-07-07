@@ -32,6 +32,7 @@ class ScannerConfig:
 
 @dataclass
 class OCRConfig:
+    engine: str = "paddleocr"
     lang: str = "en"
     use_gpu: bool = False
     timeout_seconds: int = 120
@@ -66,6 +67,7 @@ class WatcherConfig:
 class EdgeAgentConfig:
     agent_name: str = "edge-agent"
     agent_id: str = ""
+    agent_version: str = ""
     data_dir: str = str(Path.home() / ".edge-agent")
     log_level: str = "INFO"
     server: ServerConfig = field(default_factory=ServerConfig)
@@ -75,6 +77,11 @@ class EdgeAgentConfig:
     sync: SyncConfig = field(default_factory=SyncConfig)
     watcher: WatcherConfig = field(default_factory=WatcherConfig)
     folders: list[str] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        if not self.agent_version:
+            from edge_agent import __version__
+            object.__setattr__(self, "agent_version", __version__)
 
     @property
     def db_path(self) -> str:

@@ -37,6 +37,18 @@ class DjangoDocumentRepository(DocumentRepository):
             language=Language(getattr(obj, "language", "unknown")),
             word_count=getattr(obj, "word_count", 0),
             page_count=getattr(obj, "page_count", 0),
+            char_count=getattr(obj, "char_count", 0),
+            extra={
+                "agent_version": getattr(obj, "agent_version", ""),
+                "processing_version": getattr(obj, "processing_version", ""),
+                "parser_version": getattr(obj, "parser_version", ""),
+                "ocr_engine": getattr(obj, "ocr_engine", ""),
+                "ocr_used": getattr(obj, "ocr_used", False),
+                "markdown": getattr(obj, "markdown", ""),
+                "content_blocks": getattr(obj, "content_blocks", []),
+                "tables": getattr(obj, "tables", []),
+                "images": getattr(obj, "images", []),
+            },
         )
         # Try to fetch extended metadata from the related model
         try:
@@ -52,6 +64,8 @@ class DjangoDocumentRepository(DocumentRepository):
                     ),
                     word_count=getattr(meta_obj, "word_count", 0)
                     or metadata.word_count,
+                    char_count=getattr(meta_obj, "char_count", 0)
+                    or metadata.char_count,
                     page_count=getattr(meta_obj, "page_count", 0)
                     or metadata.page_count,
                     keywords=tuple(getattr(meta_obj, "keywords", []) or []),
@@ -87,6 +101,13 @@ class DjangoDocumentRepository(DocumentRepository):
         except self._model.DoesNotExist:
             return None
 
+    def get_by_file_id(self, file_id: uuid.UUID) -> Document | None:
+        try:
+            obj = self._qs().get(file_id=file_id)
+            return self._to_domain(obj)
+        except self._model.DoesNotExist:
+            return None
+
     def save(self, document: Document) -> Document:
         data = {
             "id": document.id,
@@ -107,8 +128,28 @@ class DjangoDocumentRepository(DocumentRepository):
             "subject": document.metadata.subject,
             "language": document.metadata.language.value,
             "word_count": document.metadata.word_count,
+            "char_count": document.metadata.char_count,
             "page_count": document.metadata.page_count,
         }
+        extra = document.metadata.extra or {}
+        if extra.get("agent_version"):
+            data["agent_version"] = extra["agent_version"]
+        if extra.get("processing_version"):
+            data["processing_version"] = extra["processing_version"]
+        if extra.get("parser_version"):
+            data["parser_version"] = extra["parser_version"]
+        if extra.get("ocr_engine"):
+            data["ocr_engine"] = extra["ocr_engine"]
+        if extra.get("ocr_used"):
+            data["ocr_used"] = extra["ocr_used"]
+        if extra.get("markdown"):
+            data["markdown"] = extra["markdown"]
+        if extra.get("content_blocks"):
+            data["content_blocks"] = extra["content_blocks"]
+        if extra.get("tables"):
+            data["tables"] = extra["tables"]
+        if extra.get("images"):
+            data["images"] = extra["images"]
         obj, _ = self._model.objects.update_or_create(
             id=document.id,
             defaults=data,

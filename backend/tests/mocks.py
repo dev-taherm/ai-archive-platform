@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import uuid
-from collections.abc import Iterator
 from typing import Any, Sequence
 
 from core.application.interfaces.repositories import (
@@ -13,9 +12,7 @@ from core.application.interfaces.repositories import (
 )
 from core.application.interfaces.services import (
     EmbeddingProvider,
-    FileScanner,
     LLMProvider,
-    StorageBackend,
 )
 from core.domain.files.entities import FileRecord
 from core.domain.files.value_objects import Hash
@@ -218,62 +215,4 @@ class MockEmbeddingProvider(EmbeddingProvider):
         return [[0.1] * 384 for _ in texts]
 
 
-class MockStorageBackend(StorageBackend):
-    def __init__(self) -> None:
-        self._store: dict[str, bytes] = {}
 
-    def save(
-        self,
-        content: bytes,
-        path: str,
-        *,
-        content_type: str | None = None,
-        metadata: dict[str, Any] | None = None,
-    ) -> str:
-        self._store[path] = content
-        return path
-
-    def retrieve(self, path: str) -> bytes:
-        return self._store.get(path, b"")
-
-    def delete(self, path: str) -> bool:
-        return self._store.pop(path, None) is not None
-
-    def list(self, prefix: str = "", *, limit: int = 1000) -> Sequence[str]:
-        return [k for k in self._store if k.startswith(prefix)][:limit]
-
-    def get_url(self, path: str, *, expires_in: int = 3600) -> str:
-        return f"https://storage.example.com/{path}?expires={expires_in}"
-
-    def exists(self, path: str) -> bool:
-        return path in self._store
-
-
-class MockFileScanner(FileScanner):
-    def __init__(self, files: list[dict[str, Any]] | None = None) -> None:
-        self._files = files or []
-
-    def scan_folder(
-        self,
-        path: str,
-        *,
-        recursive: bool = True,
-        patterns: list[str] | None = None,
-        ignore_patterns: list[str] | None = None,
-    ) -> Iterator[dict[str, Any]]:
-        return iter(self._files)
-
-    def watch_folder(
-        self,
-        path: str,
-        *,
-        recursive: bool = True,
-        callback: Any | None = None,
-    ) -> None:
-        pass
-
-    def stop_watching(self, path: str) -> None:
-        pass
-
-    def is_watching(self, path: str) -> bool:
-        return False

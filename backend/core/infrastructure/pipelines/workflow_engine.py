@@ -10,7 +10,6 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 SUPPORTED_STEP_TYPES = frozenset({
-    "scan",
     "ocr",
     "extract_metadata",
     "classify",
@@ -18,7 +17,6 @@ SUPPORTED_STEP_TYPES = frozenset({
     "embed",
     "index",
     "notify",
-    "store",
 })
 
 
@@ -66,35 +64,6 @@ class StepExecutorRegistry:
 
     def supported_types(self) -> set[str]:
         return set(self._handlers.keys())
-
-
-def _handle_scan_step(config: dict, context: dict) -> dict:
-    """Scan a folder or file path for processing."""
-    from core.infrastructure.services.file_scanner import FileScannerService
-
-    scan_path = config.get("path") or context.get("file_path", "")
-    if not scan_path:
-        return {"error": "No path provided for scan step"}
-
-    recursive = config.get("recursive", True)
-    patterns = config.get("patterns")
-    ignore_patterns = config.get("ignore_patterns")
-
-    try:
-        scanner = FileScannerService()
-        files = list(scanner.scan_folder(
-            scan_path,
-            recursive=recursive,
-            patterns=patterns,
-            ignore_patterns=ignore_patterns,
-        ))
-        return {
-            "scanned_path": scan_path,
-            "files_found": len(files),
-            "files": files[:100],
-        }
-    except Exception as e:
-        return {"error": f"Scan failed: {e}"}
 
 
 def _handle_ocr_step(config: dict, context: dict) -> dict:
@@ -415,45 +384,7 @@ def _handle_notify_step(config: dict, context: dict) -> dict:
         return {"error": str(e)}
 
 
-def _handle_store_step(config: dict, context: dict) -> dict:
-    """Store processed data or results to storage."""
-    storage_path = config.get("path", "")
-    data = config.get("data") or context.get("output_data", {})
-    storage_type = config.get("storage_type", "local")
-
-    if not storage_path:
-        storage_path = f"workflow_results/{uuid.uuid4().hex[:12]}"
-
-    try:
-        import json
-
-        if storage_type == "local":
-            from core.infrastructure.storage.local import LocalStorage
-
-            storage = LocalStorage(root_dir=config.get("root_dir", "/tmp/archive-storage"))
-            content = json.dumps(data, default=str).encode("utf-8")
-            stored_path = storage.save(
-                content,
-                storage_path,
-                content_type="application/json",
-            )
-            return {
-                "stored": True,
-                "path": stored_path,
-                "storage_type": "local",
-                "size_bytes": len(content),
-            }
-
-        return {
-            "stored": False,
-            "error": f"Unsupported storage type: {storage_type}",
-        }
-    except Exception as e:
-        return {"error": str(e)}
-
-
 STEP_HANDLERS: dict[str, Any] = {
-    "scan": _handle_scan_step,
     "ocr": _handle_ocr_step,
     "extract_metadata": _handle_extract_metadata_step,
     "classify": _handle_classify_step,
@@ -461,7 +392,6 @@ STEP_HANDLERS: dict[str, Any] = {
     "embed": _handle_embed_step,
     "index": _handle_index_step,
     "notify": _handle_notify_step,
-    "store": _handle_store_step,
 }
 
 

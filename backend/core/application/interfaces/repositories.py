@@ -50,6 +50,10 @@ class DocumentRepository(ABC):
         """Retrieve a document by its unique identifier."""
 
     @abstractmethod
+    def get_by_file_id(self, file_id: uuid.UUID) -> Document | None:
+        """Retrieve a document by its associated file ID."""
+
+    @abstractmethod
     def save(self, document: Document) -> Document:
         """Persist a document, returning the saved version."""
 

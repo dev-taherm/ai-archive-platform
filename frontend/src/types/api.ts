@@ -277,6 +277,38 @@ export interface ProviderConfig {
   updated_at: string;
 }
 
+// --- Agents ---
+
+export interface AgentFolder {
+  id: string;
+  local_path: string;
+  label: string;
+  is_active: boolean;
+  last_scanned_at: string | null;
+  file_count: number;
+}
+
+export interface Agent {
+  id: string;
+  agent_id: string;
+  name: string;
+  status: "online" | "offline" | "syncing" | "error";
+  platform: string;
+  hostname: string;
+  agent_version: string;
+  capabilities: string[];
+  last_seen: string | null;
+  last_sync_at: string | null;
+  files_count: number;
+  total_size_bytes: number;
+  sync_interval_minutes: number;
+  max_file_size_mb: number;
+  folders: AgentFolder[];
+  pending_commands_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
 // --- Common ---
 
 export interface ApiError {

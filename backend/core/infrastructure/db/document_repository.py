@@ -123,6 +123,7 @@ class DjangoDocumentRepository(DocumentRepository):
                 language=Language(orm.language) if orm.language != "unknown" else Language.UNKNOWN,
                 word_count=orm.word_count,
                 page_count=orm.page_count,
+                char_count=getattr(orm, "char_count", 0),
             ),
             classification_confidence=(
                 Confidence(value=orm.classification_confidence)
@@ -163,7 +164,7 @@ class DjangoDocumentRepository(DocumentRepository):
             ProcessingStatus.RETRYING: "processing",
         }
 
-        return DjangoDocument(
+        orm = DjangoDocument(
             id=entity.id,
             file_id=entity.file_id,
             doc_type=doc_type_map.get(entity.doc_type, "unknown"),
@@ -174,6 +175,7 @@ class DjangoDocumentRepository(DocumentRepository):
             language=entity.metadata.language.value,
             word_count=entity.metadata.word_count,
             page_count=entity.metadata.page_count,
+            char_count=entity.metadata.char_count,
             chunk_count=entity.chunk_count,
             classification_confidence=(
                 entity.classification_confidence.value
@@ -184,3 +186,15 @@ class DjangoDocumentRepository(DocumentRepository):
             extracted_text=entity.extracted_text,
             error_message=entity.error_message or "",
         )
+        # Set fields that may not exist on older ORM instances
+        extra = entity.metadata.extra or {}
+        orm.agent_version = extra.get("agent_version", "")
+        orm.processing_version = extra.get("processing_version", "")
+        orm.parser_version = extra.get("parser_version", "")
+        orm.ocr_engine = extra.get("ocr_engine", "")
+        orm.ocr_used = extra.get("ocr_used", False)
+        orm.markdown = extra.get("markdown", "")
+        orm.content_blocks = extra.get("content_blocks", [])
+        orm.tables = extra.get("tables", [])
+        orm.images = extra.get("images", [])
+        return orm

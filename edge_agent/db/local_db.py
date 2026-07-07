@@ -58,6 +58,21 @@ CREATE TABLE IF NOT EXISTS sync_log (
 CREATE INDEX IF NOT EXISTS idx_sync_log_batch ON sync_log(sync_batch_id);
 """
 
+_MIGRATIONS = """
+ALTER TABLE files ADD COLUMN content_blocks TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE files ADD COLUMN tables TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE files ADD COLUMN images TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE files ADD COLUMN language TEXT NOT NULL DEFAULT 'unknown';
+ALTER TABLE files ADD COLUMN word_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE files ADD COLUMN char_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE files ADD COLUMN page_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE files ADD COLUMN ocr_used INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE files ADD COLUMN agent_version TEXT NOT NULL DEFAULT '';
+ALTER TABLE files ADD COLUMN processing_version TEXT NOT NULL DEFAULT '';
+ALTER TABLE files ADD COLUMN parser_version TEXT NOT NULL DEFAULT '';
+ALTER TABLE files ADD COLUMN ocr_engine TEXT NOT NULL DEFAULT '';
+"""
+
 
 class LocalDB:
     """SQLite database for local file tracking and sync state."""
@@ -70,6 +85,10 @@ class LocalDB:
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA foreign_keys=ON")
         self._conn.executescript(_SCHEMA)
+        try:
+            self._conn.executescript(_MIGRATIONS)
+        except Exception:
+            self._conn.rollback()
         self._conn.commit()
 
     def close(self) -> None:
@@ -113,34 +132,64 @@ class LocalDB:
     def update_file(self, file_id: str, **kwargs: Any) -> None:
         """Update specific fields on a file record."""
         allowed = {
-            "extracted_text", "markdown", "metadata", "classification",
-            "summary", "processing_status", "chunk_count", "synced",
-            "synced_at", "last_error",
+            "extracted_text", "markdown", "content_blocks", "tables", "images",
+            "metadata", "classification", "summary",
+            "processing_status", "synced", "synced_at", "last_error",
+            "language", "word_count", "char_count", "page_count",
+            "ocr_used", "agent_version", "processing_version",
+            "parser_version", "ocr_engine",
         }
-        updates = {k: v for k, v in kwargs.items() if k in allowed}
+        _JSON_LIST_FIELDS = {"content_blocks", "tables", "images"}
+        _JSON_DICT_FIELDS = {"metadata", "classification"}
+        updates: dict[str, Any] = {}
+        for k, v in kwargs.items():
+            if k not in allowed:
+                continue
+            if k in _JSON_LIST_FIELDS and isinstance(v, (list, tuple)):
+                updates[k] = json.dumps(v, default=str)
+            elif k in _JSON_DICT_FIELDS and isinstance(v, dict):
+                updates[k] = json.dumps(v, default=str)
+            else:
+                updates[k] = v
         if not updates:
             return
         updates["updated_at"] = self._now()
-        if "metadata" in updates and isinstance(updates["metadata"], dict):
-            updates["metadata"] = json.dumps(updates["metadata"])
-        if "classification" in updates and isinstance(updates["classification"], dict):
-            updates["classification"] = json.dumps(updates["classification"])
         set_clause = ", ".join(f"{k}=?" for k in updates)
         values = list(updates.values()) + [file_id]
         self._conn.execute(f"UPDATE files SET {set_clause} WHERE id=?", values)
         self._conn.commit()
 
+    def _deserialize_row(self, row: sqlite3.Row | None) -> dict[str, Any] | None:
+        if row is None:
+            return None
+        data = dict(row)
+        _JSON_LIST_FIELDS = {"content_blocks", "tables", "images"}
+        _JSON_DICT_FIELDS = {"metadata", "classification"}
+        for k in _JSON_LIST_FIELDS:
+            if k in data and isinstance(data[k], str):
+                try:
+                    data[k] = json.loads(data[k]) if data[k] else []
+                except (json.JSONDecodeError, TypeError):
+                    data[k] = []
+        for k in _JSON_DICT_FIELDS:
+            if k in data and isinstance(data[k], str):
+                try:
+                    data[k] = json.loads(data[k]) if data[k] else {}
+                except (json.JSONDecodeError, TypeError):
+                    data[k] = {}
+        return data
+
     def get_file(self, file_id: str) -> dict[str, Any] | None:
         row = self._conn.execute("SELECT * FROM files WHERE id=?", (file_id,)).fetchone()
-        return dict(row) if row else None
+        return self._deserialize_row(row)
 
     def get_file_by_hash(self, content_hash: str) -> dict[str, Any] | None:
         row = self._conn.execute("SELECT * FROM files WHERE content_hash=?", (content_hash,)).fetchone()
-        return dict(row) if row else None
+        return self._deserialize_row(row)
 
     def get_file_by_path(self, local_path: str) -> dict[str, Any] | None:
         row = self._conn.execute("SELECT * FROM files WHERE local_path=?", (local_path,)).fetchone()
-        return dict(row) if row else None
+        return self._deserialize_row(row)
 
     def list_files(self, status: str | None = None, synced: int | None = None, limit: int = 1000) -> list[dict[str, Any]]:
         query = "SELECT * FROM files WHERE 1=1"
@@ -153,7 +202,7 @@ class LocalDB:
             params.append(synced)
         query += " ORDER BY first_seen_at DESC LIMIT ?"
         params.append(limit)
-        return [dict(r) for r in self._conn.execute(query, params).fetchall()]
+        return [self._deserialize_row(r) for r in self._conn.execute(query, params).fetchall()]  # type: ignore[arg-type]
 
     def get_pending_sync(self, batch_size: int = 50) -> list[dict[str, Any]]:
         return self.list_files(synced=0, limit=batch_size)
