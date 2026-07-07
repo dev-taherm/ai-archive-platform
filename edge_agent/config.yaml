@@ -6,7 +6,8 @@ server:
   url: http://localhost:8000
   api_key: ak_2a23347299b9f643086e6052b9a5850d6a54d3bae74d9bd61a545a8001448a81
   jwt_token: ''
-folders: null
+folders:
+  - /home/taher/Documents/ai-archive-platform/test-docs
 scanner:
   ignore_patterns:
   - .git

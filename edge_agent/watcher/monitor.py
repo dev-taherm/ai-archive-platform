@@ -68,7 +68,7 @@ class FolderWatcher:
                 def on_moved(self, event: FileSystemEvent) -> None:
                     self._debounced(event)
 
-            handler = _Handler(callback)
+            handler = _Handler()
             observer = Observer()
             observer.schedule(handler, resolved, recursive=recursive)
             observer.daemon = True
