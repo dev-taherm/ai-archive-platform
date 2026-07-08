@@ -699,6 +699,35 @@ def cmd_run(args: argparse.Namespace, config: EdgeAgentConfig) -> None:
     """Full loop: process pending files, sync, then watch + heartbeat."""
     import threading
 
+    # Auto-register if no agent_id but JWT token is available
+    if not config.agent_id and config.server.jwt_token:
+        logger.info("No agent_id configured — auto-registering with JWT token...")
+        db = LocalDB(config.db_path)
+        sync = SyncManager(config, db)
+        try:
+            result = sync.register(
+                name=config.agent_name,
+                jwt_token=config.server.jwt_token,
+            )
+            new_agent_id = result.get("agent_id") or result.get("id", "")
+            new_api_key = result.get("api_key", "")
+            if new_agent_id:
+                config.agent_id = new_agent_id
+            if new_api_key:
+                config.server.api_key = new_api_key
+                sync.update_api_key(new_api_key)
+            # Persist the new credentials
+            config_path = Path.home() / ".edge-agent" / "config.yaml"
+            _save_config(config, config_path)
+            logger.info("Registered as agent %s", config.agent_id)
+        except Exception as e:
+            logger.error("Auto-registration failed: %s", e)
+            logger.error("Run 'edge-agent register --jwt <token>' manually")
+            sys.exit(1)
+        finally:
+            sync.close()
+            db.close()
+
     db = LocalDB(config.db_path)
     scanner = FileScanner(
         ignore_patterns=config.scanner.ignore_patterns,

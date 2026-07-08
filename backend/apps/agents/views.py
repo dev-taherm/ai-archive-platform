@@ -15,6 +15,8 @@ from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from rest_framework_simplejwt.tokens import RefreshToken
+
 from apps.agents.models import Agent, AgentCommand, AgentFolder
 from apps.agents.serializers import (
     AgentCommandSerializer,
@@ -83,52 +85,23 @@ class AgentViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["post"], url_path="setup")
     def setup(self, request):
-        """Quick-setup endpoint: creates or reuses an agent and returns download info.
+        """Quick-setup endpoint: returns a JWT token for the download package.
 
-        Used by the frontend "Add Device" flow. If the user already has agents,
-        reuses the first one (generates a new API key). Otherwise creates a new agent.
+        The edge agent binary auto-registers on first run using the JWT token.
+        No agent is created server-side — each device registers itself.
         """
-        from apps.apikeys.models import ApiKey
-
-        # Reuse existing agent if user already has one
-        existing_agent = Agent.objects.filter(user=request.user).first()
-
-        if existing_agent:
-            agent = existing_agent
-            agent_id = agent.agent_id
-        else:
-            agent_id = str(uuid.uuid4())[:16]
-            name = request.data.get("name", "Edge Agent")
-            platform_val = request.data.get("platform", "")
-            hostname_val = request.data.get("hostname", "")
-
-            agent = Agent.objects.create(
-                user=request.user,
-                agent_id=agent_id,
-                name=name,
-                platform=platform_val,
-                hostname=hostname_val,
-            )
-
-        # Generate a fresh API key for the agent
-        api_key_instance, raw_key = ApiKey.create_key(
-            request.user, name=f"agent:{agent.agent_id}"
-        )
-        # Deactivate old key if any
-        if agent.api_key:
-            agent.api_key.is_active = False
-            agent.api_key.save(update_fields=["is_active"])
-        agent.api_key = api_key_instance
-        agent.save(update_fields=["api_key"])
+        # Generate a short-lived access token for the current user
+        refresh = RefreshToken.for_user(request.user)
+        access_token = str(refresh.access_token)
 
         server_url = request.build_absolute_uri("/").rstrip("/")
 
         return Response({
-            "agent_id": agent.agent_id,
-            "api_key": raw_key,
+            "jwt_token": access_token,
             "server_url": server_url,
-            "download_url": f"/agents/{agent.agent_id}/download",
-        }, status=status.HTTP_201_CREATED)
+            "download_url": "/agents/download-package",
+            "existing_agents_count": Agent.objects.filter(user=request.user).count(),
+        }, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["get"], url_path="download")
     def download(self, request, agent_id=None):
@@ -194,6 +167,73 @@ class AgentViewSet(viewsets.ModelViewSet):
             zip_buffer,
             content_type="application/zip",
             filename=zip_filename,
+        )
+
+    @action(detail=False, methods=["get"], url_path="download-package")
+    def download_package(self, request):
+        """Serve a zip with edge-agent binary + config pre-filled with JWT token.
+
+        Query params:
+            os: "linux" | "darwin" | "windows" (required)
+            jwt_token: JWT access token for auto-registration (required)
+        """
+        os_param = request.query_params.get("os", "").lower()
+        jwt_token = request.query_params.get("jwt_token", "")
+
+        valid_os = {"linux", "darwin", "windows"}
+        if os_param not in valid_os:
+            return Response(
+                {"detail": f"os must be one of: {', '.join(sorted(valid_os))}"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not jwt_token:
+            return Response(
+                {"detail": "jwt_token is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        arch = "x86_64"
+        suffix = ".exe" if os_param == "windows" else ""
+        binary_name = f"edge-agent-{os_param}-{arch}{suffix}"
+
+        binaries_dir = Path(settings.MEDIA_ROOT) / "agents" / "binaries"
+        binary_path = binaries_dir / binary_name
+
+        if not binary_path.exists():
+            return Response(
+                {"detail": f"Binary not available for {os_param}/{arch}. "
+                           f"Please build it first: python edge_agent/build.py"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        server_url = request.build_absolute_uri("/").rstrip("/")
+        config_yaml = _generate_config_yaml(
+            agent_id="",
+            api_key="",
+            server_url=server_url,
+            jwt_token=jwt_token,
+        )
+
+        if os_param == "windows":
+            install_script = _generate_install_bat()
+            install_name = "install.bat"
+        else:
+            install_script = _generate_install_sh()
+            install_name = "install.sh"
+
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr(binary_name, binary_path.read_bytes())
+            zf.writestr("config.yaml", config_yaml)
+            zf.writestr(install_name, install_script)
+            zf.writestr("README.txt", _generate_readme("auto-register", os_param))
+
+        zip_buffer.seek(0)
+
+        return FileResponse(
+            zip_buffer,
+            content_type="application/zip",
+            filename="edge-agent.zip",
         )
 
     @action(detail=True, methods=["post"], url_path="heartbeat")
@@ -534,8 +574,12 @@ class AgentViewSet(viewsets.ModelViewSet):
 # ---------------------------------------------------------------------------
 
 
-def _generate_config_yaml(agent_id: str, api_key: str, server_url: str) -> str:
-    """Generate a config.yaml with pre-configured API key and server URL."""
+def _generate_config_yaml(agent_id: str, api_key: str, server_url: str, jwt_token: str = "") -> str:
+    """Generate a config.yaml with pre-configured credentials and server URL.
+
+    If jwt_token is provided, agent_id and api_key are left empty (binary auto-registers).
+    If api_key is provided, agent_id is set (binary connects directly).
+    """
     return f"""\
 agent_name: edge-agent
 agent_id: {agent_id}
@@ -544,7 +588,7 @@ log_level: INFO
 server:
   url: {server_url}
   api_key: {api_key}
-  jwt_token: ''
+  jwt_token: {jwt_token}
 folders: []
 scanner:
   ignore_patterns:

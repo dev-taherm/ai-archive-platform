@@ -27,6 +27,11 @@ class SyncManager:
         self._db = db
         self._client = self._make_client(api_key=config.server.api_key)
 
+    def update_api_key(self, api_key: str) -> None:
+        """Replace the current HTTP client with one using the new API key."""
+        self._client.close()
+        self._client = self._make_client(api_key=api_key)
+
     def _make_client(self, *, api_key: str | None = None, jwt_token: str | None = None) -> httpx.Client:
         """Create an httpx client with the right auth header."""
         headers: dict[str, str] = {"Content-Type": "application/json"}

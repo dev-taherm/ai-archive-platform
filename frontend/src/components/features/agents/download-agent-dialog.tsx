@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import {
   Download,
@@ -9,13 +9,12 @@ import {
   CheckCircle2,
   Loader2,
   Copy,
-  ExternalLink,
   ChevronDown,
   Bot,
   Wifi,
 } from "lucide-react";
 import api from "@/lib/api";
-import { detectOS, osLabel, osRunCommand, type OSType } from "@/lib/detect-os";
+import { detectOS, osLabel, type OSType } from "@/lib/detect-os";
 import type { AgentSetupResponse } from "@/types/api";
 import { Button } from "@/components/ui/button";
 import {
@@ -40,6 +39,7 @@ export function DownloadAgentDialog({ open, onClose }: DownloadAgentDialogProps)
   const [agentData, setAgentData] = useState<AgentSetupResponse | null>(null);
   const [showAllOS, setShowAllOS] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const agentsCountBeforeRef = useRef<number | null>(null);
 
   useEffect(() => {
     setSelectedOS(detectOS());
@@ -56,40 +56,44 @@ export function DownloadAgentDialog({ open, onClose }: DownloadAgentDialogProps)
     },
     onSuccess: (data) => {
       setAgentData(data);
+      agentsCountBeforeRef.current = data.existing_agents_count;
       setStep("download");
     },
   });
 
-  // Auto-create agent on open
+  // Auto-trigger setup on open
   useEffect(() => {
     if (open && step === "creating" && !agentData) {
       setupMutation.mutate();
     }
   }, [open]);
 
-  // Poll agent status when waiting
-  const { data: agentStatus } = useQuery({
-    queryKey: ["agents", agentData?.agent_id],
+  // Poll agents list when waiting — detect new agent by count increase
+  const { data: agentsList } = useQuery({
+    queryKey: ["agents"],
     queryFn: async () => {
-      const res = await api.get(`/agents/${agentData!.agent_id}`);
-      return res.data;
+      const res = await api.get("/agents");
+      const data = res.data;
+      return Array.isArray(data) ? data : data.results || [];
     },
-    enabled: step === "waiting" && !!agentData?.agent_id,
+    enabled: step === "waiting",
     refetchInterval: 3000,
   });
 
   useEffect(() => {
-    if (agentStatus?.status === "online") {
-      setStep("connected");
+    if (step === "waiting" && agentsList && agentsCountBeforeRef.current !== null) {
+      if (agentsList.length > agentsCountBeforeRef.current) {
+        setStep("connected");
+      }
     }
-  }, [agentStatus]);
+  }, [agentsList, step]);
 
   const handleDownload = useCallback(async () => {
     if (!agentData) return;
     setDownloading(true);
     try {
       const res = await api.get(
-        `${agentData.download_url}?os=${selectedOS}&api_key=${encodeURIComponent(agentData.api_key)}`,
+        `/agents/download-package?os=${selectedOS}&jwt_token=${encodeURIComponent(agentData.jwt_token)}`,
         { responseType: "blob" },
       );
       const blob = new Blob([res.data], { type: "application/zip" });
@@ -156,7 +160,7 @@ export function DownloadAgentDialog({ open, onClose }: DownloadAgentDialogProps)
                   Download for {osLabel(selectedOS)}
                 </h3>
                 <p className="text-sm text-muted-foreground mt-1">
-                  The agent will be configured automatically with your API key
+                  The agent will auto-register when you run it
                 </p>
               </div>
 
@@ -317,12 +321,9 @@ export function DownloadAgentDialog({ open, onClose }: DownloadAgentDialogProps)
                 Waiting for agent to connect...
               </h3>
               <p className="text-sm text-muted-foreground text-center max-w-md">
-                Make sure the agent is running. It should connect within a few
-                seconds.
+                Make sure the agent is running. It will auto-register and connect
+                within a few seconds.
               </p>
-              <Badge variant="secondary" className="animate-pulse">
-                Agent ID: {agentData?.agent_id}
-              </Badge>
             </div>
           )}
 

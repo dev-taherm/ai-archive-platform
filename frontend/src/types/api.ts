@@ -344,10 +344,10 @@ export interface Agent {
 }
 
 export interface AgentSetupResponse {
-  agent_id: string;
-  api_key: string;
+  jwt_token: string;
   server_url: string;
   download_url: string;
+  existing_agents_count: number;
 }
 
 export interface AgentDownloadManifest {
