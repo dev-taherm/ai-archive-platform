@@ -103,6 +103,88 @@ class AgentViewSet(viewsets.ModelViewSet):
             "existing_agents_count": Agent.objects.filter(user=request.user).count(),
         }, status=status.HTTP_200_OK)
 
+    @action(detail=False, methods=["post"], url_path="auto-register")
+    def auto_register(self, request):
+        """Smart registration: reuses existing agent if same user+hostname, otherwise creates new.
+
+        Auth: JWT (the user's login token).
+        Body: { hostname, platform, agent_version?, name? }
+        Returns: { agent_id, api_key, is_new }
+        """
+        logger.debug("auto-register request.data: %s", dict(request.data))
+        hostname = request.data.get("hostname", "").strip()
+        platform_name = request.data.get("platform", "").strip()
+        agent_version = request.data.get("agent_version", "")
+        agent_name = request.data.get("name", "")
+
+        if not hostname:
+            return Response(
+                {"detail": "hostname is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Check if this user already has an agent on this hostname
+        existing = Agent.objects.filter(
+            user=request.user, hostname=hostname
+        ).first()
+
+        from apps.apikeys.models import ApiKey
+
+        if existing:
+            # Reuse: deactivate old key, generate new one
+            if existing.api_key:
+                existing.api_key.is_active = False
+                existing.api_key.save(update_fields=["is_active"])
+
+            api_key_instance, raw_key = ApiKey.create_key(
+                request.user, name=f"agent:{existing.agent_id}"
+            )
+            existing.api_key = api_key_instance
+            existing.platform = platform_name or existing.platform
+            existing.hostname = hostname or existing.hostname
+            existing.agent_version = agent_version or existing.agent_version
+            existing.last_seen = timezone.now()
+            existing.save(update_fields=[
+                "api_key", "platform", "hostname", "agent_version", "last_seen",
+            ])
+
+            logger.info("Reused agent %s for hostname=%s", existing.agent_id, hostname)
+            return Response({
+                "agent_id": existing.agent_id,
+                "api_key": raw_key,
+                "is_new": False,
+            }, status=status.HTTP_200_OK)
+
+        # New agent
+        import secrets
+        agent_id = secrets.token_hex(8)  # 16-char hex ID
+        # Ensure unique
+        while Agent.objects.filter(agent_id=agent_id).exists():
+            agent_id = secrets.token_hex(8)
+
+        agent = Agent.objects.create(
+            user=request.user,
+            agent_id=agent_id,
+            name=agent_name or f"Agent on {hostname}",
+            hostname=hostname,
+            platform=platform_name,
+            agent_version=agent_version,
+            status=Agent.Status.OFFLINE,
+        )
+
+        api_key_instance, raw_key = ApiKey.create_key(
+            request.user, name=f"agent:{agent_id}"
+        )
+        agent.api_key = api_key_instance
+        agent.save(update_fields=["api_key"])
+
+        logger.info("Created new agent %s for hostname=%s", agent_id, hostname)
+        return Response({
+            "agent_id": agent_id,
+            "api_key": raw_key,
+            "is_new": True,
+        }, status=status.HTTP_201_CREATED)
+
     @action(detail=True, methods=["get"], url_path="download")
     def download(self, request, agent_id=None):
         """Serve a zip file with the edge-agent binary + pre-configured config.yaml + install script.

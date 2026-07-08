@@ -44,25 +44,29 @@ class SyncManager:
     def register(self, name: str | None = None, jwt_token: str | None = None) -> dict[str, Any]:
         """Register this agent with the platform. Returns agent info + API key.
 
+        Uses the auto-register endpoint which reuses existing agents on the same
+        hostname (same user) or creates new ones (different user/device).
+
         Registration requires JWT auth (the user's login token).
         """
         if not jwt_token:
             raise ValueError("jwt_token is required for registration")
-        agent_id = self._config.agent_id or str(uuid.uuid4())
         client = self._make_client(jwt_token=jwt_token)
         try:
-            resp = client.post("/api/v1/agents", json={
-                "agent_id": agent_id,
-                "name": name or self._config.agent_name,
-                "platform": platform.system().lower(),
+            payload = {
                 "hostname": platform.node(),
+                "platform": platform.system().lower(),
                 "agent_version": "0.1.0",
-                "capabilities": ["scan", "ocr", "parse", "embed"],
-                "sync_interval_minutes": self._config.sync.interval_minutes,
-            })
+                "name": name or self._config.agent_name,
+            }
+            logger.debug("auto-register payload: %s", payload)
+            resp = client.post("/api/v1/agents/auto-register", json=payload)
             resp.raise_for_status()
             data = resp.json()
-            logger.info("Registered agent: %s", data.get("id"))
+            logger.info(
+                "Registered agent: %s (is_new=%s)",
+                data.get("agent_id"), data.get("is_new"),
+            )
             return data
         finally:
             client.close()
