@@ -343,6 +343,26 @@ export interface Agent {
   updated_at: string;
 }
 
+export interface AgentSetupResponse {
+  agent_id: string;
+  api_key: string;
+  server_url: string;
+  download_url: string;
+}
+
+export interface AgentDownloadManifest {
+  version: string;
+  builds: Record<
+    string,
+    {
+      filename: string;
+      size_bytes: number;
+      sha256: string;
+      built_at: string;
+    }
+  >;
+}
+
 // --- Common ---
 
 export interface ApiError {

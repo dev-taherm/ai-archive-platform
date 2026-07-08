@@ -1,9 +1,15 @@
 from __future__ import annotations
 
+import io
+import json
 import logging
+import uuid
+import zipfile
 from pathlib import Path
 
+from django.conf import settings
 from django.db import transaction
+from django.http import FileResponse, HttpResponse
 from django.utils import timezone
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
@@ -18,6 +24,7 @@ from apps.agents.serializers import (
     AgentFolderUpdateSerializer,
     AgentHeartbeatSerializer,
     AgentSerializer,
+    AgentSetupSerializer,
     AgentSyncSerializer,
     FileMoveFolderSerializer,
     FileMoveSerializer,
@@ -73,6 +80,121 @@ class AgentViewSet(viewsets.ModelViewSet):
         response_data = AgentSerializer(agent).data
         response_data["api_key"] = raw_key
         return Response(response_data, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=["post"], url_path="setup")
+    def setup(self, request):
+        """Quick-setup endpoint: creates or reuses an agent and returns download info.
+
+        Used by the frontend "Add Device" flow. If the user already has agents,
+        reuses the first one (generates a new API key). Otherwise creates a new agent.
+        """
+        from apps.apikeys.models import ApiKey
+
+        # Reuse existing agent if user already has one
+        existing_agent = Agent.objects.filter(user=request.user).first()
+
+        if existing_agent:
+            agent = existing_agent
+            agent_id = agent.agent_id
+        else:
+            agent_id = str(uuid.uuid4())[:16]
+            name = request.data.get("name", "Edge Agent")
+            platform_val = request.data.get("platform", "")
+            hostname_val = request.data.get("hostname", "")
+
+            agent = Agent.objects.create(
+                user=request.user,
+                agent_id=agent_id,
+                name=name,
+                platform=platform_val,
+                hostname=hostname_val,
+            )
+
+        # Generate a fresh API key for the agent
+        api_key_instance, raw_key = ApiKey.create_key(
+            request.user, name=f"agent:{agent.agent_id}"
+        )
+        # Deactivate old key if any
+        if agent.api_key:
+            agent.api_key.is_active = False
+            agent.api_key.save(update_fields=["is_active"])
+        agent.api_key = api_key_instance
+        agent.save(update_fields=["api_key"])
+
+        server_url = request.build_absolute_uri("/").rstrip("/")
+
+        return Response({
+            "agent_id": agent.agent_id,
+            "api_key": raw_key,
+            "server_url": server_url,
+            "download_url": f"/agents/{agent.agent_id}/download",
+        }, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["get"], url_path="download")
+    def download(self, request, agent_id=None):
+        """Serve a zip file with the edge-agent binary + pre-configured config.yaml + install script.
+
+        Query params:
+            os: "linux" | "darwin" | "windows" (required)
+        """
+        agent = self.get_object()
+        os_param = request.query_params.get("os", "").lower()
+
+        valid_os = {"linux", "darwin", "windows"}
+        if os_param not in valid_os:
+            return Response(
+                {"detail": f"os must be one of: {', '.join(sorted(valid_os))}"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Determine binary filename
+        arch = "x86_64"
+        suffix = ".exe" if os_param == "windows" else ""
+        binary_name = f"edge-agent-{os_param}-{arch}{suffix}"
+
+        # Look for the binary in media/agents/binaries/
+        binaries_dir = Path(settings.MEDIA_ROOT) / "agents" / "binaries"
+        binary_path = binaries_dir / binary_name
+
+        if not binary_path.exists():
+            return Response(
+                {"detail": f"Binary not available for {os_param}/{arch}. "
+                           f"Please build it first: python edge_agent/build.py"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Generate config.yaml — api_key comes from the frontend (setup response)
+        api_key_param = request.query_params.get("api_key", "")
+        config_yaml = _generate_config_yaml(
+            agent_id=agent.agent_id,
+            api_key=api_key_param,
+            server_url=request.build_absolute_uri("/").rstrip("/"),
+        )
+
+        # Generate install script
+        if os_param == "windows":
+            install_script = _generate_install_bat()
+            install_name = "install.bat"
+        else:
+            install_script = _generate_install_sh()
+            install_name = "install.sh"
+
+        # Build zip in memory
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr(binary_name, binary_path.read_bytes())
+            zf.writestr("config.yaml", config_yaml)
+            zf.writestr(install_name, install_script)
+            zf.writestr("README.txt", _generate_readme(agent.agent_id, os_param))
+
+        zip_buffer.seek(0)
+        zip_filename = f"edge-agent-{agent.agent_id}-{os_param}.zip"
+
+        return FileResponse(
+            zip_buffer,
+            content_type="application/zip",
+            filename=zip_filename,
+        )
 
     @action(detail=True, methods=["post"], url_path="heartbeat")
     def heartbeat(self, request, agent_id=None):
@@ -405,3 +527,177 @@ class AgentViewSet(viewsets.ModelViewSet):
             "document_ids": document_ids,
             "pending_commands": AgentCommandSerializer(pending, many=True).data,
         })
+
+
+# ---------------------------------------------------------------------------
+# Helper functions for agent download
+# ---------------------------------------------------------------------------
+
+
+def _generate_config_yaml(agent_id: str, api_key: str, server_url: str) -> str:
+    """Generate a config.yaml with pre-configured API key and server URL."""
+    return f"""\
+agent_name: edge-agent
+agent_id: {agent_id}
+data_dir: ~/.edge-agent
+log_level: INFO
+server:
+  url: {server_url}
+  api_key: {api_key}
+  jwt_token: ''
+folders: []
+scanner:
+  ignore_patterns:
+    - .git
+    - .svn
+    - .hg
+    - __pycache__
+    - node_modules
+    - .DS_Store
+    - Thumbs.db
+    - "*.pyc"
+    - "*.pyo"
+    - "*.swp"
+  max_file_size_mb: 100
+ocr:
+  engine: paddleocr
+  lang: en
+  use_gpu: false
+  timeout_seconds: 120
+parser:
+  backend: pipeline
+  effort: medium
+  language: en
+  formula_enable: true
+  table_enable: true
+sync:
+  interval_minutes: 30
+  batch_size: 50
+  retry_attempts: 3
+  retry_delay_seconds: 60
+watcher:
+  enabled: true
+  recursive: true
+  debounce_seconds: 2.0
+llm:
+  provider: openai
+  model: gpt-4o-mini
+  api_key: ""
+  base_url: ""
+  temperature: 0.3
+  max_tokens: 4096
+"""
+
+
+def _generate_install_sh() -> str:
+    """Generate a bash install script for Linux/macOS."""
+    return """\
+#!/bin/bash
+set -e
+
+INSTALL_DIR="$HOME/.edge-agent"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+echo "Installing Edge Agent..."
+mkdir -p "$INSTALL_DIR"
+
+# Copy binary (any platform name) and rename to "edge-agent"
+cp "$SCRIPT_DIR"/edge-agent* "$INSTALL_DIR/edge-agent" 2>/dev/null || true
+cp "$SCRIPT_DIR/config.yaml" "$INSTALL_DIR/"
+
+# Make binary executable
+chmod +x "$INSTALL_DIR/edge-agent"
+
+echo ""
+echo "Edge Agent installed to: $INSTALL_DIR"
+echo ""
+echo "Next steps:"
+echo "  1. Add to PATH (optional):"
+echo "     export PATH=\\"$INSTALL_DIR:\\$PATH\\""
+echo ""
+echo "  2. Start the agent:"
+echo "     $INSTALL_DIR/edge-agent run"
+echo ""
+echo "  3. Or run in background:"
+echo "     nohup $INSTALL_DIR/edge-agent run > /dev/null 2>&1 &"
+echo ""
+"""
+
+
+def _generate_install_bat() -> str:
+    """Generate a batch install script for Windows."""
+    return """\
+@echo off
+setlocal
+
+set INSTALL_DIR=%USERPROFILE%\\.edge-agent
+set SCRIPT_DIR=%~dp0
+
+echo Installing Edge Agent...
+if not exist "%INSTALL_DIR%" mkdir "%INSTALL_DIR%"
+
+REM Copy binary (any platform name) and rename to edge-agent.exe
+copy "%SCRIPT_DIR%edge-agent*.exe" "%INSTALL_DIR%\edge-agent.exe" >nul 2>&1
+copy "%SCRIPT_DIR%config.yaml" "%INSTALL_DIR%\" >nul 2>&1
+
+echo.
+echo Edge Agent installed to: %INSTALL_DIR%
+echo.
+echo Next steps:
+echo   1. Start the agent:
+echo      %INSTALL_DIR%\\edge-agent.exe run
+echo.
+echo   2. Or add to PATH and run from anywhere:
+echo      set PATH=%INSTALL_DIR%;%PATH%
+echo      edge-agent run
+echo.
+pause
+"""
+
+
+def _generate_readme(agent_id: str, os_name: str) -> str:
+    """Generate a README.txt for the downloaded zip."""
+    return f"""\
+Edge Agent - AI Archive Platform
+=================================
+
+Agent ID: {agent_id}
+Platform: {os_name}
+
+Quick Start
+-----------
+
+1. Extract this zip to a folder of your choice
+
+2. Run the install script:
+   - Linux/macOS: chmod +x install.sh && ./install.sh
+   - Windows: Double-click install.bat
+
+3. Start the agent:
+   ~/.edge-agent/edge-agent run
+
+Configuration
+-------------
+
+The config.yaml is pre-configured with your API key and server URL.
+You can edit ~/.edge-agent/config.yaml to customize settings.
+
+To add folders to monitor, edit config.yaml and add paths to the 'folders' list:
+  folders:
+    - /home/user/Documents
+    - /home/user/Projects
+
+Manual Installation
+-------------------
+
+1. Copy 'edge-agent' (or edge-agent.exe) to ~/.edge-agent/
+2. Copy 'config.yaml' to ~/.edge-agent/
+3. Run: ~/.edge-agent/edge-agent run
+
+Troubleshooting
+---------------
+
+- Check logs: ~/.edge-agent/agent.log
+- Test connection: ~/.edge-agent/edge-agent status
+- View help: ~/.edge-agent/edge-agent --help
+"""

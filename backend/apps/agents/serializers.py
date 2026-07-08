@@ -186,6 +186,13 @@ class FileMoveFolderSerializer(serializers.Serializer):
     target_path = serializers.CharField(max_length=1024)
 
 
+class AgentSetupSerializer(serializers.Serializer):
+    """Serializer for the quick-setup endpoint (creates agent + returns download info)."""
+    name = serializers.CharField(max_length=255, required=False, default="Edge Agent")
+    platform = serializers.CharField(max_length=50, required=False, default="")
+    hostname = serializers.CharField(max_length=255, required=False, default="")
+
+
 class AgentSyncSerializer(serializers.Serializer):
     files = SyncFileSerializer(many=True)
     stats = serializers.DictField(required=False, default=dict)
