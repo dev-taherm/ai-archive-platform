@@ -23,8 +23,14 @@ class User(AbstractUser):
         choices=Role.choices,
         default=Role.VIEWER,
     )
-    is_approved = models.BooleanField(default=False)
     last_login_ip = models.GenericIPAddressField(null=True, blank=True)
+    organization = models.ForeignKey(
+        "organizations.Organization",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="members",
+    )
 
     class Meta:
         db_table = "accounts_user"
@@ -32,7 +38,6 @@ class User(AbstractUser):
         verbose_name_plural = _("users")
         indexes = [
             models.Index(fields=["role"], name="idx_user_role"),
-            models.Index(fields=["is_approved"], name="idx_user_approved"),
         ]
 
     def __str__(self) -> str:

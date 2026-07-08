@@ -10,6 +10,13 @@ class ChatSession(models.Model):
     """A chat conversation session between a user and the AI assistant."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organization = models.ForeignKey(
+        "organizations.Organization",
+        on_delete=models.CASCADE,
+        related_name="chat_sessions",
+        null=True,
+        blank=True,
+    )
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,

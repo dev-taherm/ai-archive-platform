@@ -8,6 +8,7 @@ from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from apps.organizations.mixins import OrgScopedMixin, get_user_organization
 from interfaces.api.v1.serializers.workflow_serializers import (
     WorkflowCreateSerializer,
     WorkflowRunCreateSerializer,
@@ -19,7 +20,7 @@ from interfaces.api.v1.serializers.workflow_serializers import (
 logger = logging.getLogger(__name__)
 
 
-class WorkflowViewSet(viewsets.GenericViewSet):
+class WorkflowViewSet(OrgScopedMixin, viewsets.GenericViewSet):
     """
     Workflow ViewSet with CRUD and run actions.
 
@@ -45,10 +46,10 @@ class WorkflowViewSet(viewsets.GenericViewSet):
             workflow=OuterRef("pk")
         ).order_by("-created_at")
 
-        return Workflow.objects.annotate(
+        return self._org_qs(Workflow.objects.annotate(
             run_count=Count("runs"),
             last_run_at=Subquery(last_run_subquery.values("started_at")[:1]),
-        ).order_by("-created_at")
+        )).order_by("-created_at")
 
     def _attach_last_run(self, workflows):
         """Attach _last_run attribute for status computation."""
@@ -90,6 +91,12 @@ class WorkflowViewSet(viewsets.GenericViewSet):
             )
 
         service = self._get_service()
+        # Check org ownership
+        if not self._org_qs().filter(id=workflow_id).exists():
+            return Response(
+                {"detail": "Workflow not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
         workflow = service.get_workflow(workflow_id)
         if workflow is None:
             return Response(
@@ -110,6 +117,7 @@ class WorkflowViewSet(viewsets.GenericViewSet):
 
         service = self._get_service()
         steps = validated.get("steps", [])
+        org = get_user_organization(request.user)
 
         workflow = service.create_workflow(
             name=validated["name"],
@@ -118,6 +126,9 @@ class WorkflowViewSet(viewsets.GenericViewSet):
             trigger_type=validated.get("trigger_type", "manual"),
             created_by_id=request.user.pk if request.user.is_authenticated else None,
         )
+        # Set org on the created workflow
+        workflow.organization = org
+        workflow.save(update_fields=["organization"])
 
         return Response(
             WorkflowSerializer(workflow).data,
@@ -131,6 +142,13 @@ class WorkflowViewSet(viewsets.GenericViewSet):
             return Response(
                 {"detail": "Invalid workflow ID."},
                 status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Check org ownership
+        if not self._org_qs().filter(id=workflow_id).exists():
+            return Response(
+                {"detail": "Workflow not found."},
+                status=status.HTTP_404_NOT_FOUND,
             )
 
         service = self._get_service()
@@ -173,6 +191,13 @@ class WorkflowViewSet(viewsets.GenericViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        # Check org ownership
+        if not self._org_qs().filter(id=workflow_id).exists():
+            return Response(
+                {"detail": "Workflow not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
         service = self._get_service()
         workflow = service.get_workflow(workflow_id)
         if workflow is None:
@@ -198,6 +223,13 @@ class WorkflowViewSet(viewsets.GenericViewSet):
             return Response(
                 {"detail": "Invalid workflow ID."},
                 status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Check org ownership
+        if not self._org_qs().filter(id=workflow_id).exists():
+            return Response(
+                {"detail": "Workflow not found."},
+                status=status.HTTP_404_NOT_FOUND,
             )
 
         service = self._get_service()
@@ -255,6 +287,13 @@ class WorkflowViewSet(viewsets.GenericViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        # Check org ownership
+        if not self._org_qs().filter(id=workflow_id).exists():
+            return Response(
+                {"detail": "Workflow not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
         service = self._get_service()
         workflow = service.get_workflow(workflow_id)
         if workflow is None:
@@ -283,6 +322,13 @@ class WorkflowViewSet(viewsets.GenericViewSet):
             return Response(
                 {"detail": "Invalid workflow ID."},
                 status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Check org ownership
+        if not self._org_qs().filter(id=workflow_id).exists():
+            return Response(
+                {"detail": "Workflow not found."},
+                status=status.HTTP_404_NOT_FOUND,
             )
 
         service = self._get_service()

@@ -24,6 +24,13 @@ class Report(models.Model):
         FAILED = "failed", "Failed"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organization = models.ForeignKey(
+        "organizations.Organization",
+        on_delete=models.CASCADE,
+        related_name="reports",
+        null=True,
+        blank=True,
+    )
     report_type = models.CharField(max_length=30, choices=ReportType.choices)
     title = models.CharField(max_length=255)
     status = models.CharField(

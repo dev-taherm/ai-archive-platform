@@ -16,17 +16,16 @@ class UserAdmin(BaseUserAdmin):
         "first_name",
         "last_name",
         "role",
-        "is_approved",
         "is_active",
         "date_joined",
     )
-    list_filter = ("role", "is_approved", "is_active", "is_staff")
+    list_filter = ("role", "is_active", "is_staff")
     search_fields = ("username", "email", "first_name", "last_name")
     ordering = ("-date_joined",)
 
     fieldsets = BaseUserAdmin.fieldsets + (
         (_("Archive Role"), {
-            "fields": ("role", "is_approved", "last_login_ip"),
+            "fields": ("role", "last_login_ip"),
         }),
     )
     add_fieldsets = BaseUserAdmin.add_fieldsets + (
@@ -35,17 +34,7 @@ class UserAdmin(BaseUserAdmin):
         }),
     )
 
-    actions = ["approve_users", "revoke_approval", "set_role_archivist", "set_role_viewer"]
-
-    @admin.action(description="Approve selected users")
-    def approve_users(self, request: admin.request, queryset: admin.QuerySet) -> None:
-        count = queryset.update(is_approved=True)
-        self.message_user(request, f"{count} user(s) approved.")
-
-    @admin.action(description="Revoke approval for selected users")
-    def revoke_approval(self, request: admin.request, queryset: admin.QuerySet) -> None:
-        count = queryset.update(is_approved=False)
-        self.message_user(request, f"{count} user(s) approval revoked.")
+    actions = ["set_role_archivist", "set_role_viewer"]
 
     @admin.action(description="Set role to Archivist")
     def set_role_archivist(self, request: admin.request, queryset: admin.QuerySet) -> None:

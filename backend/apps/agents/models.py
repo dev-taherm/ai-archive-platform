@@ -16,6 +16,13 @@ class Agent(models.Model):
         ERROR = "error", "Error"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organization = models.ForeignKey(
+        "organizations.Organization",
+        on_delete=models.CASCADE,
+        related_name="agents",
+        null=True,
+        blank=True,
+    )
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,

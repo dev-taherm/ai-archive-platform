@@ -147,7 +147,7 @@ class ChatService:
 
         # Generate AI response with tool-calling loop
         response_text, tool_calls_data = self._generate_response(
-            message, context_text, history
+            message, context_text, history, user_id=user_id
         )
 
         elapsed_ms = (time.monotonic() - start) * 1000
@@ -253,6 +253,7 @@ class ChatService:
         message: str,
         context: str,
         history: list[dict[str, Any]] | None = None,
+        user_id: uuid.UUID | None = None,
     ) -> tuple[str, list[dict[str, Any]]]:
         """Generate AI response using LLM with tool-calling loop.
 
@@ -396,15 +397,21 @@ class ChatService:
                     # Execute the tool
                     import asyncio as _asyncio
 
+                    # Inject user_id for org-scoped tools
+                    org_scoped_tools = {"list_agents", "get_workflow_list"}
+                    call_args = dict(tc.arguments)
+                    if tc.name in org_scoped_tools and user_id:
+                        call_args["user_id"] = str(user_id)
+
                     if loop is None:
                         with concurrent.futures.ThreadPoolExecutor() as pool:
                             tool_result = pool.submit(
                                 _asyncio.run,
-                                registry.execute(tc.name, tc.arguments),
+                                registry.execute(tc.name, call_args),
                             ).result(timeout=30)
                     else:
                         tool_result = loop.run_until_complete(
-                            registry.execute(tc.name, tc.arguments)
+                            registry.execute(tc.name, call_args)
                         )
 
                     result_text = tool_result.get("result", str(tool_result))

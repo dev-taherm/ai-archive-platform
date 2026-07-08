@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
+from django.utils import timezone
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
@@ -73,6 +74,11 @@ class RegisterSerializer(serializers.ModelSerializer):
         write_only=True,
         style={"input_type": "password"},
     )
+    invitation_token = serializers.CharField(
+        write_only=True,
+        required=False,
+        allow_blank=True,
+    )
 
     class Meta:
         model = User
@@ -84,6 +90,7 @@ class RegisterSerializer(serializers.ModelSerializer):
             "password_confirm",
             "first_name",
             "last_name",
+            "invitation_token",
         ]
         extra_kwargs = {
             "email": {"required": True},
@@ -102,6 +109,24 @@ class RegisterSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("A user with this username already exists.")
         return value
 
+    def validate_invitation_token(self, value: str) -> str:
+        if not value:
+            return value
+        from apps.organizations.models import Invitation
+
+        try:
+            invitation = Invitation.objects.get(
+                token=value,
+                status=Invitation.Status.PENDING,
+            )
+        except Invitation.DoesNotExist:
+            raise serializers.ValidationError("Invalid or expired invitation token.")
+
+        if invitation.expires_at < timezone.now():
+            raise serializers.ValidationError("This invitation has expired.")
+
+        return value
+
     def validate(self, attrs: dict) -> dict:
         if attrs["password"] != attrs["password_confirm"]:
             raise serializers.ValidationError(
@@ -110,16 +135,32 @@ class RegisterSerializer(serializers.ModelSerializer):
         return attrs
 
     def create(self, validated_data: dict) -> User:
+        invitation_token = validated_data.pop("invitation_token", None)
         validated_data.pop("password_confirm")
         password = validated_data.pop("password")
         user = User(**validated_data)
         user.set_password(password)
         user.save()
+
+        # If registering via invitation, accept it and add to org
+        if invitation_token:
+            from apps.organizations.services import OrgService
+
+            OrgService.accept_invitation(invitation_token, user)
+
         return user
 
 
 class UserSerializer(serializers.ModelSerializer):
     """Read-only user serializer for profile and admin views."""
+
+    organization_name = serializers.CharField(
+        source="organization.name", read_only=True, default=None
+    )
+    organization_slug = serializers.CharField(
+        source="organization.slug", read_only=True, default=None
+    )
+    org_role = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -131,8 +172,24 @@ class UserSerializer(serializers.ModelSerializer):
             "last_name",
             "is_active",
             "date_joined",
+            "organization",
+            "organization_name",
+            "organization_slug",
+            "org_role",
         ]
         read_only_fields = ["id", "email", "date_joined"]
+
+    def get_org_role(self, obj) -> str | None:
+        """Return the user's role in their organization."""
+        if not obj.organization_id:
+            return None
+        from apps.organizations.models import Membership
+
+        try:
+            membership = Membership.objects.get(user=obj, organization=obj.organization)
+            return membership.role
+        except Membership.DoesNotExist:
+            return None
 
 
 class TokenRefreshSerializer(serializers.Serializer):

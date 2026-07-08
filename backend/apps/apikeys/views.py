@@ -45,6 +45,11 @@ class ApiKeyViewSet(viewsets.GenericViewSet):
 
         instance, raw_key = ApiKeyService.create_key(request.user, name)
 
+        # Set organization from the creating user
+        if hasattr(request.user, "organization") and request.user.organization:
+            instance.organization = request.user.organization
+            instance.save(update_fields=["organization"])
+
         return Response(
             {
                 "id": str(instance.id),

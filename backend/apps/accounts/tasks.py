@@ -27,33 +27,6 @@ def deactivate_inactive_users(days_inactive: int = 90) -> str:
     return f"Deactivated {count} users"
 
 
-@shared_task(name="accounts.send_approval_notifications")
-def send_approval_notifications() -> str:
-    """Notify admins of pending user approvals."""
-    from django.core.mail import send_mail
-    from django.conf import settings
-
-    pending = User.objects.filter(is_approved=False, is_active=True)
-    admin_emails = list(
-        User.objects.filter(is_staff=True, is_active=True, email__isnull=False)
-        .values_list("email", flat=True)[:10]
-    )
-
-    if not pending.exists() or not admin_emails:
-        return "No pending approvals or no admin emails"
-
-    count = pending.count()
-    send_mail(
-        subject=f"{count} user(s) pending approval",
-        message=f"There are {count} users awaiting approval on the AI Archive Platform.",
-        from_email=getattr(settings, "DEFAULT_FROM_EMAIL", "noreply@archive.local"),
-        recipient_list=admin_emails,
-        fail_silently=True,
-    )
-    logger.info("Sent approval notification for %d pending users", count)
-    return f"Notified admins about {count} pending users"
-
-
 @shared_task(name="accounts.cleanup_expired_tokens")
 def cleanup_expired_tokens() -> str:
     """Clean up expired JWT tokens from the blacklist."""

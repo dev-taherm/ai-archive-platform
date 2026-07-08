@@ -8,6 +8,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from core.domain.common.exceptions import DomainException
+from apps.organizations.mixins import OrgScopedMixin, get_user_organization
 from interfaces.api.v1.serializers.document_serializers import (
     DocumentClassifySerializer,
     DocumentExtractSerializer,
@@ -21,7 +22,7 @@ from interfaces.api.v1.serializers.document_serializers import (
 logger = logging.getLogger(__name__)
 
 
-class DocumentViewSet(viewsets.GenericViewSet):
+class DocumentViewSet(OrgScopedMixin, viewsets.GenericViewSet):
     """
     ViewSet for document management.
 
@@ -48,9 +49,18 @@ class DocumentViewSet(viewsets.GenericViewSet):
         from django.apps import apps
         return apps.get_app_config("documents").document_service
 
+    def _get_doc_queryset(self):
+        from apps.documents.models import Document as DocModel
+        return self._org_qs(DocModel.objects.all())
+
     def list(self, request):
         try:
+            from apps.documents.models import Document as DocModel
+            qs = self._org_qs(DocModel.objects.all())
             documents = self._document_service.list_documents()
+            # Override: filter to org-scoped documents
+            doc_ids = qs.values_list("id", flat=True)
+            documents = [d for d in documents if d.id in doc_ids]
             page = self.paginate_queryset(documents)
             if page is not None:
                 serializer = self.get_serializer(page, many=True)
@@ -63,13 +73,19 @@ class DocumentViewSet(viewsets.GenericViewSet):
             )
 
     def retrieve(self, request, pk=None):
-        import uuid as _uuid
         try:
             document_id = _uuid.UUID(str(pk))
         except ValueError:
             return Response(
                 {"detail": "Invalid document ID."},
                 status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Check document belongs to user's org
+        if not self._get_doc_queryset().filter(id=document_id).exists():
+            return Response(
+                {"detail": "Document not found."},
+                status=status.HTTP_404_NOT_FOUND,
             )
 
         try:
@@ -83,7 +99,6 @@ class DocumentViewSet(viewsets.GenericViewSet):
 
     def partial_update(self, request, pk=None):
         """PATCH /documents/{pk}/ — update title, author, subject, doc_type, tags."""
-        import uuid as _uuid
         from apps.documents.models import Document as DocModel
 
         try:
@@ -98,7 +113,7 @@ class DocumentViewSet(viewsets.GenericViewSet):
         serializer.is_valid(raise_exception=True)
 
         try:
-            doc = DocModel.objects.get(id=document_id)
+            doc = self._get_doc_queryset().get(id=document_id)
         except DocModel.DoesNotExist:
             return Response(
                 {"detail": "Document not found."},
@@ -116,7 +131,6 @@ class DocumentViewSet(viewsets.GenericViewSet):
 
     def destroy(self, request, pk=None):
         """DELETE /documents/{pk}/ — delete a document."""
-        import uuid as _uuid
         from apps.documents.models import Document as DocModel
 
         try:
@@ -128,7 +142,7 @@ class DocumentViewSet(viewsets.GenericViewSet):
             )
 
         try:
-            doc = DocModel.objects.get(id=document_id)
+            doc = self._get_doc_queryset().get(id=document_id)
         except DocModel.DoesNotExist:
             return Response(
                 {"detail": "Document not found."},
@@ -179,11 +193,12 @@ class DocumentViewSet(viewsets.GenericViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Look up file record to get path and mime type
+        # Look up file record to get path and mime type (org-scoped)
         from apps.files.models import FileRecord as FileRecordModel
 
         try:
-            file_record = FileRecordModel.objects.get(id=file_id)
+            org = get_user_organization(request.user)
+            file_record = FileRecordModel.objects.get(id=file_id, organization=org)
         except FileRecordModel.DoesNotExist:
             return Response(
                 {"detail": "File not found."},
@@ -221,13 +236,18 @@ class DocumentViewSet(viewsets.GenericViewSet):
 
     @action(detail=True, methods=["get"])
     def metadata(self, request, pk=None):
-        import uuid as _uuid
         try:
             document_id = _uuid.UUID(str(pk))
         except ValueError:
             return Response(
                 {"detail": "Invalid document ID."},
                 status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not self._get_doc_queryset().filter(id=document_id).exists():
+            return Response(
+                {"detail": "Document not found."},
+                status=status.HTTP_404_NOT_FOUND,
             )
 
         try:
@@ -244,7 +264,6 @@ class DocumentViewSet(viewsets.GenericViewSet):
     @action(detail=True, methods=["get"], url_path="entities")
     def entities(self, request, pk=None):
         """List extracted entities for a document."""
-        import uuid as _uuid
         from apps.documents.models import Document as DocModel
 
         try:
@@ -256,7 +275,7 @@ class DocumentViewSet(viewsets.GenericViewSet):
             )
 
         try:
-            doc = DocModel.objects.get(id=document_id)
+            doc = self._get_doc_queryset().get(id=document_id)
         except DocModel.DoesNotExist:
             return Response(
                 {"detail": "Document not found."},
@@ -269,13 +288,18 @@ class DocumentViewSet(viewsets.GenericViewSet):
 
     @action(detail=True, methods=["post"])
     def classify(self, request, pk=None):
-        import uuid as _uuid
         try:
             document_id = _uuid.UUID(str(pk))
         except ValueError:
             return Response(
                 {"detail": "Invalid document ID."},
                 status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not self._get_doc_queryset().filter(id=document_id).exists():
+            return Response(
+                {"detail": "Document not found."},
+                status=status.HTTP_404_NOT_FOUND,
             )
 
         serializer = DocumentClassifySerializer(data=request.data)
@@ -305,13 +329,18 @@ class DocumentViewSet(viewsets.GenericViewSet):
 
     @action(detail=True, methods=["post"])
     def extract(self, request, pk=None):
-        import uuid as _uuid
         try:
             document_id = _uuid.UUID(str(pk))
         except ValueError:
             return Response(
                 {"detail": "Invalid document ID."},
                 status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not self._get_doc_queryset().filter(id=document_id).exists():
+            return Response(
+                {"detail": "Document not found."},
+                status=status.HTTP_404_NOT_FOUND,
             )
 
         serializer = DocumentExtractSerializer(data=request.data)

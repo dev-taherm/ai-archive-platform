@@ -9,6 +9,7 @@ from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from apps.organizations.mixins import OrgScopedMixin, get_user_organization
 from interfaces.api.v1.serializers.report_serializers import (
     ReportCreateSerializer,
     ReportSerializer,
@@ -18,7 +19,7 @@ from interfaces.api.v1.serializers.report_serializers import (
 logger = logging.getLogger(__name__)
 
 
-class ReportView(viewsets.GenericViewSet):
+class ReportView(OrgScopedMixin, viewsets.GenericViewSet):
     """ViewSet for analytics reports and summary data."""
 
     permission_classes = [permissions.IsAuthenticated]
@@ -47,9 +48,11 @@ class ReportView(viewsets.GenericViewSet):
 
     def _compute_storage(self) -> dict:
         from apps.files.models import FileRecord
+        org = get_user_organization(self.request.user)
 
         try:
-            agg = FileRecord.objects.aggregate(
+            qs = FileRecord.objects.filter(organization=org)
+            agg = qs.aggregate(
                 total_files=Count("id"),
                 total_size_bytes=Sum("size_bytes"),
             )
@@ -57,7 +60,7 @@ class ReportView(viewsets.GenericViewSet):
             total_size_bytes = agg["total_size_bytes"] or 0
 
             by_type_raw = (
-                FileRecord.objects.values("mime_type")
+                qs.values("mime_type")
                 .annotate(count=Count("id"), size_bytes=Sum("size_bytes"))
                 .order_by("-count")[:20]
             )
@@ -80,24 +83,25 @@ class ReportView(viewsets.GenericViewSet):
 
     def _compute_processing(self) -> dict:
         from apps.documents.models import Document
+        org = get_user_organization(self.request.user)
 
         try:
-            total = Document.objects.count()
+            qs = Document.objects.filter(organization=org)
+            total = qs.count()
 
-            completed = Document.objects.filter(processing_status="completed").count()
+            completed = qs.filter(processing_status="completed").count()
             success_rate = (completed / total * 100) if total > 0 else 0.0
 
-            # Check if the model has a processing_time_ms field
             has_time_field = any(
                 f.name == "processing_time_ms" for f in Document._meta.get_fields()
             )
             avg_time = 0.0
             if has_time_field:
-                agg = Document.objects.aggregate(avg_time_ms=Avg("processing_time_ms"))
+                agg = qs.filter(processing_status="completed").aggregate(avg_time_ms=Avg("processing_time_ms"))
                 avg_time = agg["avg_time_ms"] or 0.0
 
             by_status_raw = (
-                Document.objects.values("processing_status")
+                qs.values("processing_status")
                 .annotate(count=Count("id"))
                 .order_by("processing_status")
             )
@@ -121,6 +125,7 @@ class ReportView(viewsets.GenericViewSet):
     def _compute_activity(self) -> dict:
         from apps.files.models import FileRecord
         from apps.reports.models import Report
+        org = get_user_organization(self.request.user)
 
         result = {
             "daily_uploads": [],
@@ -129,8 +134,9 @@ class ReportView(viewsets.GenericViewSet):
         }
 
         try:
+            file_qs = FileRecord.objects.filter(organization=org)
             daily = (
-                FileRecord.objects.annotate(date=TruncDate("created_at"))
+                file_qs.annotate(date=TruncDate("created_at"))
                 .values("date")
                 .annotate(count=Count("id"))
                 .order_by("-date")[:30]
@@ -144,7 +150,7 @@ class ReportView(viewsets.GenericViewSet):
 
         try:
             tags_raw = (
-                FileRecord.objects.exclude(tags=[])
+                file_qs.exclude(tags=[])
                 .values("tags")
                 .annotate(count=Count("id"))
                 .order_by("-count")[:20]
@@ -166,7 +172,8 @@ class ReportView(viewsets.GenericViewSet):
 
         try:
             recent = Report.objects.filter(
-                status=Report.Status.COMPLETED
+                organization=org,
+                status=Report.Status.COMPLETED,
             ).order_by("-created_at")[:10]
 
             result["recent_reports"] = [
@@ -186,11 +193,12 @@ class ReportView(viewsets.GenericViewSet):
 
     def list(self, request):
         from apps.reports.models import Report
+        org = get_user_organization(self.request.user)
 
         report_type = request.query_params.get("type")
         report_status = request.query_params.get("status")
 
-        qs = Report.objects.all()
+        qs = Report.objects.filter(organization=org)
         if report_type:
             qs = qs.filter(report_type=report_type)
         if report_status:
@@ -202,6 +210,7 @@ class ReportView(viewsets.GenericViewSet):
 
     def retrieve(self, request, pk=None):
         from apps.reports.models import Report
+        org = get_user_organization(self.request.user)
 
         try:
             report_id = _uuid.UUID(str(pk))
@@ -212,7 +221,7 @@ class ReportView(viewsets.GenericViewSet):
             )
 
         try:
-            report = Report.objects.get(pk=report_id)
+            report = Report.objects.get(pk=report_id, organization=org)
         except Report.DoesNotExist:
             return Response(
                 {"detail": "Report not found."},
@@ -230,6 +239,7 @@ class ReportView(viewsets.GenericViewSet):
         validated = serializer.validated_data
 
         from apps.reports.services import ReportService
+        org = get_user_organization(request.user)
 
         try:
             report = ReportService.create_report(
@@ -238,6 +248,9 @@ class ReportView(viewsets.GenericViewSet):
                 parameters=validated.get("parameters", {}),
                 generated_by_id=request.user.pk if request.user.is_authenticated else None,
             )
+            # Set org on the created report
+            report.organization = org
+            report.save(update_fields=["organization"])
             return Response(
                 ReportSerializer(report).data,
                 status=status.HTTP_201_CREATED,
