@@ -13,10 +13,14 @@ from apps.agents.models import Agent, AgentCommand, AgentFolder
 from apps.agents.serializers import (
     AgentCommandSerializer,
     AgentCreateSerializer,
+    AgentFolderCreateSerializer,
     AgentFolderSerializer,
+    AgentFolderUpdateSerializer,
     AgentHeartbeatSerializer,
     AgentSerializer,
     AgentSyncSerializer,
+    FileMoveFolderSerializer,
+    FileMoveSerializer,
 )
 
 logger = logging.getLogger(__name__)
@@ -150,7 +154,7 @@ class AgentViewSet(viewsets.ModelViewSet):
         cmd.save(update_fields=["status", "result", "executed_at"])
         return Response({"status": "ok"})
 
-    @action(detail=True, methods=["post"], url_path="commands/create")
+    @action(detail=True, methods=["get", "post"], url_path="commands/create")
     def create_command(self, request, agent_id=None):
         """Push a new command to an agent."""
         agent = self.get_object()
@@ -172,6 +176,116 @@ class AgentViewSet(viewsets.ModelViewSet):
             AgentCommandSerializer(cmd).data,
             status=status.HTTP_201_CREATED,
         )
+
+    @action(detail=True, methods=["get", "post"], url_path="folders")
+    def folders(self, request, agent_id=None):
+        """List or create folders for this agent."""
+        agent = self.get_object()
+
+        if request.method == "GET":
+            return Response(AgentFolderSerializer(agent.folders.all(), many=True).data)
+
+        # POST — create folder
+        serializer = AgentFolderCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        folder = AgentFolder.objects.create(
+            agent=agent,
+            local_path=data["local_path"],
+            label=data.get("label", ""),
+            is_active=data.get("is_active", True),
+        )
+        return Response(
+            AgentFolderSerializer(folder).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    @action(detail=True, methods=["patch", "delete"], url_path="folders/(?P<folder_id>[0-9]+)")
+    def folder_detail(self, request, agent_id=None, folder_id=None):
+        """Update (move/rename) or delete a folder."""
+        agent = self.get_object()
+
+        try:
+            folder = agent.folders.get(id=folder_id)
+        except AgentFolder.DoesNotExist:
+            return Response(
+                {"detail": "Folder not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if request.method == "DELETE":
+            folder.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+
+        # PATCH — update folder
+        serializer = AgentFolderUpdateSerializer(data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        for field, value in data.items():
+            setattr(folder, field, value)
+        folder.save()
+
+        return Response(AgentFolderSerializer(folder).data)
+
+    @action(detail=True, methods=["post"], url_path="files/move")
+    def move_files(self, request, agent_id=None):
+        """Move files from this agent to a different agent."""
+        agent = self.get_object()
+        serializer = FileMoveSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        from apps.files.models import FileRecord
+
+        target_agent_id = data["target_agent_id"]
+        try:
+            target_agent = Agent.objects.get(agent_id=target_agent_id, user=request.user)
+        except Agent.DoesNotExist:
+            return Response(
+                {"detail": "Target agent not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        file_ids = data["file_ids"]
+        updated = FileRecord.objects.filter(
+            id__in=file_ids, agent=agent
+        ).update(agent=target_agent)
+
+        return Response({
+            "status": "ok",
+            "moved": updated,
+        })
+
+    @action(detail=True, methods=["post"], url_path="files/move-folder")
+    def move_files_folder(self, request, agent_id=None):
+        """Move files between folders within the same agent by changing path prefix."""
+        agent = self.get_object()
+        serializer = FileMoveFolderSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        from apps.files.models import FileRecord
+
+        source_path = data["source_path"]
+        target_path = data["target_path"]
+        file_ids = data["file_ids"]
+
+        # Update paths for matching files
+        updated = 0
+        files = FileRecord.objects.filter(id__in=file_ids, agent=agent)
+        for f in files:
+            if f.path.startswith(source_path):
+                new_path = target_path + f.path[len(source_path):]
+                f.path = new_path
+                f.save(update_fields=["path"])
+                updated += 1
+
+        return Response({
+            "status": "ok",
+            "moved": updated,
+        })
 
     @action(detail=True, methods=["post"], url_path="sync")
     def sync(self, request, agent_id=None):

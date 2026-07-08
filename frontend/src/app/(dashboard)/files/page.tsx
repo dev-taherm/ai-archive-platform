@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "@/lib/api";
-import type { FileRecord } from "@/types/api";
+import type { FileRecord, Agent } from "@/types/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -21,6 +21,16 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Search,
   FolderOpen,
   MoreVertical,
@@ -33,6 +43,7 @@ import {
   RefreshCw,
   Loader2,
   Bot,
+  ArrowRightLeft,
 } from "lucide-react";
 import Link from "next/link";
 import { formatBytes, formatDateTime } from "@/lib/utils";
@@ -61,10 +72,27 @@ export default function FilesPage() {
   const [search, setSearch] = useState("");
   const [actionMenu, setActionMenu] = useState<string | null>(null);
 
+  // Move file state
+  const [showMoveDialog, setShowMoveDialog] = useState<string | null>(null); // file ID
+  const [moveTargetAgent, setMoveTargetAgent] = useState("");
+  const [moveSourcePath, setMoveSourcePath] = useState("");
+  const [moveTargetPath, setMoveTargetPath] = useState("");
+  const [moveMode, setMoveMode] = useState<"agent" | "folder">("agent");
+
+  // Files query
   const { data: files = [], isLoading } = useQuery<FileRecord[]>({
     queryKey: ["files"],
     queryFn: async () => {
       const res = await api.get("/files");
+      return Array.isArray(res.data) ? res.data : res.data.results || [];
+    },
+  });
+
+  // Agents query (for move dialog)
+  const { data: agents = [] } = useQuery<Agent[]>({
+    queryKey: ["agents"],
+    queryFn: async () => {
+      const res = await api.get("/agents");
       return Array.isArray(res.data) ? res.data : res.data.results || [];
     },
   });
@@ -105,6 +133,95 @@ export default function FilesPage() {
       });
     },
   });
+
+  const moveFileAgent = useMutation({
+    mutationFn: async ({ fileId, targetAgentId, sourceAgentId }: { fileId: string; targetAgentId: string; sourceAgentId: string }) => {
+      return api.post(`/agents/${sourceAgentId}/files/move`, {
+        file_ids: [fileId],
+        target_agent_id: targetAgentId,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["files"] });
+      toast({ title: "File moved to target agent" });
+      setShowMoveDialog(null);
+      setMoveTargetAgent("");
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Failed to move file",
+        description: err?.response?.data?.detail || "Unknown error",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const moveFileFolder = useMutation({
+    mutationFn: async ({ fileId, agentId, sourcePath, targetPath }: { fileId: string; agentId: string; sourcePath: string; targetPath: string }) => {
+      return api.post(`/agents/${agentId}/files/move-folder`, {
+        file_ids: [fileId],
+        source_path: sourcePath,
+        target_path: targetPath,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["files"] });
+      toast({ title: "File moved within agent" });
+      setShowMoveDialog(null);
+      setMoveSourcePath("");
+      setMoveTargetPath("");
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Failed to move file",
+        description: err?.response?.data?.detail || "Unknown error",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleMoveFile = (fileId: string) => {
+    const file = files.find((f) => f.id === fileId);
+    if (!file) return;
+
+    if (moveMode === "agent") {
+      if (!moveTargetAgent) {
+        toast({ title: "Select a target agent", variant: "destructive" });
+        return;
+      }
+      // Find the source agent from agents list
+      const sourceAgent = agents.find((a) =>
+        a.folders?.some((f) => file.path.startsWith(f.local_path))
+      );
+      if (!sourceAgent) {
+        toast({ title: "Cannot determine source agent", variant: "destructive" });
+        return;
+      }
+      moveFileAgent.mutate({
+        fileId,
+        targetAgentId: moveTargetAgent,
+        sourceAgentId: sourceAgent.agent_id,
+      });
+    } else {
+      if (!moveSourcePath || !moveTargetPath) {
+        toast({ title: "Enter source and target paths", variant: "destructive" });
+        return;
+      }
+      const sourceAgent = agents.find((a) =>
+        a.folders?.some((f) => file.path.startsWith(f.local_path))
+      );
+      if (!sourceAgent) {
+        toast({ title: "Cannot determine source agent", variant: "destructive" });
+        return;
+      }
+      moveFileFolder.mutate({
+        fileId,
+        agentId: sourceAgent.agent_id,
+        sourcePath: moveSourcePath,
+        targetPath: moveTargetPath,
+      });
+    }
+  };
 
   const filtered = files.filter(
     (f) =>
@@ -253,6 +370,20 @@ export default function FilesPage() {
                                   {processMutation.isPending ? "Processing..." : "Process Document"}
                                 </button>
                                 <button
+                                  className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-muted"
+                                  onClick={() => {
+                                    setActionMenu(null);
+                                    setShowMoveDialog(file.id);
+                                    setMoveMode("agent");
+                                    setMoveTargetAgent("");
+                                    setMoveSourcePath("");
+                                    setMoveTargetPath("");
+                                  }}
+                                >
+                                  <ArrowRightLeft className="h-4 w-4" />
+                                  Move File
+                                </button>
+                                <button
                                   className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-destructive hover:bg-muted"
                                   onClick={() => deleteMutation.mutate(file.id)}
                                   disabled={deleteMutation.isPending}
@@ -273,6 +404,85 @@ export default function FilesPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Move File Dialog */}
+      <AlertDialog open={!!showMoveDialog} onOpenChange={() => setShowMoveDialog(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Move File</AlertDialogTitle>
+            <AlertDialogDescription>
+              Choose how to move this file. Moving between agents reassigns ownership.
+              Moving between folders changes the file path prefix.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                variant={moveMode === "agent" ? "default" : "outline"}
+                onClick={() => setMoveMode("agent")}
+              >
+                Move to Agent
+              </Button>
+              <Button
+                size="sm"
+                variant={moveMode === "folder" ? "default" : "outline"}
+                onClick={() => setMoveMode("folder")}
+              >
+                Move to Folder
+              </Button>
+            </div>
+
+            {moveMode === "agent" ? (
+              <div className="space-y-2">
+                <p className="text-sm text-muted-foreground">Target Agent</p>
+                <select
+                  value={moveTargetAgent}
+                  onChange={(e) => setMoveTargetAgent(e.target.value)}
+                  className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                >
+                  <option value="">Select agent...</option>
+                  {agents.map((a) => (
+                    <option key={a.agent_id} value={a.agent_id}>
+                      {a.name} ({a.agent_id})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <div>
+                  <p className="text-sm text-muted-foreground mb-1">Source Path Prefix</p>
+                  <Input
+                    placeholder="/home/user/documents"
+                    value={moveSourcePath}
+                    onChange={(e) => setMoveSourcePath(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground mb-1">Target Path Prefix</p>
+                  <Input
+                    placeholder="/home/user/archives"
+                    value={moveTargetPath}
+                    onChange={(e) => setMoveTargetPath(e.target.value)}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => showMoveDialog && handleMoveFile(showMoveDialog)}
+            >
+              {(moveFileAgent.isPending || moveFileFolder.isPending) && (
+                <Loader2 className="h-4 w-4 animate-spin mr-1" />
+              )}
+              Move
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { use } from "react";
+import { use, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
@@ -9,7 +9,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Progress } from "@/components/ui/progress";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -21,7 +20,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import type { Agent } from "@/types/api";
+import type { Agent, AgentCommand } from "@/types/api";
 import {
   ArrowLeft,
   Bot,
@@ -35,14 +34,14 @@ import {
   Loader2,
   Trash2,
   Plus,
-  Play,
-  Square,
   Settings,
-  Activity,
-  FileText,
   AlertCircle,
+  Pencil,
+  Check,
+  X,
+  ArrowRightLeft,
+  Copy,
 } from "lucide-react";
-import { useState } from "react";
 
 const statusVariant: Record<string, "default" | "secondary" | "destructive" | "success" | "warning"> = {
   online: "success",
@@ -51,27 +50,49 @@ const statusVariant: Record<string, "default" | "secondary" | "destructive" | "s
   error: "destructive",
 };
 
-interface Command {
-  id: string;
-  command_type: string;
-  payload: Record<string, unknown>;
-  status: string;
-  result: string | null;
-  created_at: string;
-  executed_at: string | null;
-}
+const ALL_COMMAND_TYPES = [
+  { value: "scan", label: "Scan" },
+  { value: "sync", label: "Sync" },
+  { value: "process", label: "Process" },
+  { value: "restart", label: "Restart", destructive: true },
+  { value: "shutdown", label: "Shutdown", destructive: true },
+  { value: "config_update", label: "Config Update" },
+  { value: "update", label: "Update Agent" },
+  { value: "start_scan", label: "Start Continuous Scan" },
+  { value: "stop_scan", label: "Stop Continuous Scan" },
+];
 
 export default function AgentDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
   const queryClient = useQueryClient();
   const { toast } = useToast();
+
+  // Command state
   const [commandType, setCommandType] = useState("scan");
+  const [showDestructiveConfirm, setShowDestructiveConfirm] = useState(false);
+
+  // Delete agent
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+
+  // Add folder state
   const [showAddFolder, setShowAddFolder] = useState(false);
   const [newFolderPath, setNewFolderPath] = useState("");
   const [newFolderLabel, setNewFolderLabel] = useState("");
 
+  // Edit folder state
+  const [editingFolderId, setEditingFolderId] = useState<string | null>(null);
+  const [editingFolderPath, setEditingFolderPath] = useState("");
+  const [editingFolderLabel, setEditingFolderLabel] = useState("");
+  const [showDeleteFolder, setShowDeleteFolder] = useState<string | null>(null);
+
+  // Edit agent settings state
+  const [editingSettings, setEditingSettings] = useState(false);
+  const [editName, setEditName] = useState("");
+  const [editSyncInterval, setEditSyncInterval] = useState(0);
+  const [editMaxFileSize, setEditMaxFileSize] = useState(0);
+
+  // Queries
   const { data: agent, isLoading } = useQuery<Agent>({
     queryKey: ["agents", id],
     queryFn: async () => {
@@ -80,7 +101,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
     },
   });
 
-  const { data: commands = [] } = useQuery<Command[]>({
+  const { data: commands = [] } = useQuery<AgentCommand[]>({
     queryKey: ["agents", id, "commands"],
     queryFn: async () => {
       const res = await api.get(`/agents/${id}/commands`);
@@ -88,6 +109,8 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
     },
     enabled: !!agent,
   });
+
+  // --- Mutations ---
 
   const sendCommand = useMutation({
     mutationFn: async (type: string) => {
@@ -106,9 +129,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
   });
 
   const deleteAgent = useMutation({
-    mutationFn: async () => {
-      return api.delete(`/agents/${id}`);
-    },
+    mutationFn: async () => api.delete(`/agents/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["agents"] });
       toast({ title: "Agent deleted" });
@@ -118,6 +139,123 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
       toast({ title: "Failed to delete agent", variant: "destructive" });
     },
   });
+
+  const addFolder = useMutation({
+    mutationFn: async (data: { local_path: string; label: string }) => {
+      return api.post(`/agents/${id}/folders`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["agents", id] });
+      toast({ title: "Folder added" });
+      setShowAddFolder(false);
+      setNewFolderPath("");
+      setNewFolderLabel("");
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Failed to add folder",
+        description: err?.response?.data?.detail || "Unknown error",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const updateFolder = useMutation({
+    mutationFn: async ({ folderId, data }: { folderId: string; data: Record<string, unknown> }) => {
+      return api.patch(`/agents/${id}/folders/${folderId}`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["agents", id] });
+      toast({ title: "Folder updated" });
+      setEditingFolderId(null);
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Failed to update folder",
+        description: err?.response?.data?.detail || "Unknown error",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const deleteFolder = useMutation({
+    mutationFn: async (folderId: string) => {
+      return api.delete(`/agents/${id}/folders/${folderId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["agents", id] });
+      toast({ title: "Folder removed" });
+      setShowDeleteFolder(null);
+    },
+    onError: () => {
+      toast({ title: "Failed to remove folder", variant: "destructive" });
+    },
+  });
+
+  const updateAgent = useMutation({
+    mutationFn: async (data: Record<string, unknown>) => {
+      return api.patch(`/agents/${id}`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["agents", id] });
+      toast({ title: "Agent settings updated" });
+      setEditingSettings(false);
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Failed to update agent",
+        description: err?.response?.data?.detail || "Unknown error",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // --- Handlers ---
+
+  const handleSendCommand = () => {
+    const cmd = ALL_COMMAND_TYPES.find((c) => c.value === commandType);
+    if (cmd?.destructive) {
+      setShowDestructiveConfirm(true);
+    } else {
+      sendCommand.mutate(commandType);
+    }
+  };
+
+  const handleConfirmDestructive = () => {
+    setShowDestructiveConfirm(false);
+    sendCommand.mutate(commandType);
+  };
+
+  const startEditSettings = () => {
+    if (!agent) return;
+    setEditName(agent.name);
+    setEditSyncInterval(agent.sync_interval_minutes);
+    setEditMaxFileSize(agent.max_file_size_mb);
+    setEditingSettings(true);
+  };
+
+  const handleSaveSettings = () => {
+    updateAgent.mutate({
+      name: editName,
+      sync_interval_minutes: editSyncInterval,
+      max_file_size_mb: editMaxFileSize,
+    });
+  };
+
+  const startEditFolder = (folder: { id: string; local_path: string; label: string }) => {
+    setEditingFolderId(folder.id);
+    setEditingFolderPath(folder.local_path);
+    setEditingFolderLabel(folder.label);
+  };
+
+  const handleSaveFolder = (folderId: string) => {
+    updateFolder.mutate({
+      folderId,
+      data: { local_path: editingFolderPath, label: editingFolderLabel },
+    });
+  };
+
+  // --- Loading / Empty states ---
 
   if (isLoading) {
     return (
@@ -191,8 +329,8 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
         </div>
       </div>
 
-      {/* Stats Grid */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      {/* Stats Grid - includes last_sync_at */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
@@ -252,6 +390,21 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
             </div>
           </CardContent>
         </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="rounded-md bg-muted p-2">
+                <ArrowRightLeft className="h-4 w-4" />
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Last Sync</p>
+                <p className="text-sm font-medium">
+                  {agent.last_sync_at ? formatDate(agent.last_sync_at) : "Never"}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Commands Section */}
@@ -268,15 +421,15 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
                 onChange={(e) => setCommandType(e.target.value)}
                 className="rounded-md border bg-background px-3 py-1.5 text-sm"
               >
-                <option value="scan">Scan</option>
-                <option value="sync">Sync</option>
-                <option value="process">Process</option>
-                <option value="restart">Restart</option>
-                <option value="config_update">Config Update</option>
+                {ALL_COMMAND_TYPES.map((cmd) => (
+                  <option key={cmd.value} value={cmd.value}>
+                    {cmd.label}{cmd.destructive ? " ⚠️" : ""}
+                  </option>
+                ))}
               </select>
               <Button
                 size="sm"
-                onClick={() => sendCommand.mutate(commandType)}
+                onClick={handleSendCommand}
                 disabled={sendCommand.isPending}
               >
                 {sendCommand.isPending ? (
@@ -302,7 +455,10 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
                   className="flex items-center justify-between p-3 rounded-lg border"
                 >
                   <div className="flex items-center gap-3">
-                    <Badge variant={cmd.status === "completed" ? "success" : cmd.status === "failed" ? "destructive" : "secondary"}>
+                    <Badge variant={
+                      cmd.status === "completed" ? "success" :
+                      cmd.status === "failed" ? "destructive" : "secondary"
+                    }>
                       {cmd.status}
                     </Badge>
                     <div>
@@ -314,7 +470,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
                   </div>
                   {cmd.result && (
                     <p className="text-xs text-muted-foreground max-w-xs truncate">
-                      {cmd.result}
+                      {typeof cmd.result === "string" ? cmd.result : JSON.stringify(cmd.result)}
                     </p>
                   )}
                 </div>
@@ -356,11 +512,16 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
                 onChange={(e) => setNewFolderLabel(e.target.value)}
               />
               <div className="flex gap-2">
-                <Button size="sm" onClick={() => {
-                  setShowAddFolder(false);
-                  setNewFolderPath("");
-                  setNewFolderLabel("");
-                }}>
+                <Button
+                  size="sm"
+                  onClick={() => addFolder.mutate({ local_path: newFolderPath, label: newFolderLabel })}
+                  disabled={!newFolderPath.trim() || addFolder.isPending}
+                >
+                  {addFolder.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                  ) : (
+                    <Plus className="h-4 w-4 mr-1" />
+                  )}
                   Add
                 </Button>
                 <Button size="sm" variant="outline" onClick={() => setShowAddFolder(false)}>
@@ -380,24 +541,76 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
                   key={folder.id}
                   className="flex items-center justify-between p-3 rounded-lg border"
                 >
-                  <div className="flex items-center gap-3">
-                    <FolderOpen className="h-4 w-4 text-muted-foreground" />
-                    <div>
-                      <p className="text-sm font-medium">{folder.local_path}</p>
-                      {folder.label && (
-                        <p className="text-xs text-muted-foreground">{folder.label}</p>
-                      )}
+                  {editingFolderId === folder.id ? (
+                    /* Inline edit mode */
+                    <div className="flex-1 flex items-center gap-2">
+                      <Input
+                        value={editingFolderPath}
+                        onChange={(e) => setEditingFolderPath(e.target.value)}
+                        className="flex-1"
+                        placeholder="/path/to/folder"
+                      />
+                      <Input
+                        value={editingFolderLabel}
+                        onChange={(e) => setEditingFolderLabel(e.target.value)}
+                        className="w-40"
+                        placeholder="Label"
+                      />
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleSaveFolder(folder.id)}
+                        disabled={updateFolder.isPending}
+                      >
+                        <Check className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setEditingFolderId(null)}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                    <span>{folder.file_count} files</span>
-                    <Badge variant={folder.is_active ? "success" : "secondary"}>
-                      {folder.is_active ? "Active" : "Inactive"}
-                    </Badge>
-                    {folder.last_scanned_at && (
-                      <span>Scanned: {formatDate(folder.last_scanned_at)}</span>
-                    )}
-                  </div>
+                  ) : (
+                    /* Display mode */
+                    <>
+                      <div className="flex items-center gap-3">
+                        <FolderOpen className="h-4 w-4 text-muted-foreground" />
+                        <div>
+                          <p className="text-sm font-medium">{folder.local_path}</p>
+                          {folder.label && (
+                            <p className="text-xs text-muted-foreground">{folder.label}</p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <span>{folder.file_count} files</span>
+                        <Badge variant={folder.is_active ? "success" : "secondary"}>
+                          {folder.is_active ? "Active" : "Inactive"}
+                        </Badge>
+                        {folder.last_scanned_at && (
+                          <span>Scanned: {formatDate(folder.last_scanned_at)}</span>
+                        )}
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => startEditFolder(folder)}
+                          title="Edit folder"
+                        >
+                          <Pencil className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setShowDeleteFolder(folder.id)}
+                          title="Remove folder"
+                        >
+                          <Trash2 className="h-3 w-3 text-destructive" />
+                        </Button>
+                      </div>
+                    </>
+                  )}
                 </div>
               ))}
             </div>
@@ -405,33 +618,90 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
         </CardContent>
       </Card>
 
-      {/* Agent Info */}
+      {/* Agent Configuration / Settings */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
-            <Settings className="h-4 w-4" />
-            Agent Configuration
-          </CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Settings className="h-4 w-4" />
+              Agent Configuration
+            </CardTitle>
+            {!editingSettings && (
+              <Button size="sm" variant="outline" onClick={startEditSettings}>
+                <Pencil className="h-4 w-4 mr-1" />
+                Edit
+              </Button>
+            )}
+          </div>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-1">
-              <p className="text-xs text-muted-foreground">Sync Interval</p>
-              <p className="text-sm">{agent.sync_interval_minutes} minutes</p>
+          {editingSettings ? (
+            <div className="space-y-4">
+              <div className="grid gap-4 md:grid-cols-3">
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground">Agent Name</p>
+                  <Input
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground">Sync Interval (minutes)</p>
+                  <Input
+                    type="number"
+                    value={editSyncInterval}
+                    onChange={(e) => setEditSyncInterval(Number(e.target.value))}
+                    min={1}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground">Max File Size (MB)</p>
+                  <Input
+                    type="number"
+                    value={editMaxFileSize}
+                    onChange={(e) => setEditMaxFileSize(Number(e.target.value))}
+                    min={1}
+                  />
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  onClick={handleSaveSettings}
+                  disabled={updateAgent.isPending}
+                >
+                  {updateAgent.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                  ) : (
+                    <Check className="h-4 w-4 mr-1" />
+                  )}
+                  Save
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => setEditingSettings(false)}>
+                  Cancel
+                </Button>
+              </div>
             </div>
-            <div className="space-y-1">
-              <p className="text-xs text-muted-foreground">Max File Size</p>
-              <p className="text-sm">{agent.max_file_size_mb} MB</p>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground">Sync Interval</p>
+                <p className="text-sm">{agent.sync_interval_minutes} minutes</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground">Max File Size</p>
+                <p className="text-sm">{agent.max_file_size_mb} MB</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground">Pending Commands</p>
+                <p className="text-sm">{agent.pending_commands_count}</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground">IP Address</p>
+                <p className="text-sm">{agent.ip_address || "N/A"}</p>
+              </div>
             </div>
-            <div className="space-y-1">
-              <p className="text-xs text-muted-foreground">Pending Commands</p>
-              <p className="text-sm">{agent.pending_commands_count}</p>
-            </div>
-            <div className="space-y-1">
-              <p className="text-xs text-muted-foreground">IP Address</p>
-              <p className="text-sm">{agent.ip_address || "N/A"}</p>
-            </div>
-          </div>
+          )}
           {agent.capabilities && agent.capabilities.length > 0 && (
             <div className="mt-4">
               <p className="text-xs text-muted-foreground mb-2">Capabilities</p>
@@ -447,7 +717,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
         </CardContent>
       </Card>
 
-      {/* Delete Dialog */}
+      {/* Delete Agent Dialog */}
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -464,6 +734,50 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Destructive Command Confirm */}
+      <AlertDialog open={showDestructiveConfirm} onOpenChange={setShowDestructiveConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm {commandType}</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to send the &quot;{commandType}&quot; command?
+              This is a destructive operation that will affect the agent.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmDestructive}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Send Command
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete Folder Confirm */}
+      <AlertDialog open={!!showDeleteFolder} onOpenChange={() => setShowDeleteFolder(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove Folder</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to remove this monitored folder? Files already processed
+              will remain, but the agent will stop monitoring this folder.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => showDeleteFolder && deleteFolder.mutate(showDeleteFolder)}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Remove
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -159,6 +159,33 @@ class SyncFileSerializer(serializers.Serializer):
     summary = serializers.CharField(required=False, default="", allow_blank=True)
 
 
+class AgentFolderCreateSerializer(serializers.Serializer):
+    """Serializer for creating a folder on an agent."""
+    local_path = serializers.CharField(max_length=1024)
+    label = serializers.CharField(max_length=255, required=False, default="")
+    is_active = serializers.BooleanField(required=False, default=True)
+
+
+class AgentFolderUpdateSerializer(serializers.Serializer):
+    """Serializer for updating (moving/renaming) a folder on an agent."""
+    local_path = serializers.CharField(max_length=1024, required=False)
+    label = serializers.CharField(max_length=255, required=False)
+    is_active = serializers.BooleanField(required=False)
+
+
+class FileMoveSerializer(serializers.Serializer):
+    """Serializer for moving files to a different agent."""
+    file_ids = serializers.ListField(child=serializers.UUIDField(), min_length=1)
+    target_agent_id = serializers.CharField(max_length=64)
+
+
+class FileMoveFolderSerializer(serializers.Serializer):
+    """Serializer for moving files between folders within the same agent."""
+    file_ids = serializers.ListField(child=serializers.UUIDField(), min_length=1)
+    source_path = serializers.CharField(max_length=1024)
+    target_path = serializers.CharField(max_length=1024)
+
+
 class AgentSyncSerializer(serializers.Serializer):
     files = SyncFileSerializer(many=True)
     stats = serializers.DictField(required=False, default=dict)

@@ -311,6 +311,16 @@ export interface AgentFolder {
   file_count: number;
 }
 
+export interface AgentCommand {
+  id: string;
+  command_type: string;
+  payload: Record<string, unknown>;
+  status: "pending" | "delivered" | "completed" | "failed";
+  result: string | null;
+  created_at: string;
+  executed_at: string | null;
+}
+
 export interface Agent {
   id: string;
   agent_id: string;
