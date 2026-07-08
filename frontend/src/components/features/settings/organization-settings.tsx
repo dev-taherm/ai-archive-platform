@@ -10,12 +10,14 @@ import {
   useInviteMember,
   useRevokeInvitation,
   useRemoveMember,
+  useCreateOrganization,
 } from "@/hooks/use-organization";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import {
+  Building2,
   Users,
   Mail,
   Copy,
@@ -36,6 +38,7 @@ export default function OrganizationSettings() {
   const { toast } = useToast();
   const { data: org, isLoading: orgLoading } = useOrganization();
   const updateOrg = useUpdateOrganization();
+  const createOrg = useCreateOrganization();
   const { data: members = [], isLoading: membersLoading } = useOrgMembers();
   const { data: invitations = [], isLoading: invitationsLoading } = useOrgInvitations();
   const inviteMember = useInviteMember();
@@ -48,6 +51,10 @@ export default function OrganizationSettings() {
   const [inviteRole, setInviteRole] = useState("member");
   const [copied, setCopied] = useState(false);
 
+  const [newOrgName, setNewOrgName] = useState("");
+  const [newOrgSlug, setNewOrgSlug] = useState("");
+  const [newOrgDescription, setNewOrgDescription] = useState("");
+
   const isAdmin = user?.org_role === "owner" || user?.org_role === "admin";
 
   if (orgLoading) {
@@ -55,11 +62,97 @@ export default function OrganizationSettings() {
   }
 
   if (!org) {
+    const handleCreateOrg = async () => {
+      if (!newOrgName.trim() || !newOrgSlug.trim()) return;
+      try {
+        await createOrg.mutateAsync({
+          name: newOrgName.trim(),
+          slug: newOrgSlug.trim(),
+          description: newOrgDescription.trim() || undefined,
+        });
+        toast({ title: "Organization created" });
+      } catch (err: any) {
+        const msg =
+          err?.response?.data?.detail ||
+          err?.response?.data?.slug?.[0] ||
+          "Failed to create organization";
+        toast({ title: msg, variant: "destructive" });
+      }
+    };
+
     return (
-      <div className="space-y-4">
-        <p className="text-muted-foreground">
-          You are not a member of any organization.
-        </p>
+      <div className="space-y-6">
+        <div className="space-y-2">
+          <h3 className="text-lg font-semibold flex items-center gap-2">
+            <Building2 className="h-5 w-5" />
+            Create Organization
+          </h3>
+          <p className="text-sm text-muted-foreground">
+            You don&apos;t belong to an organization yet. Create one to get started.
+          </p>
+        </div>
+
+        <div className="space-y-4 max-w-md">
+          <div className="space-y-2">
+            <label htmlFor="newOrgName" className="text-sm font-medium">
+              Organization Name
+            </label>
+            <Input
+              id="newOrgName"
+              placeholder="Acme Corp"
+              value={newOrgName}
+              onChange={(e) => {
+                setNewOrgName(e.target.value);
+                if (!newOrgSlug) {
+                  setNewOrgSlug(
+                    e.target.value
+                      .toLowerCase()
+                      .replace(/[^a-z0-9]+/g, "-")
+                      .replace(/^-|-$/g, "")
+                  );
+                }
+              }}
+            />
+          </div>
+          <div className="space-y-2">
+            <label htmlFor="newOrgSlug" className="text-sm font-medium">
+              Slug
+            </label>
+            <Input
+              id="newOrgSlug"
+              placeholder="acme-corp"
+              value={newOrgSlug}
+              onChange={(e) =>
+                setNewOrgSlug(
+                  e.target.value
+                    .toLowerCase()
+                    .replace(/[^a-z0-9-]/g, "")
+                    .replace(/--+/g, "-")
+                )
+              }
+            />
+            <p className="text-xs text-muted-foreground">
+              Used in URLs. Lowercase letters, numbers, and hyphens only.
+            </p>
+          </div>
+          <div className="space-y-2">
+            <label htmlFor="newOrgDescription" className="text-sm font-medium">
+              Description <span className="text-muted-foreground">(optional)</span>
+            </label>
+            <Input
+              id="newOrgDescription"
+              placeholder="What does your organization do?"
+              value={newOrgDescription}
+              onChange={(e) => setNewOrgDescription(e.target.value)}
+            />
+          </div>
+          <Button
+            onClick={handleCreateOrg}
+            disabled={createOrg.isPending || !newOrgName.trim() || !newOrgSlug.trim()}
+          >
+            {createOrg.isPending ? "Creating..." : "Create Organization"}
+          </Button>
+        </div>
       </div>
     );
   }

@@ -11,6 +11,12 @@ class OrganizationSerializer(serializers.ModelSerializer):
         fields = ["id", "name", "slug", "description", "created_at", "updated_at"]
         read_only_fields = ["id", "created_at", "updated_at"]
 
+    def validate_slug(self, value: str) -> str:
+        instance = getattr(self, "instance", None)
+        if Organization.objects.filter(slug=value).exclude(pk=getattr(instance, "pk", None)).exists():
+            raise serializers.ValidationError("An organization with this slug already exists.")
+        return value
+
 
 class MembershipSerializer(serializers.ModelSerializer):
     user_email = serializers.CharField(source="user.email", read_only=True)

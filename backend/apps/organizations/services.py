@@ -26,8 +26,19 @@ class OrgService:
         owner: User,
         description: str = "",
     ) -> Organization:
-        """Create an org and add the owner as a member."""
+        """Create an org and add the owner as a member.
+
+        If the user already belongs to another organization, they are removed
+        from non-owner memberships in the old org and their FK is updated.
+        """
         with transaction.atomic():
+            # Leave old organization memberships (non-owner roles only)
+            old_memberships = Membership.objects.filter(
+                user=owner,
+                role__in=(Membership.OrgRole.MEMBER, Membership.OrgRole.ADMIN),
+            )
+            old_memberships.delete()
+
             org = Organization.objects.create(
                 name=name,
                 slug=slug,

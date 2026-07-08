@@ -824,7 +824,28 @@ def build_parser() -> argparse.ArgumentParser:
     p_run = sub.add_parser("run", help="Full loop: scan + process + sync + watch")
     p_run.add_argument("--folders", nargs="+", help="Folders to watch")
 
+    # api
+    p_api = sub.add_parser("api", help="Start the local FastAPI server for desktop app")
+    p_api.add_argument("--port", type=int, default=8420, help="Port to listen on (default: 8420)")
+    p_api.add_argument("--host", default="127.0.0.1", help="Host to bind to (default: 127.0.0.1)")
+
     return parser
+
+
+def cmd_api(args: argparse.Namespace, config: EdgeAgentConfig) -> None:
+    """Start the FastAPI local server."""
+    try:
+        import uvicorn
+    except ImportError:
+        print("Error: uvicorn is required for the API server.")
+        print("Install with: pip install fastapi uvicorn")
+        sys.exit(1)
+
+    from edge_agent.api.server import create_app
+
+    app = create_app()
+    logger.info("Starting Edge Agent API on %s:%s", args.host, args.port)
+    uvicorn.run(app, host=args.host, port=args.port, log_level="info")
 
 
 def main() -> None:
@@ -853,6 +874,7 @@ def main() -> None:
         "status": cmd_status,
         "extract": cmd_extract,
         "run": cmd_run,
+        "api": cmd_api,
     }
 
     cmd_func = commands.get(args.command)
