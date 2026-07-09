@@ -7,7 +7,10 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "build-agent": "cd .. && python edge_agent/build.py",
+    "build:desktop": "pnpm build-agent && pnpm tauri build",
+    "build:desktop:dev": "pnpm build-agent && pnpm tauri dev"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
