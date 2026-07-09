@@ -1,28 +1,17 @@
 import { useEffect } from "react";
-import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { useAuthStore } from "../stores/auth-store";
 import { useAgentStore } from "../stores/agent-store";
-import { Button } from "../components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
-import { LanguageSwitcher } from "../components/LanguageSwitcher";
 import { StatsCards } from "../components/StatsCards";
 import { FileTable } from "../components/FileTable";
 import { LogsViewer } from "../components/LogsViewer";
 import { ScanButton } from "../components/ScanButton";
-import {
-  Play,
-  Square,
-  FolderOpen,
-  RefreshCw,
-  Settings,
-} from "lucide-react";
+import { Button } from "../components/ui/button";
+import { Play, Square, RefreshCw } from "lucide-react";
 
 export default function DashboardPage() {
   const { t } = useTranslation();
-  const navigate = useNavigate();
-  const logout = useAuthStore((s) => s.logout);
   const {
     connected,
     status,
@@ -48,11 +37,6 @@ export default function DashboardPage() {
     return () => clearInterval(interval);
   }, []);
 
-  const handleLogout = () => {
-    logout();
-    navigate("/login");
-  };
-
   const stats = status?.stats || {
     total: 0,
     synced: 0,
@@ -63,32 +47,10 @@ export default function DashboardPage() {
   };
 
   return (
-    <div className="min-h-screen bg-muted/40">
-      <header className="border-b bg-background px-6 py-3 flex items-center justify-between">
+    <div className="min-h-full bg-muted/40">
+      <div className="border-b bg-background px-6 py-3">
         <h1 className="text-lg font-semibold">{t("dashboard.title")}</h1>
-        <div className="flex items-center gap-2">
-          <LanguageSwitcher />
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => navigate("/folders")}
-          >
-            <FolderOpen className="h-4 w-4 mr-1" />
-            {t("nav.folders")}
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => navigate("/settings")}
-          >
-            <Settings className="h-4 w-4 mr-1" />
-            {t("dashboard.viewSettings")}
-          </Button>
-          <Button variant="ghost" size="sm" onClick={handleLogout}>
-            {t("common.logout")}
-          </Button>
-        </div>
-      </header>
+      </div>
 
       <main className="mx-auto max-w-6xl p-6 space-y-6">
         {/* Agent Status */}

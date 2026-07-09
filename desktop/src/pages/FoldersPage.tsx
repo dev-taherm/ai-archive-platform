@@ -24,7 +24,11 @@ export default function FoldersPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="min-h-full bg-muted/40">
+      <div className="border-b bg-background px-6 py-3">
+        <h1 className="text-lg font-semibold">{t("folders.title")}</h1>
+      </div>
+      <div className="p-6 space-y-6">
       <Card>
         <CardHeader>
           <CardTitle>{t("folders.title")}</CardTitle>
@@ -88,6 +92,7 @@ export default function FoldersPage() {
           </div>
         </CardContent>
       </Card>
+      </div>
     </div>
   );
 }

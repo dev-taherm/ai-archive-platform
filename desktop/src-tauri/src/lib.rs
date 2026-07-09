@@ -3,11 +3,15 @@ mod commands;
 mod tray;
 
 use agent::AgentManager;
-use std::sync::Mutex;
+use commands::AuthTokens;
+use std::sync::atomic::AtomicBool;
+use std::sync::{Arc, Mutex};
 use tauri::Manager;
 
 pub struct AppState {
     pub agent_manager: Mutex<AgentManager>,
+    pub auth_tokens: Arc<Mutex<Option<AuthTokens>>>,
+    pub auth_stop: Arc<AtomicBool>,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -21,6 +25,8 @@ pub fn run() {
         .plugin(tauri_plugin_log::Builder::new().build())
         .manage(AppState {
             agent_manager: Mutex::new(AgentManager::new()),
+            auth_tokens: Arc::new(Mutex::new(None)),
+            auth_stop: Arc::new(AtomicBool::new(false)),
         })
         .invoke_handler(tauri::generate_handler![
             commands::get_agent_status,
@@ -30,6 +36,9 @@ pub fn run() {
             commands::update_config,
             commands::call_agent_api,
             commands::read_server_config,
+            commands::start_auth_server,
+            commands::poll_auth_result,
+            commands::stop_auth_server,
         ])
         .setup(|app| {
             let handle = app.handle().clone();

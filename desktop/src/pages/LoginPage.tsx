@@ -1,51 +1,69 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { invoke } from "@tauri-apps/api/core";
+import { open } from "@tauri-apps/plugin-shell";
 import { useAuthStore } from "../stores/auth-store";
 import { Button } from "../components/ui/button";
-import { Input } from "../components/ui/input";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "../components/ui/card";
 import { LanguageSwitcher } from "../components/LanguageSwitcher";
+
+type AuthTokens = {
+  access_token: string;
+  refresh_token: string;
+};
 
 export default function LoginPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const login = useAuthStore((s) => s.login);
   const serverUrl = useAuthStore((s) => s.serverUrl);
+  const webUrl = useAuthStore((s) => s.webUrl);
   const loadServerConfig = useAuthStore((s) => s.loadServerConfig);
 
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState<"idle" | "waiting" | "error">("idle");
   const [error, setError] = useState("");
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     loadServerConfig();
   }, [loadServerConfig]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, []);
+
+  const handleLogin = async () => {
+    if (!serverUrl || !webUrl) return;
+
+    setStatus("waiting");
     setError("");
 
     try {
-      const resp = await fetch(`${serverUrl}/api/v1/auth/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
-      });
+      const port: number = await invoke("start_auth_server");
+      const callbackUrl = `http://localhost:${port}/callback`;
+      const loginUrl = `${webUrl}/login?desktop_callback=${encodeURIComponent(callbackUrl)}`;
 
-      if (!resp.ok) {
-        throw new Error("Login failed");
-      }
+      await open(loginUrl);
 
-      const data = await resp.json();
-      login(serverUrl, data.access);
-      navigate("/dashboard");
-    } catch {
-      setError(t("login.error"));
-    } finally {
-      setLoading(false);
+      pollRef.current = setInterval(async () => {
+        try {
+          const tokens: AuthTokens | null = await invoke("poll_auth_result");
+          if (tokens) {
+            if (pollRef.current) clearInterval(pollRef.current);
+            await invoke("stop_auth_server");
+            login(serverUrl, tokens.access_token);
+            navigate("/dashboard");
+          }
+        } catch {
+          // Polling error — keep trying
+        }
+      }, 1000);
+    } catch (err) {
+      setStatus("idle");
+      setError(String(err) || t("login.error"));
     }
   };
 
@@ -60,43 +78,35 @@ export default function LoginPage() {
           <CardTitle className="text-2xl">{t("login.title")}</CardTitle>
           <CardDescription>{t("login.subtitle")}</CardDescription>
         </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">{t("login.email")}</label>
-              <Input
-                type="email"
-                placeholder={t("login.emailPlaceholder")}
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">{t("login.password")}</label>
-              <Input
-                type="password"
-                placeholder={t("login.passwordPlaceholder")}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-              />
-            </div>
-            {error && (
-              <p className="text-sm text-destructive">{error}</p>
-            )}
-            {!serverUrl && (
-              <p className="text-sm text-muted-foreground text-center">
-                Loading server configuration...
-              </p>
-            )}
-            <Button type="submit" className="w-full" disabled={loading || !serverUrl}>
-              {loading ? t("login.submitting") : t("login.submit")}
-            </Button>
-            <p className="text-center text-xs text-muted-foreground">
-              {t("login.offline")}
+        <CardContent className="space-y-4">
+          {error && (
+            <p className="text-sm text-destructive text-center">{error}</p>
+          )}
+          {!serverUrl && (
+            <p className="text-sm text-muted-foreground text-center">
+              Loading server configuration...
             </p>
-          </form>
+          )}
+          <Button
+            className="w-full"
+            onClick={handleLogin}
+            disabled={status === "waiting" || !serverUrl || !webUrl}
+          >
+            {status === "waiting"
+              ? t("login.waiting") || "Waiting for authentication..."
+              : t("login.browser") || "Login in Browser"}
+          </Button>
+          {status === "waiting" && (
+            <div className="flex flex-col items-center gap-2 pt-2">
+              <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+              <p className="text-xs text-muted-foreground">
+                A browser window has opened. Complete login there.
+              </p>
+            </div>
+          )}
+          <p className="text-center text-xs text-muted-foreground">
+            {t("login.offline")}
+          </p>
         </CardContent>
       </Card>
     </div>

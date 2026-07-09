@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useConfigStore } from "../stores/config-store";
 import { useAgentStore } from "../stores/agent-store";
@@ -12,13 +11,11 @@ import {
   CardTitle,
   CardContent,
 } from "../components/ui/card";
-import { LanguageSwitcher } from "../components/LanguageSwitcher";
 import { LogsViewer } from "../components/LogsViewer";
-import { ArrowLeft, Save } from "lucide-react";
+import { Save } from "lucide-react";
 
 export default function SettingsPage() {
   const { t, i18n } = useTranslation();
-  const navigate = useNavigate();
   const { serverUrl, apiKey, agentName, setConfig } = useConfigStore();
   const { logs, fetchLogs } = useAgentStore();
 
@@ -66,21 +63,10 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-muted/40">
-      <header className="border-b bg-background px-6 py-3 flex items-center justify-between">
+    <div className="min-h-full bg-muted/40">
+      <div className="border-b bg-background px-6 py-3">
         <h1 className="text-lg font-semibold">{t("settings.title")}</h1>
-        <div className="flex items-center gap-2">
-          <LanguageSwitcher />
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => navigate("/dashboard")}
-          >
-            <ArrowLeft className="h-4 w-4 mr-1" />
-            {t("dashboard.title")}
-          </Button>
-        </div>
-      </header>
+      </div>
 
       <main className="mx-auto max-w-2xl p-6 space-y-6">
         <Card>

@@ -1,5 +1,7 @@
 use crate::AppState;
 use serde::{Deserialize, Serialize};
+use std::io::{BufRead, BufReader, Write};
+use std::sync::atomic::Ordering;
 use tauri::{AppHandle, State};
 
 #[derive(Serialize)]
@@ -25,6 +27,8 @@ pub struct AgentConfig {
 #[derive(Serialize, Deserialize)]
 pub struct ServerConfig {
     pub server_url: String,
+    #[serde(default)]
+    pub web_url: String,
 }
 
 #[tauri::command]
@@ -38,6 +42,7 @@ pub fn read_server_config() -> Result<ServerConfig, String> {
     if !config_path.exists() {
         return Ok(ServerConfig {
             server_url: String::new(),
+            web_url: String::new(),
         });
     }
     
@@ -137,4 +142,115 @@ pub async fn call_agent_api(
     resp.json::<serde_json::Value>()
         .await
         .map_err(|e| format!("Failed to parse response: {e}"))
+}
+
+// ── Browser-based auth ─────────────────────────────────────────────────────
+
+#[derive(Serialize, Clone)]
+pub struct AuthTokens {
+    pub access_token: String,
+    pub refresh_token: String,
+}
+
+#[tauri::command]
+pub fn start_auth_server(state: State<'_, AppState>) -> Result<u16, String> {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0")
+        .map_err(|e| format!("Failed to start auth server: {e}"))?;
+    let port = listener.local_addr().map_err(|e| e.to_string())?.port();
+
+    let tokens = state.auth_tokens.clone();
+    let stop = state.auth_stop.clone();
+
+    std::thread::spawn(move || {
+        listener.set_nonblocking(true).ok();
+        let start = std::time::Instant::now();
+        let timeout = std::time::Duration::from_secs(300);
+
+        loop {
+            if stop.load(Ordering::Relaxed) {
+                break;
+            }
+            if start.elapsed() > timeout {
+                break;
+            }
+            match listener.accept() {
+                Ok((mut stream, _)) => {
+                    let mut reader = BufReader::new(&stream);
+                    let mut request_line = String::new();
+                    let _ = reader.read_line(&mut request_line);
+
+                    // Drain remaining headers
+                    let mut header = String::new();
+                    while reader.read_line(&mut header).unwrap_or(0) > 0 {
+                        if header.trim().is_empty() {
+                            break;
+                        }
+                        header.clear();
+                    }
+
+                    let path = request_line
+                        .split_whitespace()
+                        .nth(1)
+                        .unwrap_or("/");
+
+                    if let Some(query) = path.strip_prefix("/callback?") {
+                        let params: std::collections::HashMap<String, String> = query
+                            .split('&')
+                            .filter_map(|pair| {
+                                let mut parts = pair.splitn(2, '=');
+                                Some((
+                                    parts.next()?.to_string(),
+                                    parts.next().unwrap_or("").to_string(),
+                                ))
+                            })
+                            .collect();
+
+                        if let (Some(access), Some(refresh)) =
+                            (params.get("access_token"), params.get("refresh_token"))
+                        {
+                            let mut t = tokens.lock().unwrap();
+                            *t = Some(AuthTokens {
+                                access_token: access.clone(),
+                                refresh_token: refresh.clone(),
+                            });
+
+                            let body = b"<!DOCTYPE html><html><head><title>Authenticated</title><style>body{font-family:system-ui;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;background:#0f172a;color:#f8fafc}h1{font-size:1.5rem}p{color:#94a3b8}</style></head><body><div style='text-align:center'><h1>Authenticated!</h1><p>You can close this tab and return to Basirah.</p></div></body></html>";
+                            let response = format!(
+                                "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                                body.len()
+                            );
+                            let _ = stream.write_all(response.as_bytes());
+                            let _ = stream.write_all(body);
+                            break;
+                        }
+                    }
+
+                    // Unknown path — return 404
+                    let resp = b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+                    let _ = stream.write_all(resp);
+                }
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    std::thread::sleep(std::time::Duration::from_millis(50));
+                    continue;
+                }
+                Err(_) => break,
+            }
+        }
+    });
+
+    Ok(port)
+}
+
+#[tauri::command]
+pub fn poll_auth_result(state: State<'_, AppState>) -> Result<Option<AuthTokens>, String> {
+    let t = state.auth_tokens.lock().map_err(|e| e.to_string())?;
+    Ok(t.clone())
+}
+
+#[tauri::command]
+pub fn stop_auth_server(state: State<'_, AppState>) -> Result<(), String> {
+    state
+        .auth_stop
+        .store(true, Ordering::Relaxed);
+    Ok(())
 }

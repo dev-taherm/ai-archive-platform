@@ -13,7 +13,9 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
 
-  if (token && isAuthPage) {
+  const hasDesktopCallback = request.nextUrl.searchParams.has("desktop_callback");
+
+  if (token && isAuthPage && !hasDesktopCallback) {
     return NextResponse.redirect(new URL("/dashboard", request.url));
   }
 
