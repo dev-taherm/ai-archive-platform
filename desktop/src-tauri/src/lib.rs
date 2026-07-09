@@ -33,6 +33,14 @@ pub fn run() {
         .setup(|app| {
             let handle = app.handle().clone();
             tray::create_tray(&handle)?;
+
+            // Auto-start edge agent sidecar
+            let state = handle.state::<AppState>();
+            let mut manager = state.agent_manager.lock().map_err(|e| e.to_string())?;
+            if let Err(e) = manager.start(&handle) {
+                eprintln!("Failed to auto-start edge agent: {e}");
+            }
+
             Ok(())
         })
         .run(tauri::generate_context!())

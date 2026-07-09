@@ -13,7 +13,7 @@ pub fn create_tray(app: &AppHandle) -> tauri::Result<()> {
     let _tray = TrayIconBuilder::new()
         .icon(app.default_window_icon().unwrap().clone())
         .menu(&menu)
-        .tooltip("Basirah Edge Agent")
+        .tooltip("Basirah Desktop")
         .on_menu_event(move |app, event| match event.id().as_ref() {
             "show" => {
                 let _ = app.get_webview_window("main").map(|w| w.show());

@@ -1,6 +1,6 @@
 use crate::AppState;
 use serde::{Deserialize, Serialize};
-use tauri::State;
+use tauri::{AppHandle, State};
 
 #[derive(Serialize)]
 pub struct AgentStatus {
@@ -14,7 +14,12 @@ pub struct AgentConfig {
     pub api_key: Option<String>,
     pub jwt_token: Option<String>,
     pub agent_name: Option<String>,
+    pub agent_id: Option<String>,
     pub folders: Option<Vec<String>>,
+    pub ocr_engine: Option<String>,
+    pub ocr_lang: Option<String>,
+    pub parser_backend: Option<String>,
+    pub sync_interval_minutes: Option<u32>,
 }
 
 #[tauri::command]
@@ -27,9 +32,9 @@ pub fn get_agent_status(state: State<'_, AppState>) -> Result<AgentStatus, Strin
 }
 
 #[tauri::command]
-pub fn start_agent(state: State<'_, AppState>) -> Result<String, String> {
+pub fn start_agent(state: State<'_, AppState>, app: AppHandle) -> Result<String, String> {
     let mut manager = state.agent_manager.lock().map_err(|e| e.to_string())?;
-    manager.start()
+    manager.start(&app)
 }
 
 #[tauri::command]

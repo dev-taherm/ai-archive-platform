@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Basirah Edge Agent",
+  "productName": "Basirah Desktop",
   "version": "0.1.0",
-  "identifier": "com.basirah.edge-agent",
+  "identifier": "com.basirah.desktop",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Basirah Edge Agent",
+        "title": "Basirah Desktop",
         "width": 1200,
         "height": 800,
         "minWidth": 900,
@@ -35,6 +35,7 @@
       "icons/128x128.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "externalBin": ["binaries/edge-agent"]
   }
 }
