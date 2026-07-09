@@ -256,6 +256,17 @@ class AgentViewSet(viewsets.ModelViewSet):
             filename=zip_filename,
         )
 
+    @action(detail=False, methods=["get"], url_path="manifest")
+    def manifest(self, request):
+        """Return build manifest showing available binaries."""
+        binaries_dir = Path(settings.MEDIA_ROOT) / "agents" / "binaries"
+        manifest_path = binaries_dir / "manifest.json"
+        if not manifest_path.exists():
+            return Response({"builds": {}}, status=status.HTTP_200_OK)
+        with open(manifest_path) as f:
+            manifest = json.load(f)
+        return Response(manifest, status=status.HTTP_200_OK)
+
     @action(detail=False, methods=["get"], url_path="download-package")
     def download_package(self, request):
         """Serve a zip with edge-agent binary + config pre-filled with JWT token.
