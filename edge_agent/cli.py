@@ -129,6 +129,7 @@ def _process_file(
     try:
         parsed = parser.parse(file_info["path"])
         text = parsed.markdown or ""
+        ocr_text = ""
 
         if not text or len(text.strip()) < 50:
             suffix = Path(file_info["path"]).suffix.lower()
@@ -553,6 +554,7 @@ def _execute_shutdown() -> dict:
 
 def _execute_update(config: EdgeAgentConfig, payload: dict) -> dict:
     """Execute an update command: pull latest and restart."""
+    import os
     import subprocess
     import sys
 

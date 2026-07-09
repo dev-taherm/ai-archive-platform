@@ -143,6 +143,7 @@ def load_config(config_path: str | Path | None = None) -> EdgeAgentConfig:
     # OCR
     ocr_raw = raw.get("ocr", {})
     cfg.ocr = OCRConfig(
+        engine=ocr_raw.get("engine", cfg.ocr.engine),
         lang=ocr_raw.get("lang", cfg.ocr.lang),
         use_gpu=ocr_raw.get("use_gpu", cfg.ocr.use_gpu),
         timeout_seconds=ocr_raw.get("timeout_seconds", cfg.ocr.timeout_seconds),
