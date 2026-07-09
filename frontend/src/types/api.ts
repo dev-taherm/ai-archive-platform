@@ -4,6 +4,13 @@
 
 // --- Auth ---
 
+export interface OrgMembership {
+  id: string;
+  name: string;
+  slug: string;
+  role: "owner" | "admin" | "member";
+}
+
 export interface User {
   id: string;
   email: string;
@@ -12,16 +19,27 @@ export interface User {
   last_name: string;
   is_active: boolean;
   date_joined: string;
-  organization: string | null;
+  current_organization: string | null;
   organization_name: string | null;
   organization_slug: string | null;
   org_role: "owner" | "admin" | "member" | null;
+  organizations: OrgMembership[];
 }
 
 export interface AuthTokens {
   access: string;
   refresh: string;
   user: User;
+}
+
+export interface SwitchOrgRequest {
+  organization_id: string;
+}
+
+export interface SwitchOrgResponse {
+  access: string;
+  refresh: string;
+  organization: Organization;
 }
 
 export interface LoginRequest {

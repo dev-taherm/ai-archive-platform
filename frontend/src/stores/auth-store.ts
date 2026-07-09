@@ -24,6 +24,7 @@ interface AuthState {
   setTokens: (accessToken: string, refreshToken: string) => void;
   login: (tokens: AuthTokens) => void;
   logout: () => void;
+  switchOrganization: (tokens: { access: string; refresh: string }, user: User) => void;
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -61,6 +62,16 @@ export const useAuthStore = create<AuthState>()(
           accessToken: null,
           refreshToken: null,
           isAuthenticated: false,
+        });
+      },
+
+      switchOrganization: (tokens, user) => {
+        setCookie("accessToken", tokens.access);
+        setCookie("refreshToken", tokens.refresh);
+        set({
+          user,
+          accessToken: tokens.access,
+          refreshToken: tokens.refresh,
         });
       },
     }),

@@ -24,12 +24,12 @@ class User(AbstractUser):
         default=Role.VIEWER,
     )
     last_login_ip = models.GenericIPAddressField(null=True, blank=True)
-    organization = models.ForeignKey(
+    current_organization = models.ForeignKey(
         "organizations.Organization",
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name="members",
+        related_name="current_members",
     )
 
     class Meta:

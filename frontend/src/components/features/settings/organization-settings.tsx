@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import {
   useOrganization,
+  useOrganizations,
   useUpdateOrganization,
   useOrgMembers,
   useOrgInvitations,
@@ -11,6 +12,8 @@ import {
   useRevokeInvitation,
   useRemoveMember,
   useCreateOrganization,
+  useLeaveOrganization,
+  useSwitchOrganization,
 } from "@/hooks/use-organization";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -25,6 +28,8 @@ import {
   UserMinus,
   Trash2,
   Plus,
+  LogOut,
+  ArrowRightLeft,
 } from "lucide-react";
 
 const roleColors: Record<string, string> = {
@@ -37,6 +42,7 @@ export default function OrganizationSettings() {
   const { user } = useAuth();
   const { toast } = useToast();
   const { data: org, isLoading: orgLoading } = useOrganization();
+  const { data: allOrgs = [] } = useOrganizations();
   const updateOrg = useUpdateOrganization();
   const createOrg = useCreateOrganization();
   const { data: members = [], isLoading: membersLoading } = useOrgMembers();
@@ -44,6 +50,8 @@ export default function OrganizationSettings() {
   const inviteMember = useInviteMember();
   const revokeInvitation = useRevokeInvitation();
   const removeMember = useRemoveMember();
+  const leaveOrg = useLeaveOrganization();
+  const switchOrg = useSwitchOrganization();
 
   const [orgName, setOrgName] = useState(org?.name || "");
   const [orgDescription, setOrgDescription] = useState(org?.description || "");
@@ -193,6 +201,25 @@ export default function OrganizationSettings() {
       toast({ title: "Member removed" });
     } catch {
       toast({ title: "Failed to remove member", variant: "destructive" });
+    }
+  };
+
+  const handleLeaveOrg = async () => {
+    try {
+      await leaveOrg.mutateAsync();
+      toast({ title: "You have left the organization" });
+    } catch (err: any) {
+      const msg = err?.response?.data?.detail || "Failed to leave organization";
+      toast({ title: msg, variant: "destructive" });
+    }
+  };
+
+  const handleSwitchOrg = async (orgId: string) => {
+    try {
+      await switchOrg.mutateAsync(orgId);
+      toast({ title: "Switched organization" });
+    } catch {
+      toast({ title: "Failed to switch organization", variant: "destructive" });
     }
   };
 
@@ -384,6 +411,73 @@ export default function OrganizationSettings() {
                   )}
                 </div>
               ))}
+          </div>
+        </div>
+      )}
+
+      {/* Your Organizations */}
+      {user?.organizations && user.organizations.length > 1 && (
+        <div className="space-y-4">
+          <h3 className="text-lg font-semibold flex items-center gap-2">
+            <Building2 className="h-5 w-5" />
+            Your Organizations
+          </h3>
+          <div className="space-y-2">
+            {user.organizations.map((o) => (
+              <div
+                key={o.id}
+                className="flex items-center justify-between rounded-md border p-3"
+              >
+                <div className="flex-1">
+                  <p className="text-sm font-medium">{o.name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {o.slug} · <span className="capitalize">{o.role}</span>
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className={roleColors[o.role]}>
+                    {o.role}
+                  </Badge>
+                  {o.id !== user.current_organization && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleSwitchOrg(o.id)}
+                      disabled={switchOrg.isPending}
+                    >
+                      <ArrowRightLeft className="mr-1 h-3.5 w-3.5" />
+                      Switch
+                    </Button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Leave Organization */}
+      {user?.org_role !== "owner" && user?.current_organization && (
+        <div className="space-y-4">
+          <h3 className="text-lg font-semibold text-destructive">Danger Zone</h3>
+          <div className="rounded-md border border-destructive/20 p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium">Leave Organization</p>
+                <p className="text-xs text-muted-foreground">
+                  You will lose access to this organization&apos;s data and resources.
+                </p>
+              </div>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={handleLeaveOrg}
+                disabled={leaveOrg.isPending}
+              >
+                <LogOut className="mr-1 h-3.5 w-3.5" />
+                {leaveOrg.isPending ? "Leaving..." : "Leave"}
+              </Button>
+            </div>
           </div>
         </div>
       )}

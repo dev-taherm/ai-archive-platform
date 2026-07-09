@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/stores/ui-store";
+import OrgSwitcher from "@/components/features/organization/org-switcher";
 
 const navItems = [
   {
@@ -108,6 +109,12 @@ export function Sidebar() {
             />
           </button>
         </div>
+
+        {sidebarOpen && (
+          <div className="border-b px-2 py-2">
+            <OrgSwitcher />
+          </div>
+        )}
 
         <nav className="flex-1 space-y-1 p-2">
           {navItems.map((item) => {

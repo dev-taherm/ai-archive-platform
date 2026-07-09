@@ -127,8 +127,8 @@ class SearchView(viewsets.GenericViewSet):
                     search_time_ms=response_dto.search_time_ms,
                     filters_used=filters_data,
                 )
-                if request.user.is_authenticated and hasattr(request.user, "organization") and request.user.organization:
-                    log_kwargs["organization"] = request.user.organization
+                if request.user.is_authenticated and hasattr(request.user, "current_organization") and request.user.current_organization:
+                    log_kwargs["organization"] = request.user.current_organization
                 SearchLog.objects.create(**log_kwargs)
             except Exception:
                 logger.debug("Failed to log search")

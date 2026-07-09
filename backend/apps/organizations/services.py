@@ -28,17 +28,10 @@ class OrgService:
     ) -> Organization:
         """Create an org and add the owner as a member.
 
-        If the user already belongs to another organization, they are removed
-        from non-owner memberships in the old org and their FK is updated.
+        In multi-org mode, the user keeps their existing memberships.
+        The new org becomes their current organization.
         """
         with transaction.atomic():
-            # Leave old organization memberships (non-owner roles only)
-            old_memberships = Membership.objects.filter(
-                user=owner,
-                role__in=(Membership.OrgRole.MEMBER, Membership.OrgRole.ADMIN),
-            )
-            old_memberships.delete()
-
             org = Organization.objects.create(
                 name=name,
                 slug=slug,
@@ -49,8 +42,8 @@ class OrgService:
                 organization=org,
                 role=Membership.OrgRole.OWNER,
             )
-            owner.organization = org
-            owner.save(update_fields=["organization"])
+            owner.current_organization = org
+            owner.save(update_fields=["current_organization"])
             return org
 
     @staticmethod
@@ -65,9 +58,9 @@ class OrgService:
             organization=organization,
             defaults={"role": role},
         )
-        if not user.organization_id:
-            user.organization = organization
-            user.save(update_fields=["organization"])
+        if not user.current_organization_id:
+            user.current_organization = organization
+            user.save(update_fields=["current_organization"])
         return membership
 
     @staticmethod
@@ -82,7 +75,7 @@ class OrgService:
     @staticmethod
     def get_user_org(user: User) -> Organization | None:
         """Return the user's current organization."""
-        return user.organization
+        return user.current_organization
 
     @staticmethod
     def is_org_member(user: User, organization: Organization) -> bool:
@@ -175,8 +168,8 @@ class OrgService:
                 organization=invitation.organization,
                 defaults={"role": invitation.role},
             )
-            if not user.organization_id:
-                user.organization = invitation.organization
-                user.save(update_fields=["organization"])
+            if not user.current_organization_id:
+                user.current_organization = invitation.organization
+                user.save(update_fields=["current_organization"])
 
             return membership

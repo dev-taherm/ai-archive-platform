@@ -24,6 +24,12 @@ class LoginSerializer(TokenObtainPairSerializer):
         self.fields["username"].required = False
         self.fields["username"].allow_blank = True
 
+    @classmethod
+    def get_token(cls, user: User):
+        token = super().get_token(user)
+        token["current_org_id"] = str(user.current_organization_id) if user.current_organization_id else None
+        return token
+
     def validate_email(self, value: str) -> str:
         try:
             user = User.objects.get(email__iexact=value)
@@ -155,12 +161,13 @@ class UserSerializer(serializers.ModelSerializer):
     """Read-only user serializer for profile and admin views."""
 
     organization_name = serializers.CharField(
-        source="organization.name", read_only=True, default=None
+        source="current_organization.name", read_only=True, default=None
     )
     organization_slug = serializers.CharField(
-        source="organization.slug", read_only=True, default=None
+        source="current_organization.slug", read_only=True, default=None
     )
     org_role = serializers.SerializerMethodField()
+    organizations = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -172,24 +179,40 @@ class UserSerializer(serializers.ModelSerializer):
             "last_name",
             "is_active",
             "date_joined",
-            "organization",
+            "current_organization",
             "organization_name",
             "organization_slug",
             "org_role",
+            "organizations",
         ]
         read_only_fields = ["id", "email", "date_joined"]
 
     def get_org_role(self, obj) -> str | None:
-        """Return the user's role in their organization."""
-        if not obj.organization_id:
+        """Return the user's role in their current organization."""
+        if not obj.current_organization_id:
             return None
         from apps.organizations.models import Membership
 
         try:
-            membership = Membership.objects.get(user=obj, organization=obj.organization)
+            membership = Membership.objects.get(user=obj, organization=obj.current_organization)
             return membership.role
         except Membership.DoesNotExist:
             return None
+
+    def get_organizations(self, obj) -> list[dict]:
+        """Return all organizations the user belongs to."""
+        from apps.organizations.models import Membership
+
+        memberships = Membership.objects.filter(user=obj).select_related("organization")
+        return [
+            {
+                "id": str(m.organization_id),
+                "name": m.organization.name,
+                "slug": m.organization.slug,
+                "role": m.role,
+            }
+            for m in memberships
+        ]
 
 
 class TokenRefreshSerializer(serializers.Serializer):

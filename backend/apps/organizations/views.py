@@ -8,6 +8,7 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
+from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.organizations.models import Invitation, Membership, Organization
 from apps.organizations.permissions import IsOrgAdmin, IsOrgMember
@@ -23,31 +24,34 @@ logger = logging.getLogger(__name__)
 
 
 class OrganizationViewSet(viewsets.ModelViewSet):
-    """CRUD for the current user's organization."""
+    """Manage organizations the user belongs to."""
 
     serializer_class = OrganizationSerializer
-    permission_classes = [IsAuthenticated, IsOrgMember]
+    permission_classes = [IsAuthenticated]
 
     def get_permissions(self):
-        if self.action == "create_organization":
+        if self.action in ("create_organization", "list", "switch", "leave"):
             return [IsAuthenticated()]
-        if self.action in ("current", "list", "retrieve"):
+        if self.action in ("current", "retrieve"):
             return [IsAuthenticated(), IsOrgMember()]
         if self.action in ("update", "partial_update", "destroy"):
             return [IsAuthenticated(), IsOrgAdmin()]
         return [IsAuthenticated()]
 
     def get_queryset(self):
-        user = self.request.user
-        if not user.organization_id:
-            return Organization.objects.none()
-        return Organization.objects.filter(id=user.organization_id)
+        """Return all organizations the user belongs to."""
+        return Organization.objects.filter(
+            memberships__user=self.request.user,
+        ).distinct()
 
     @action(detail=False, methods=["get", "patch"])
     def current(self, request: Request) -> Response:
         """Get or update the user's current organization."""
-        org = request.user.organization
-        if not org:
+        from apps.organizations.mixins import get_user_organization
+
+        try:
+            org = get_user_organization(request.user, request)
+        except Exception:
             return Response({"detail": "No organization."}, status=status.HTTP_404_NOT_FOUND)
 
         if request.method == "PATCH":
@@ -80,6 +84,100 @@ class OrganizationViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
+    @action(detail=False, methods=["post"])
+    def switch(self, request: Request) -> Response:
+        """Switch the user's current organization.
+
+        Accepts {"organization_id": "..."} and returns a new JWT access token
+        with the updated ``current_org_id`` claim.
+        """
+        org_id = request.data.get("organization_id")
+        if not org_id:
+            return Response(
+                {"detail": "organization_id is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            org = Organization.objects.get(id=org_id)
+        except Organization.DoesNotExist:
+            return Response(
+                {"detail": "Organization not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Verify membership
+        if not Membership.objects.filter(user=request.user, organization=org).exists():
+            return Response(
+                {"detail": "You are not a member of this organization."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        # Update current org
+        request.user.current_organization = org
+        request.user.save(update_fields=["current_organization"])
+
+        # Generate new access token with updated org claim
+        from rest_framework_simplejwt.tokens import RefreshToken
+
+        refresh = RefreshToken.for_user(request.user)
+        refresh["current_org_id"] = str(org.id)
+
+        return Response({
+            "access": str(refresh.access_token),
+            "refresh": str(refresh),
+            "organization": OrganizationSerializer(org).data,
+        })
+
+    @action(detail=False, methods=["post"])
+    def leave(self, request: Request) -> Response:
+        """Leave the current organization.
+
+        Owners cannot leave (must transfer ownership or delete the org first).
+        After leaving, if the user has other orgs, switches to the most recent one.
+        """
+        org = request.user.current_organization
+        if not org:
+            return Response(
+                {"detail": "You are not in any organization."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        membership = Membership.objects.filter(
+            user=request.user, organization=org,
+        ).first()
+
+        if not membership:
+            return Response(
+                {"detail": "You are not a member of this organization."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if membership.role == Membership.OrgRole.OWNER:
+            return Response(
+                {"detail": "Owner cannot leave. Transfer ownership or delete the organization."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Delete membership
+        membership.delete()
+
+        # Find another org to switch to, or clear current org
+        other_membership = (
+            Membership.objects.filter(user=request.user)
+            .select_related("organization")
+            .order_by("-joined_at")
+            .first()
+        )
+
+        if other_membership:
+            request.user.current_organization = other_membership.organization
+        else:
+            request.user.current_organization = None
+        request.user.save(update_fields=["current_organization"])
+
+        return Response({"detail": "You have left the organization."})
+
 
 class MembershipViewSet(viewsets.ModelViewSet):
     """Manage organization members."""
@@ -88,11 +186,14 @@ class MembershipViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, IsOrgMember]
 
     def get_queryset(self):
-        user = self.request.user
-        if not user.organization_id:
+        from apps.organizations.mixins import get_user_organization
+
+        try:
+            org = get_user_organization(self.request.user, self.request)
+        except Exception:
             return Membership.objects.none()
         return Membership.objects.filter(
-            organization=user.organization,
+            organization=org,
         ).select_related("user")
 
     def get_permissions(self):
@@ -101,7 +202,10 @@ class MembershipViewSet(viewsets.ModelViewSet):
         return [IsAuthenticated(), IsOrgMember()]
 
     def perform_create(self, serializer: Any) -> None:
-        serializer.save(organization=self.request.user.organization)
+        from apps.organizations.mixins import get_user_organization
+
+        org = get_user_organization(self.request.user, self.request)
+        serializer.save(organization=org)
 
     @action(detail=True, methods=["post"], permission_classes=[IsAuthenticated, IsOrgAdmin])
     def remove(self, request: Request, pk: str | None = None) -> Response:
@@ -123,10 +227,13 @@ class InvitationViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, IsOrgMember]
 
     def get_queryset(self):
-        user = self.request.user
-        if not user.organization_id:
+        from apps.organizations.mixins import get_user_organization
+
+        try:
+            org = get_user_organization(self.request.user, self.request)
+        except Exception:
             return Invitation.objects.none()
-        return Invitation.objects.filter(organization=user.organization)
+        return Invitation.objects.filter(organization=org)
 
     def get_permissions(self):
         if self.action in ("create", "destroy", "partial_update"):
@@ -134,11 +241,14 @@ class InvitationViewSet(viewsets.ModelViewSet):
         return [IsAuthenticated(), IsOrgMember()]
 
     def create(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        from apps.organizations.mixins import get_user_organization
+
         serializer = InvitationCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        org = request.user.organization
-        if not org:
+        try:
+            org = get_user_organization(request.user, request)
+        except Exception:
             return Response(
                 {"detail": "No organization."},
                 status=status.HTTP_400_BAD_REQUEST,

@@ -60,8 +60,8 @@ class AgentViewSet(viewsets.ModelViewSet):
         agent = serializer.save(user=self.request.user)
 
         # Set organization from the creating user
-        if hasattr(self.request.user, "organization") and self.request.user.organization:
-            agent.organization = self.request.user.organization
+        if hasattr(self.request.user, "current_organization") and self.request.user.current_organization:
+            agent.organization = self.request.user.current_organization
             agent.save(update_fields=["organization"])
 
         # Auto-create an API key for the agent

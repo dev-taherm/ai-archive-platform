@@ -19,7 +19,7 @@ class IsOrgMember(BasePermission):
             return False
         return Membership.objects.filter(
             user=user,
-            organization=user.organization,
+            organization=user.current_organization,
         ).exists()
 
 
@@ -33,11 +33,11 @@ class IsOrgAdmin(BasePermission):
         user = request.user
         if not (user and user.is_authenticated):
             return False
-        if not user.organization_id:
+        if not user.current_organization_id:
             return False
         return Membership.objects.filter(
             user=user,
-            organization=user.organization,
+            organization=user.current_organization,
             role__in=(Membership.OrgRole.OWNER, Membership.OrgRole.ADMIN),
         ).exists()
 
@@ -49,11 +49,11 @@ class IsOrgOwner(BasePermission):
         user = request.user
         if not (user and user.is_authenticated):
             return False
-        if not user.organization_id:
+        if not user.current_organization_id:
             return False
         return Membership.objects.filter(
             user=user,
-            organization=user.organization,
+            organization=user.current_organization,
             role=Membership.OrgRole.OWNER,
         ).exists()
 
@@ -73,9 +73,9 @@ class IsDataOwnerOrOrgAdmin(BasePermission):
             return False
 
         # Org admins always pass.
-        if user.organization_id and Membership.objects.filter(
+        if user.current_organization_id and Membership.objects.filter(
             user=user,
-            organization=user.organization,
+            organization=user.current_organization,
             role__in=(Membership.OrgRole.OWNER, Membership.OrgRole.ADMIN),
         ).exists():
             return True
