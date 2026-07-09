@@ -22,6 +22,34 @@ pub struct AgentConfig {
     pub sync_interval_minutes: Option<u32>,
 }
 
+#[derive(Serialize, Deserialize)]
+pub struct ServerConfig {
+    pub server_url: String,
+}
+
+#[tauri::command]
+pub fn read_server_config() -> Result<ServerConfig, String> {
+    let home = std::env::var("HOME")
+        .or_else(|_| std::env::var("USERPROFILE"))
+        .map_err(|_| "Cannot determine home directory".to_string())?;
+    
+    let config_path = std::path::PathBuf::from(home).join(".basirah").join("config.json");
+    
+    if !config_path.exists() {
+        return Ok(ServerConfig {
+            server_url: String::new(),
+        });
+    }
+    
+    let content = std::fs::read_to_string(&config_path)
+        .map_err(|e| format!("Failed to read config: {e}"))?;
+    
+    let config: ServerConfig = serde_json::from_str(&content)
+        .map_err(|e| format!("Failed to parse config: {e}"))?;
+    
+    Ok(config)
+}
+
 #[tauri::command]
 pub fn get_agent_status(state: State<'_, AppState>) -> Result<AgentStatus, String> {
     let mut manager = state.agent_manager.lock().map_err(|e| e.to_string())?;

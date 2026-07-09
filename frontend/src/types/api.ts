@@ -386,6 +386,19 @@ export interface AgentDownloadManifest {
   >;
 }
 
+export interface DesktopBuildManifest {
+  version: string;
+  builds: Record<
+    string,
+    {
+      filename: string;
+      size_bytes: number;
+      sha256: string;
+      built_at: string;
+    }
+  >;
+}
+
 // --- Common ---
 
 export interface ApiError {

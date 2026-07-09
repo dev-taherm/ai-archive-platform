@@ -29,6 +29,7 @@ pub fn run() {
             commands::get_config,
             commands::update_config,
             commands::call_agent_api,
+            commands::read_server_config,
         ])
         .setup(|app| {
             let handle = app.handle().clone();

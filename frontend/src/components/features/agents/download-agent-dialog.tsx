@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useState, useEffect, useCallback } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   Download,
   Monitor,
@@ -11,11 +11,10 @@ import {
   Copy,
   ChevronDown,
   Bot,
-  Wifi,
 } from "lucide-react";
 import api from "@/lib/api";
 import { detectOS, osLabel, type OSType } from "@/lib/detect-os";
-import type { AgentSetupResponse, AgentDownloadManifest } from "@/types/api";
+import type { DesktopBuildManifest } from "@/types/api";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -24,103 +23,53 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 
 interface DownloadAgentDialogProps {
   open: boolean;
   onClose: () => void;
 }
 
-type Step = "creating" | "download" | "instructions" | "waiting" | "connected";
+type Step = "download" | "instructions" | "done";
 
 export function DownloadAgentDialog({ open, onClose }: DownloadAgentDialogProps) {
-  const [step, setStep] = useState<Step>("creating");
+  const [step, setStep] = useState<Step>("download");
   const [selectedOS, setSelectedOS] = useState<OSType>("linux");
-  const [agentData, setAgentData] = useState<AgentSetupResponse | null>(null);
   const [showAllOS, setShowAllOS] = useState(false);
   const [downloading, setDownloading] = useState(false);
-  const agentsCountBeforeRef = useRef<number | null>(null);
 
   useEffect(() => {
     setSelectedOS(detectOS());
   }, []);
 
-  const setupMutation = useMutation({
-    mutationFn: async () => {
-      const res = await api.post<AgentSetupResponse>("/agents/setup", {
-        name: `Edge Agent (${navigator.platform})`,
-        platform: detectOS(),
-        hostname: navigator.userAgent.split(" ").pop() || "",
-      });
-      return res.data;
-    },
-    onSuccess: (data) => {
-      setAgentData(data);
-      agentsCountBeforeRef.current = data.existing_agents_count;
-      setStep("download");
-    },
-  });
-
-  // Auto-trigger setup on open
-  useEffect(() => {
-    if (open && step === "creating" && !agentData) {
-      setupMutation.mutate();
-    }
-  }, [open]);
-
-  // Poll agents list when waiting — detect new agent by count increase
-  const { data: agentsList } = useQuery({
-    queryKey: ["agents"],
-    queryFn: async () => {
-      const res = await api.get("/agents");
-      const data = res.data;
-      return Array.isArray(data) ? data : data.results || [];
-    },
-    enabled: step === "waiting",
-    refetchInterval: 3000,
-  });
-
-  // Fetch build manifest to know which platforms are available
+  // Fetch desktop manifest to know which platforms are available
   const { data: manifest } = useQuery({
-    queryKey: ["agents", "manifest"],
+    queryKey: ["agents", "desktop-manifest"],
     queryFn: async () => {
-      const res = await api.get<AgentDownloadManifest>("/agents/manifest");
+      const res = await api.get<DesktopBuildManifest>("/agents/desktop-manifest");
       return res.data;
     },
   });
 
   const isOSAvailable = (os: OSType): boolean => {
-    if (!manifest?.builds) return true;
-    const triple =
-      os === "linux"
-        ? "x86_64-unknown-linux-gnu"
-        : os === "darwin"
-          ? "aarch64-apple-darwin"
-          : "x86_64-pc-windows-msvc";
-    return triple in manifest.builds;
+    if (!manifest?.builds) return false;
+    if (os === "linux") return "linux-x86_64" in manifest.builds;
+    if (os === "darwin") return "darwin-arm64" in manifest.builds || "darwin-x86_64" in manifest.builds;
+    if (os === "windows") return "windows-x86_64" in manifest.builds;
+    return false;
   };
 
-  useEffect(() => {
-    if (step === "waiting" && agentsList && agentsCountBeforeRef.current !== null) {
-      if (agentsList.length > agentsCountBeforeRef.current) {
-        setStep("connected");
-      }
-    }
-  }, [agentsList, step]);
-
   const handleDownload = useCallback(async () => {
-    if (!agentData) return;
     setDownloading(true);
     try {
       const res = await api.get(
-        `/agents/download-package?os=${selectedOS}&jwt_token=${encodeURIComponent(agentData.jwt_token)}`,
+        `/agents/download-desktop?os=${selectedOS}`,
         { responseType: "blob" },
       );
       const blob = new Blob([res.data], { type: "application/zip" });
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = "edge-agent.zip";
+      a.download = `basirah-desktop-${selectedOS}.zip`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
@@ -131,7 +80,7 @@ export function DownloadAgentDialog({ open, onClose }: DownloadAgentDialogProps)
     } finally {
       setDownloading(false);
     }
-  }, [agentData, selectedOS]);
+  }, [selectedOS]);
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
@@ -151,9 +100,9 @@ export function DownloadAgentDialog({ open, onClose }: DownloadAgentDialogProps)
                 <Bot className="h-6 w-6 text-primary" />
               </div>
               <div>
-                <CardTitle>Set Up Edge Agent</CardTitle>
+                <CardTitle>Download Basirah Desktop</CardTitle>
                 <CardDescription>
-                  Download and install the agent to start processing documents
+                  Install the desktop app to start processing documents
                 </CardDescription>
               </div>
             </div>
@@ -163,14 +112,6 @@ export function DownloadAgentDialog({ open, onClose }: DownloadAgentDialogProps)
           </div>
         </CardHeader>
         <CardContent className="space-y-6">
-          {/* Step: Creating */}
-          {step === "creating" && (
-            <div className="flex flex-col items-center py-8 gap-4">
-              <Loader2 className="h-8 w-8 animate-spin text-primary" />
-              <p className="text-muted-foreground">Setting up your agent...</p>
-            </div>
-          )}
-
           {/* Step: Download */}
           {step === "download" && (
             <div className="space-y-4">
@@ -180,7 +121,7 @@ export function DownloadAgentDialog({ open, onClose }: DownloadAgentDialogProps)
                   Download for {osLabel(selectedOS)}
                 </h3>
                 <p className="text-sm text-muted-foreground mt-1">
-                  The agent will auto-register when you run it
+                  The server URL is pre-configured — just install and log in
                 </p>
               </div>
 
@@ -188,7 +129,7 @@ export function DownloadAgentDialog({ open, onClose }: DownloadAgentDialogProps)
                 <Button
                   size="lg"
                   onClick={handleDownload}
-                  disabled={downloading}
+                  disabled={downloading || !isOSAvailable(selectedOS)}
                   className="px-8"
                 >
                   {downloading ? (
@@ -196,9 +137,15 @@ export function DownloadAgentDialog({ open, onClose }: DownloadAgentDialogProps)
                   ) : (
                     <Download className="h-5 w-5 mr-2" />
                   )}
-                  {downloading ? "Downloading..." : "Download Edge Agent"}
+                  {downloading ? "Downloading..." : "Download Basirah Desktop"}
                 </Button>
               </div>
+
+              {!isOSAvailable(selectedOS) && manifest?.builds && Object.keys(manifest.builds).length > 0 && (
+                <p className="text-center text-sm text-muted-foreground">
+                  Desktop app not yet available for {osLabel(selectedOS)}
+                </p>
+              )}
 
               <div className="text-center">
                 <button
@@ -254,35 +201,19 @@ export function DownloadAgentDialog({ open, onClose }: DownloadAgentDialogProps)
                       </code>{" "}
                       (double-click or in Command Prompt)
                     </li>
-                    <li>
-                      Start the agent:
-                      <div className="relative mt-1">
-                        <code className="block bg-background p-2 rounded text-xs">
-                          %USERPROFILE%\.edge-agent\edge-agent.exe run
-                        </code>
-                        <button
-                          onClick={() =>
-                            copyToClipboard(
-                              "%USERPROFILE%\\.edge-agent\\edge-agent.exe run"
-                            )
-                          }
-                          className="absolute right-2 top-2 p-1 hover:bg-muted rounded"
-                        >
-                          <Copy className="h-3 w-3" />
-                        </button>
-                      </div>
-                    </li>
+                    <li>Open <strong>Basirah Desktop</strong> from your Start Menu</li>
+                    <li>Log in with your email and password</li>
                   </ol>
                 ) : (
                   <ol className="list-decimal list-inside space-y-2 text-sm text-muted-foreground">
                     <li>Extract the zip:</li>
                     <div className="relative">
                       <code className="block bg-background p-2 rounded text-xs">
-                        unzip edge-agent.zip -d edge-agent
+                        unzip basirah-desktop.zip -d basirah-desktop
                       </code>
                       <button
                         onClick={() =>
-                          copyToClipboard("unzip edge-agent.zip -d edge-agent")
+                          copyToClipboard("unzip basirah-desktop.zip -d basirah-desktop")
                         }
                         className="absolute right-2 top-2 p-1 hover:bg-muted rounded"
                       >
@@ -292,12 +223,12 @@ export function DownloadAgentDialog({ open, onClose }: DownloadAgentDialogProps)
                     <li>Run the installer:</li>
                     <div className="relative">
                       <code className="block bg-background p-2 rounded text-xs">
-                        cd edge-agent && chmod +x install.sh && ./install.sh
+                        cd basirah-desktop && chmod +x install.sh && ./install.sh
                       </code>
                       <button
                         onClick={() =>
                           copyToClipboard(
-                            "cd edge-agent && chmod +x install.sh && ./install.sh"
+                            "cd basirah-desktop && chmod +x install.sh && ./install.sh"
                           )
                         }
                         className="absolute right-2 top-2 p-1 hover:bg-muted rounded"
@@ -305,61 +236,39 @@ export function DownloadAgentDialog({ open, onClose }: DownloadAgentDialogProps)
                         <Copy className="h-3 w-3" />
                       </button>
                     </div>
-                    <li>Start the agent:</li>
-                    <div className="relative">
-                      <code className="block bg-background p-2 rounded text-xs">
-                        ~/.edge-agent/edge-agent run
-                      </code>
-                      <button
-                        onClick={() =>
-                          copyToClipboard("~/.edge-agent/edge-agent run")
-                        }
-                        className="absolute right-2 top-2 p-1 hover:bg-muted rounded"
-                      >
-                        <Copy className="h-3 w-3" />
-                      </button>
-                    </div>
+                    <li>Open <strong>Basirah Desktop</strong> from your applications</li>
+                    <li>Log in with your email and password</li>
                   </ol>
                 )}
               </div>
 
+              <div className="bg-primary/5 border border-primary/20 rounded-lg p-3">
+                <p className="text-sm text-primary">
+                  The server URL is pre-configured. You only need to enter your email and password.
+                </p>
+              </div>
+
               <div className="flex justify-center">
-                <Button onClick={() => setStep("waiting")}>
-                  <Wifi className="h-4 w-4 mr-2" />
-                  I&apos;ve started the agent
+                <Button onClick={() => setStep("done")}>
+                  <CheckCircle2 className="h-4 w-4 mr-2" />
+                  Got it
                 </Button>
               </div>
             </div>
           )}
 
-          {/* Step: Waiting for connection */}
-          {step === "waiting" && (
-            <div className="flex flex-col items-center py-8 gap-4">
-              <div className="relative">
-                <Loader2 className="h-12 w-12 animate-spin text-primary" />
-                <Wifi className="h-5 w-5 absolute bottom-0 right-0 text-primary animate-pulse" />
-              </div>
-              <h3 className="text-lg font-semibold">
-                Waiting for agent to connect...
-              </h3>
-              <p className="text-sm text-muted-foreground text-center max-w-md">
-                Make sure the agent is running. It will auto-register and connect
-                within a few seconds.
-              </p>
-            </div>
-          )}
-
-          {/* Step: Connected */}
-          {step === "connected" && (
+          {/* Step: Done */}
+          {step === "done" && (
             <div className="flex flex-col items-center py-8 gap-4">
               <div className="p-3 bg-green-500/10 rounded-full">
                 <CheckCircle2 className="h-12 w-12 text-green-500" />
               </div>
               <h3 className="text-lg font-semibold text-green-600">
-                Agent Connected!
+                You&apos;re all set!
               </h3>
-              <p className="text-sm text-muted-foreground text-center">
-                Your edge agent is now online and ready to process documents.
+              <p className="text-sm text-muted-foreground text-center max-w-md">
+                Install Basirah Desktop, open it, and log in with your email and password.
+                The server URL is already configured.
               </p>
               <Button onClick={onClose}>Go to Dashboard</Button>
             </div>

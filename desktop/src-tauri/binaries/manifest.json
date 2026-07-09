@@ -1,0 +1,12 @@
+{
+  "version": "0.1.0",
+  "builds": {
+    "linux-x86_64": {
+      "filename": "edge-agent",
+      "triple": "x86_64-unknown-linux-gnu",
+      "size_bytes": 56985176,
+      "sha256": "f924a798da49a4d53b0de3fe8191d83af54f7633427c213602714959ae2c7465",
+      "built_at": "2026-07-09T01:30:48.282958+00:00"
+    }
+  }
+}

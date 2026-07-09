@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useAuthStore } from "../stores/auth-store";
@@ -11,13 +11,17 @@ export default function LoginPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const login = useAuthStore((s) => s.login);
+  const serverUrl = useAuthStore((s) => s.serverUrl);
+  const loadServerConfig = useAuthStore((s) => s.loadServerConfig);
 
-  const [serverUrl, setServerUrl] = useState("http://localhost:8000");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [apiKey, setApiKey] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    loadServerConfig();
+  }, [loadServerConfig]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -25,7 +29,7 @@ export default function LoginPage() {
     setError("");
 
     try {
-      const resp = await fetch(`${serverUrl}/api/v1/auth/login/`, {
+      const resp = await fetch(`${serverUrl}/api/v1/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
@@ -59,15 +63,6 @@ export default function LoginPage() {
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium">{t("login.serverUrl")}</label>
-              <Input
-                type="url"
-                placeholder={t("login.serverUrlPlaceholder")}
-                value={serverUrl}
-                onChange={(e) => setServerUrl(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
               <label className="text-sm font-medium">{t("login.email")}</label>
               <Input
                 type="email"
@@ -87,19 +82,15 @@ export default function LoginPage() {
                 required
               />
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">{t("login.apiKey")}</label>
-              <Input
-                type="text"
-                placeholder={t("login.apiKeyPlaceholder")}
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-              />
-            </div>
             {error && (
               <p className="text-sm text-destructive">{error}</p>
             )}
-            <Button type="submit" className="w-full" disabled={loading}>
+            {!serverUrl && (
+              <p className="text-sm text-muted-foreground text-center">
+                Loading server configuration...
+              </p>
+            )}
+            <Button type="submit" className="w-full" disabled={loading || !serverUrl}>
               {loading ? t("login.submitting") : t("login.submit")}
             </Button>
             <p className="text-center text-xs text-muted-foreground">
