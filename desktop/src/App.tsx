@@ -4,6 +4,7 @@ import { useAuthStore } from "./stores/auth-store";
 import LoginPage from "./pages/LoginPage";
 import DashboardPage from "./pages/DashboardPage";
 import SettingsPage from "./pages/SettingsPage";
+import FoldersPage from "./pages/FoldersPage";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
@@ -23,6 +24,14 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <DashboardPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/folders"
+            element={
+              <ProtectedRoute>
+                <FoldersPage />
               </ProtectedRoute>
             }
           />

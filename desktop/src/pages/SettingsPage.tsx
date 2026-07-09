@@ -1,44 +1,68 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useConfigStore } from "../stores/config-store";
+import { useAgentStore } from "../stores/agent-store";
+import { agentApi } from "../lib/agent-api";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "../components/ui/card";
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardContent,
+} from "../components/ui/card";
 import { LanguageSwitcher } from "../components/LanguageSwitcher";
+import { LogsViewer } from "../components/LogsViewer";
+import { ArrowLeft, Save } from "lucide-react";
 
 export default function SettingsPage() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
-  const { serverUrl, apiKey, agentName, folders, setConfig } = useConfigStore();
+  const { serverUrl, apiKey, agentName, setConfig } = useConfigStore();
+  const { logs, fetchLogs } = useAgentStore();
 
   const [localServerUrl, setLocalServerUrl] = useState(serverUrl);
   const [localApiKey, setLocalApiKey] = useState(apiKey);
   const [localAgentName, setLocalAgentName] = useState(agentName);
-  const [newFolder, setNewFolder] = useState("");
-  const [localFolders, setLocalFolders] = useState<string[]>(folders);
+  const [ocrLang, setOcrLang] = useState("en");
   const [saved, setSaved] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  const handleSave = () => {
-    setConfig({
-      serverUrl: localServerUrl,
-      apiKey: localApiKey,
-      agentName: localAgentName,
-      folders: localFolders,
-    });
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
-  };
+  useEffect(() => {
+    agentApi
+      .config()
+      .then((cfg) => {
+        setLocalServerUrl(cfg.server_url);
+        setLocalApiKey(cfg.api_key);
+        setLocalAgentName(cfg.agent_name);
+        setOcrLang(cfg.ocr_lang);
+      })
+      .catch(() => {});
+    fetchLogs(200);
+  }, []);
 
-  const handleAddFolder = () => {
-    if (newFolder.trim() && !localFolders.includes(newFolder.trim())) {
-      setLocalFolders([...localFolders, newFolder.trim()]);
-      setNewFolder("");
+  const handleSave = async () => {
+    setLoading(true);
+    try {
+      setConfig({
+        serverUrl: localServerUrl,
+        apiKey: localApiKey,
+        agentName: localAgentName,
+      });
+      await agentApi.updateConfig({
+        server_url: localServerUrl,
+        api_key: localApiKey,
+        agent_name: localAgentName,
+        ocr_lang: ocrLang,
+      });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch {
+      // ignore
+    } finally {
+      setLoading(false);
     }
-  };
-
-  const handleRemoveFolder = (folder: string) => {
-    setLocalFolders(localFolders.filter((f) => f !== folder));
   };
 
   return (
@@ -47,8 +71,13 @@ export default function SettingsPage() {
         <h1 className="text-lg font-semibold">{t("settings.title")}</h1>
         <div className="flex items-center gap-2">
           <LanguageSwitcher />
-          <Button variant="ghost" size="sm" onClick={() => navigate("/dashboard")}>
-            ← {t("dashboard.title")}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => navigate("/dashboard")}
+          >
+            <ArrowLeft className="h-4 w-4 mr-1" />
+            {t("dashboard.title")}
           </Button>
         </div>
       </header>
@@ -60,7 +89,9 @@ export default function SettingsPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium">{t("settings.agentName")}</label>
+              <label className="text-sm font-medium">
+                {t("settings.agentName")}
+              </label>
               <Input
                 placeholder={t("settings.agentNamePlaceholder")}
                 value={localAgentName}
@@ -68,7 +99,9 @@ export default function SettingsPage() {
               />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">{t("settings.language")}</label>
+              <label className="text-sm font-medium">
+                {t("settings.language")}
+              </label>
               <div className="flex gap-2">
                 <Button
                   variant={i18n.language === "en" ? "default" : "outline"}
@@ -86,6 +119,16 @@ export default function SettingsPage() {
                 </Button>
               </div>
             </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">
+                {t("settings.ocrLang")}
+              </label>
+              <Input
+                value={ocrLang}
+                onChange={(e) => setOcrLang(e.target.value)}
+                placeholder="en"
+              />
+            </div>
           </CardContent>
         </Card>
 
@@ -95,7 +138,9 @@ export default function SettingsPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium">{t("settings.serverUrl")}</label>
+              <label className="text-sm font-medium">
+                {t("settings.serverUrl")}
+              </label>
               <Input
                 type="url"
                 placeholder="https://app.basirah.com"
@@ -104,7 +149,9 @@ export default function SettingsPage() {
               />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">{t("settings.apiKey")}</label>
+              <label className="text-sm font-medium">
+                {t("settings.apiKey")}
+              </label>
               <Input
                 type="text"
                 placeholder="your-api-key"
@@ -115,50 +162,18 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>{t("settings.folders")}</CardTitle>
-            <CardDescription>
-              {localFolders.length} folder(s) configured
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex gap-2">
-              <Input
-                placeholder="/path/to/folder"
-                value={newFolder}
-                onChange={(e) => setNewFolder(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleAddFolder()}
-              />
-              <Button variant="outline" onClick={handleAddFolder}>
-                {t("settings.addFolder")}
-              </Button>
-            </div>
-            <div className="space-y-2">
-              {localFolders.map((folder) => (
-                <div key={folder} className="flex items-center justify-between rounded-md border px-3 py-2">
-                  <span className="text-sm font-mono">{folder}</span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleRemoveFolder(folder)}
-                  >
-                    {t("common.delete")}
-                  </Button>
-                </div>
-              ))}
-              {localFolders.length === 0 && (
-                <p className="text-sm text-muted-foreground">No folders added yet</p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
+        <LogsViewer logs={logs.slice(-50)} />
 
         <div className="flex justify-end gap-2">
           {saved && (
-            <p className="text-sm text-green-600 self-center">{t("settings.saved")}</p>
+            <p className="text-sm text-green-600 self-center">
+              {t("settings.saved")}
+            </p>
           )}
-          <Button onClick={handleSave}>{t("settings.save")}</Button>
+          <Button onClick={handleSave} disabled={loading}>
+            <Save className="h-4 w-4 mr-1" />
+            {t("settings.save")}
+          </Button>
         </div>
       </main>
     </div>

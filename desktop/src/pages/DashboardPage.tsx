@@ -1,58 +1,65 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useAuthStore } from "../stores/auth-store";
+import { useAgentStore } from "../stores/agent-store";
 import { Button } from "../components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
 import { LanguageSwitcher } from "../components/LanguageSwitcher";
-
-interface AgentStatus {
-  running: boolean;
-  port: number;
-}
+import { StatsCards } from "../components/StatsCards";
+import { FileTable } from "../components/FileTable";
+import { LogsViewer } from "../components/LogsViewer";
+import { ScanButton } from "../components/ScanButton";
+import {
+  Play,
+  Square,
+  FolderOpen,
+  RefreshCw,
+  Settings,
+} from "lucide-react";
 
 export default function DashboardPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const logout = useAuthStore((s) => s.logout);
-
-  const [status, setStatus] = useState<AgentStatus | null>(null);
-  const [loading, setLoading] = useState(true);
+  const {
+    connected,
+    status,
+    files,
+    logs,
+    loading,
+    fetchStatus,
+    fetchFiles,
+    fetchLogs,
+    startWatcher,
+    stopWatcher,
+    syncNow,
+  } = useAgentStore();
 
   useEffect(() => {
-    checkStatus();
-    const interval = setInterval(checkStatus, 5000);
+    fetchStatus();
+    fetchFiles();
+    fetchLogs(50);
+    const interval = setInterval(() => {
+      fetchStatus();
+      fetchFiles();
+    }, 5000);
     return () => clearInterval(interval);
   }, []);
-
-  const checkStatus = async () => {
-    try {
-      const resp = await fetch("http://localhost:8420/api/health");
-      if (resp.ok) {
-        setStatus({ running: true, port: 8420 });
-      } else {
-        setStatus({ running: false, port: 8420 });
-      }
-    } catch {
-      setStatus({ running: false, port: 8420 });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleStart = async () => {
-    try {
-      await fetch("http://localhost:8420/api/watch/start", { method: "POST" });
-      setTimeout(checkStatus, 1000);
-    } catch {
-      // Agent not running
-    }
-  };
 
   const handleLogout = () => {
     logout();
     navigate("/login");
+  };
+
+  const stats = status?.stats || {
+    total: 0,
+    synced: 0,
+    pending: 0,
+    processing: 0,
+    completed: 0,
+    failed: 0,
   };
 
   return (
@@ -61,7 +68,20 @@ export default function DashboardPage() {
         <h1 className="text-lg font-semibold">{t("dashboard.title")}</h1>
         <div className="flex items-center gap-2">
           <LanguageSwitcher />
-          <Button variant="ghost" size="sm" onClick={() => navigate("/settings")}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => navigate("/folders")}
+          >
+            <FolderOpen className="h-4 w-4 mr-1" />
+            {t("nav.folders")}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => navigate("/settings")}
+          >
+            <Settings className="h-4 w-4 mr-1" />
             {t("dashboard.viewSettings")}
           </Button>
           <Button variant="ghost" size="sm" onClick={handleLogout}>
@@ -70,62 +90,73 @@ export default function DashboardPage() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-4xl p-6 space-y-6">
+      <main className="mx-auto max-w-6xl p-6 space-y-6">
+        {/* Agent Status */}
         <Card>
           <CardHeader>
             <CardTitle>{t("dashboard.agentStatus")}</CardTitle>
           </CardHeader>
           <CardContent>
-            {loading ? (
-              <p className="text-muted-foreground">{t("common.loading")}</p>
-            ) : (
-              <div className="flex items-center gap-4">
-                <Badge variant={status?.running ? "success" : "destructive"}>
-                  {status?.running ? t("dashboard.running") : t("dashboard.stopped")}
-                </Badge>
-                {status?.running ? (
-                  <Button variant="outline" size="sm">
+            <div className="flex items-center gap-4 flex-wrap">
+              <Badge variant={connected ? "success" : "destructive"}>
+                {connected ? t("dashboard.running") : t("dashboard.stopped")}
+              </Badge>
+              {status && (
+                <span className="text-sm text-muted-foreground">
+                  v{status.version} — uptime {Math.floor(status.uptime_seconds / 60)}m
+                </span>
+              )}
+              <div className="flex-1" />
+              {connected ? (
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={stopWatcher}
+                    disabled={loading}
+                  >
+                    <Square className="h-4 w-4 mr-1" />
                     {t("dashboard.stop")}
                   </Button>
-                ) : (
-                  <Button variant="outline" size="sm" onClick={handleStart}>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => startWatcher()}
+                    disabled={loading}
+                  >
+                    <Play className="h-4 w-4 mr-1" />
                     {t("dashboard.start")}
                   </Button>
-                )}
-              </div>
-            )}
+                </>
+              ) : null}
+              <ScanButton />
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => syncNow()}
+                disabled={loading || !connected}
+              >
+                <RefreshCw className="h-4 w-4 mr-1" />
+                {t("dashboard.syncNow")}
+              </Button>
+            </div>
           </CardContent>
         </Card>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Card className="cursor-pointer hover:border-primary/50 transition-colors">
-            <CardHeader>
-              <CardTitle className="text-base">{t("dashboard.scanFolder")}</CardTitle>
-            </CardHeader>
-          </Card>
-          <Card className="cursor-pointer hover:border-primary/50 transition-colors">
-            <CardHeader>
-              <CardTitle className="text-base">{t("dashboard.syncNow")}</CardTitle>
-            </CardHeader>
-          </Card>
-          <Card
-            className="cursor-pointer hover:border-primary/50 transition-colors"
-            onClick={() => navigate("/settings")}
-          >
-            <CardHeader>
-              <CardTitle className="text-base">{t("dashboard.viewSettings")}</CardTitle>
-            </CardHeader>
-          </Card>
-        </div>
+        {/* Stats */}
+        <StatsCards
+          total={stats.total}
+          completed={stats.completed}
+          synced={stats.synced}
+          pending={stats.pending}
+          failed={stats.failed}
+        />
 
-        <Card>
-          <CardHeader>
-            <CardTitle>{t("dashboard.recentFiles")}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-muted-foreground">{t("dashboard.noFiles")}</p>
-          </CardContent>
-        </Card>
+        {/* Recent Files */}
+        <FileTable files={files.slice(0, 10)} />
+
+        {/* Logs */}
+        <LogsViewer logs={logs.slice(-30)} />
       </main>
     </div>
   );

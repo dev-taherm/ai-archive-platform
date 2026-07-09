@@ -16,13 +16,14 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from edge_agent.config import EdgeAgentConfig, load_config
 from edge_agent.db.local_db import LocalDB
+from edge_agent.watcher.monitor import FolderWatcher
 
 logger = logging.getLogger("edge_agent.api")
 
 _config: EdgeAgentConfig | None = None
 _db: LocalDB | None = None
+_watcher: FolderWatcher | None = None
 _start_time: float = 0.0
-_watcher_active: bool = False
 
 
 def get_config() -> EdgeAgentConfig:
@@ -39,15 +40,25 @@ def get_db() -> LocalDB:
     return _db
 
 
+def get_watcher() -> FolderWatcher:
+    global _watcher
+    if _watcher is None:
+        _watcher = FolderWatcher(debounce_seconds=get_config().watcher.debounce_seconds)
+    return _watcher
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _config, _db, _start_time
+    global _config, _db, _watcher, _start_time
     _config = load_config()
     Path(_config.data_dir).mkdir(parents=True, exist_ok=True)
     _db = LocalDB(_config.db_path)
+    _watcher = FolderWatcher(debounce_seconds=_config.watcher.debounce_seconds)
     _start_time = time.time()
     logger.info("Edge Agent API started on localhost:8420")
     yield
+    if _watcher:
+        _watcher.stop_all()
     logger.info("Edge Agent API shutting down")
 
 
