@@ -133,9 +133,9 @@ export const agentApi = {
   stopWatcher: () =>
     request<{ status: string }>("/watch/stop", { method: "POST" }),
 
-  register: (jwt_token: string) =>
+  register: (jwt_token: string, server_url?: string) =>
     request<{ status: string; result: unknown }>("/register", {
       method: "POST",
-      body: JSON.stringify({ jwt_token }),
+      body: JSON.stringify({ jwt_token, server_url: server_url || null }),
     }),
 };

@@ -12,6 +12,7 @@ pub struct AppState {
     pub agent_manager: Mutex<AgentManager>,
     pub auth_tokens: Arc<Mutex<Option<AuthTokens>>>,
     pub auth_stop: Arc<AtomicBool>,
+    pub agent_start_error: Arc<Mutex<Option<String>>>,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -27,9 +28,12 @@ pub fn run() {
             agent_manager: Mutex::new(AgentManager::new()),
             auth_tokens: Arc::new(Mutex::new(None)),
             auth_stop: Arc::new(AtomicBool::new(false)),
+            agent_start_error: Arc::new(Mutex::new(None)),
         })
         .invoke_handler(tauri::generate_handler![
             commands::get_agent_status,
+            commands::agent_health,
+            commands::get_agent_start_error,
             commands::start_agent,
             commands::stop_agent,
             commands::get_config,
@@ -49,6 +53,9 @@ pub fn run() {
             let mut manager = state.agent_manager.lock().map_err(|e| e.to_string())?;
             if let Err(e) = manager.start(&handle) {
                 eprintln!("Failed to auto-start edge agent: {e}");
+                if let Ok(mut err) = state.agent_start_error.lock() {
+                    *err = Some(e);
+                }
             }
 
             Ok(())

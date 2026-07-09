@@ -65,6 +65,21 @@ pub fn get_agent_status(state: State<'_, AppState>) -> Result<AgentStatus, Strin
 }
 
 #[tauri::command]
+pub async fn agent_health(state: State<'_, AppState>) -> Result<bool, String> {
+    let port = state.agent_manager.lock().map_err(|e| e.to_string())?.port();
+    let resp = reqwest::get(format!("http://localhost:{port}/api/health"))
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(resp.status().is_success())
+}
+
+#[tauri::command]
+pub fn get_agent_start_error(state: State<'_, AppState>) -> Result<Option<String>, String> {
+    let err = state.agent_start_error.lock().map_err(|e| e.to_string())?;
+    Ok(err.clone())
+}
+
+#[tauri::command]
 pub fn start_agent(state: State<'_, AppState>, app: AppHandle) -> Result<String, String> {
     let mut manager = state.agent_manager.lock().map_err(|e| e.to_string())?;
     manager.start(&app)

@@ -129,16 +129,30 @@ def _save_config_to_yaml(config):
 
 # --- Agent Operations ---
 
+class RegisterRequest(BaseModel):
+    jwt_token: str
+    server_url: str | None = None
+
+
 @router.post("/register")
-async def register_agent(jwt_token: str | None = None):
-    """Register agent with the SaaS platform."""
+async def register_agent(req: RegisterRequest | None = None):
+    """Register agent with the SaaS platform.
+
+    Accepts JSON body: { jwt_token, server_url? }
+    """
     from edge_agent.sync.manager import SyncManager
     from edge_agent.db.local_db import LocalDB
     config = get_config()
+
+    # Update server_url if provided (desktop app sends it)
+    if req and req.server_url:
+        config.server.url = req.server_url
+        _save_config_to_yaml(config)
+
     db = LocalDB(config.db_path)
     sync = SyncManager(config, db)
     try:
-        token = jwt_token or config.server.jwt_token
+        token = (req.jwt_token if req else None) or config.server.jwt_token
         if not token:
             raise HTTPException(status_code=400, detail="JWT token required")
         result = sync.register(name=config.agent_name, jwt_token=token)

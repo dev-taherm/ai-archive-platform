@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-shell";
 import { useAuthStore } from "../stores/auth-store";
+import { agentApi } from "../lib/agent-api";
 import { Button } from "../components/ui/button";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "../components/ui/card";
 import { LanguageSwitcher } from "../components/LanguageSwitcher";
@@ -13,6 +14,8 @@ type AuthTokens = {
   refresh_token: string;
 };
 
+type LoginStep = "checking-agent" | "idle" | "waiting" | "registering" | "error";
+
 export default function LoginPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -21,13 +24,43 @@ export default function LoginPage() {
   const webUrl = useAuthStore((s) => s.webUrl);
   const loadServerConfig = useAuthStore((s) => s.loadServerConfig);
 
-  const [status, setStatus] = useState<"idle" | "waiting" | "error">("idle");
+  const [step, setStep] = useState<LoginStep>("checking-agent");
   const [error, setError] = useState("");
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     loadServerConfig();
   }, [loadServerConfig]);
+
+  // Check agent sidecar health on mount
+  useEffect(() => {
+    if (!serverUrl) return;
+    let cancelled = false;
+    const checkHealth = async () => {
+      try {
+        const startError: string | null = await invoke("get_agent_start_error");
+        if (startError) {
+          if (!cancelled) {
+            setError("Agent binary not found. Please reinstall Basirah Desktop.");
+            setStep("error");
+          }
+          return;
+        }
+        const healthy: boolean = await invoke("agent_health");
+        if (!cancelled) {
+          setStep(healthy ? "idle" : "error");
+          if (!healthy) setError("Agent is not responding. Please restart the application.");
+        }
+      } catch {
+        if (!cancelled) {
+          setError("Agent is not running. Please restart the application.");
+          setStep("error");
+        }
+      }
+    };
+    checkHealth();
+    return () => { cancelled = true; };
+  }, [serverUrl]);
 
   useEffect(() => {
     return () => {
@@ -38,7 +71,7 @@ export default function LoginPage() {
   const handleLogin = async () => {
     if (!serverUrl || !webUrl) return;
 
-    setStatus("waiting");
+    setStep("waiting");
     setError("");
 
     try {
@@ -54,7 +87,19 @@ export default function LoginPage() {
           if (tokens) {
             if (pollRef.current) clearInterval(pollRef.current);
             await invoke("stop_auth_server");
-            login(serverUrl, tokens.access_token);
+
+            // Register the agent sidecar with the backend
+            setStep("registering");
+            try {
+              await agentApi.register(tokens.access_token, serverUrl);
+            } catch (regErr) {
+              setError(`Agent registration failed: ${String(regErr)}`);
+              setStep("error");
+              return;
+            }
+
+            // Store tokens and proceed
+            login(serverUrl, tokens.access_token, tokens.refresh_token);
             navigate("/dashboard");
           }
         } catch {
@@ -62,7 +107,7 @@ export default function LoginPage() {
         }
       }, 1000);
     } catch (err) {
-      setStatus("idle");
+      setStep("idle");
       setError(String(err) || t("login.error"));
     }
   };
@@ -82,25 +127,39 @@ export default function LoginPage() {
           {error && (
             <p className="text-sm text-destructive text-center">{error}</p>
           )}
-          {!serverUrl && (
-            <p className="text-sm text-muted-foreground text-center">
-              Loading server configuration...
-            </p>
-          )}
-          <Button
-            className="w-full"
-            onClick={handleLogin}
-            disabled={status === "waiting" || !serverUrl || !webUrl}
-          >
-            {status === "waiting"
-              ? t("login.waiting") || "Waiting for authentication..."
-              : t("login.browser") || "Login in Browser"}
-          </Button>
-          {status === "waiting" && (
-            <div className="flex flex-col items-center gap-2 pt-2">
+          {step === "checking-agent" && (
+            <div className="flex flex-col items-center gap-2">
               <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-              <p className="text-xs text-muted-foreground">
+              <p className="text-sm text-muted-foreground">Checking agent...</p>
+            </div>
+          )}
+          {step === "error" && (
+            <Button className="w-full" onClick={() => { setStep("checking-agent"); setError(""); }}>
+              Retry
+            </Button>
+          )}
+          {step === "idle" && (
+            <Button
+              className="w-full"
+              onClick={handleLogin}
+              disabled={!serverUrl || !webUrl}
+            >
+              {t("login.browser") || "Login in Browser"}
+            </Button>
+          )}
+          {step === "waiting" && (
+            <div className="flex flex-col items-center gap-2">
+              <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+              <p className="text-sm text-muted-foreground">
                 A browser window has opened. Complete login there.
+              </p>
+            </div>
+          )}
+          {step === "registering" && (
+            <div className="flex flex-col items-center gap-2">
+              <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+              <p className="text-sm text-muted-foreground">
+                Registering agent with server...
               </p>
             </div>
           )}
