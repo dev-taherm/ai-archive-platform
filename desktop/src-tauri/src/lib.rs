@@ -4,6 +4,7 @@ mod tray;
 
 use agent::AgentManager;
 use std::sync::Mutex;
+use tauri::Manager;
 
 pub struct AppState {
     pub agent_manager: Mutex<AgentManager>,

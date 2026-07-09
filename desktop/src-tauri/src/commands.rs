@@ -19,7 +19,7 @@ pub struct AgentConfig {
 
 #[tauri::command]
 pub fn get_agent_status(state: State<'_, AppState>) -> Result<AgentStatus, String> {
-    let manager = state.agent_manager.lock().map_err(|e| e.to_string())?;
+    let mut manager = state.agent_manager.lock().map_err(|e| e.to_string())?;
     Ok(AgentStatus {
         running: manager.is_running(),
         port: manager.port(),

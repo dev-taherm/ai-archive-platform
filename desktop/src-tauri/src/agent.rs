@@ -1,5 +1,4 @@
 use std::process::{Child, Command};
-use std::sync::Mutex;
 
 pub struct AgentManager {
     process: Option<Child>,
@@ -14,7 +13,7 @@ impl AgentManager {
         }
     }
 
-    pub fn is_running(&self) -> bool {
+    pub fn is_running(&mut self) -> bool {
         if let Some(ref mut child) = self.process {
             match child.try_wait() {
                 Ok(Some(_)) => false,
