@@ -66,7 +66,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     } catch {
       set({ configLoaded: true });
     }
-    tryRegisterAgent(get);
+    get().tryRegisterAgent();
   },
   tryRegisterAgent: async () => {
     const { isAuthenticated, serverUrl, token, agent } = get();

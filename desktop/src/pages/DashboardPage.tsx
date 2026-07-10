@@ -5,7 +5,6 @@ import { Card, CardHeader, CardTitle, CardContent } from "../components/ui/card"
 import { Badge } from "../components/ui/badge";
 import { StatsCards } from "../components/StatsCards";
 import { FileTable } from "../components/FileTable";
-import { LogsViewer } from "../components/LogsViewer";
 import { ScanButton } from "../components/ScanButton";
 import { Button } from "../components/ui/button";
 import { Play, Square, RefreshCw, AlertCircle } from "lucide-react";
@@ -16,7 +15,6 @@ export default function DashboardPage() {
     connected,
     status,
     files,
-    logs,
     loading,
     error,
     fetchStatus,
@@ -26,6 +24,8 @@ export default function DashboardPage() {
     startWatcher,
     stopWatcher,
     syncNow,
+    startAgent,
+    stopAgent,
   } = useAgentStore();
 
   useEffect(() => {
@@ -98,8 +98,27 @@ export default function DashboardPage() {
                     <Play className="h-4 w-4 mr-1" />
                     {t("dashboard.start")}
                   </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={stopAgent}
+                    disabled={loading}
+                  >
+                    <Square className="h-4 w-4 mr-1" />
+                    Stop Agent
+                  </Button>
                 </>
-              ) : null}
+              ) : (
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={startAgent}
+                  disabled={loading}
+                >
+                  <Play className="h-4 w-4 mr-1" />
+                  Start Agent
+                </Button>
+              )}
               <ScanButton />
               <Button
                 variant="outline"

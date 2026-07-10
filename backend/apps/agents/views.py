@@ -446,12 +446,18 @@ class AgentViewSet(viewsets.ModelViewSet):
 
         now = timezone.now()
         agent.status = data["status"]
-        agent.platform = data.get("platform", agent.platform)
-        agent.hostname = data.get("hostname", agent.hostname)
-        agent.ip_address = data.get("ip_address", agent.ip_address)
-        agent.agent_version = data.get("agent_version", agent.agent_version)
-        agent.files_count = data.get("files_count", agent.files_count)
-        agent.total_size_bytes = data.get("total_size_bytes", agent.total_size_bytes)
+        if "platform" in request.data:
+            agent.platform = data["platform"]
+        if "hostname" in request.data:
+            agent.hostname = data["hostname"]
+        if "ip_address" in request.data:
+            agent.ip_address = data["ip_address"]
+        if "agent_version" in request.data:
+            agent.agent_version = data["agent_version"]
+        if "files_count" in request.data:
+            agent.files_count = data["files_count"]
+        if "total_size_bytes" in request.data:
+            agent.total_size_bytes = data["total_size_bytes"]
         agent.last_seen = now
         agent.save(update_fields=[
             "status", "platform", "hostname", "ip_address",

@@ -21,6 +21,8 @@ interface AgentState {
   syncNow: () => Promise<void>;
   startWatcher: () => Promise<void>;
   stopWatcher: () => Promise<void>;
+  startAgent: () => Promise<void>;
+  stopAgent: () => Promise<void>;
   addFolder: (path: string) => Promise<void>;
   removeFolder: (path: string) => Promise<void>;
 }
@@ -119,6 +121,28 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       await get().fetchStatus();
     } catch (e) {
       set({ error: String(e) });
+    }
+  },
+
+  startAgent: async () => {
+    set({ loading: true, error: null });
+    try {
+      await invoke("start_agent");
+      await new Promise(r => setTimeout(r, 2000));
+      await get().fetchStatus();
+      set({ loading: false });
+    } catch (e) {
+      set({ loading: false, error: String(e) });
+    }
+  },
+
+  stopAgent: async () => {
+    set({ loading: true, error: null });
+    try {
+      await invoke("stop_agent");
+      set({ connected: false, status: null, loading: false });
+    } catch (e) {
+      set({ loading: false, error: String(e) });
     }
   },
 
