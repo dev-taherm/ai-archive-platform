@@ -1,6 +1,11 @@
 import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
 
+interface AgentInfo {
+  agent_id: string;
+  api_key: string;
+}
+
 interface AuthState {
   isAuthenticated: boolean;
   token: string | null;
@@ -8,10 +13,15 @@ interface AuthState {
   serverUrl: string;
   webUrl: string;
   configLoaded: boolean;
+  agent: AgentInfo | null;
   login: (serverUrl: string, token: string, refreshToken?: string) => void;
   logout: () => void;
+  setAgent: (agent: AgentInfo) => void;
   loadServerConfig: () => Promise<void>;
 }
+
+let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
+let syncInterval: ReturnType<typeof setInterval> | null = null;
 
 export const useAuthStore = create<AuthState>((set, get) => ({
   isAuthenticated: !!localStorage.getItem("token"),
@@ -20,18 +30,22 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   serverUrl: localStorage.getItem("serverUrl") || "",
   webUrl: "",
   configLoaded: false,
+  agent: null,
   login: (serverUrl, token, refreshToken) => {
     localStorage.setItem("token", token);
     localStorage.setItem("serverUrl", serverUrl);
     if (refreshToken) localStorage.setItem("refreshToken", refreshToken);
     set({ isAuthenticated: true, token, refreshToken: refreshToken || null, serverUrl });
+    _startBackgroundTasks(get);
   },
   logout: () => {
+    _stopBackgroundTasks();
     localStorage.removeItem("token");
     localStorage.removeItem("refreshToken");
     localStorage.removeItem("serverUrl");
-    set({ isAuthenticated: false, token: null, refreshToken: null });
+    set({ isAuthenticated: false, token: null, refreshToken: null, agent: null });
   },
+  setAgent: (agent) => set({ agent }),
   loadServerConfig: async () => {
     if (get().configLoaded) return;
     try {
@@ -47,3 +61,49 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 }));
+
+function _startBackgroundTasks(get: () => AuthState) {
+  if (heartbeatInterval || syncInterval) return;
+
+  heartbeatInterval = setInterval(async () => {
+    const { serverUrl, agent } = get();
+    if (!serverUrl || !agent) return;
+    try {
+      await invoke("send_heartbeat", {
+        serverUrl,
+        agentId: agent.agent_id,
+        apiKey: agent.api_key,
+        filesCount: 0,
+      });
+    } catch (e) {
+      console.warn("Heartbeat failed:", e);
+    }
+  }, 60_000);
+
+  syncInterval = setInterval(async () => {
+    const { serverUrl, agent } = get();
+    if (!serverUrl || !agent) return;
+    try {
+      await invoke("run_sync", {
+        serverUrl,
+        agentId: agent.agent_id,
+        apiKey: agent.api_key,
+        sidecarPort: 8420,
+        batchSize: 50,
+      });
+    } catch (e) {
+      console.warn("Sync failed:", e);
+    }
+  }, 300_000); // 5 minutes
+}
+
+function _stopBackgroundTasks() {
+  if (heartbeatInterval) {
+    clearInterval(heartbeatInterval);
+    heartbeatInterval = null;
+  }
+  if (syncInterval) {
+    clearInterval(syncInterval);
+    syncInterval = null;
+  }
+}

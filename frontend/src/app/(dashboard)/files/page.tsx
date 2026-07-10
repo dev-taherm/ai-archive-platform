@@ -143,7 +143,7 @@ export default function FilesPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["files"] });
-      toast({ title: "File moved to target agent" });
+      toast({ title: "File moved to target device" });
       setShowMoveDialog(null);
       setMoveTargetAgent("");
     },
@@ -166,7 +166,7 @@ export default function FilesPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["files"] });
-      toast({ title: "File moved within agent" });
+      toast({ title: "File moved within device" });
       setShowMoveDialog(null);
       setMoveSourcePath("");
       setMoveTargetPath("");
@@ -186,7 +186,7 @@ export default function FilesPage() {
 
     if (moveMode === "agent") {
       if (!moveTargetAgent) {
-        toast({ title: "Select a target agent", variant: "destructive" });
+        toast({ title: "Select a target device", variant: "destructive" });
         return;
       }
       // Find the source agent from agents list
@@ -194,7 +194,7 @@ export default function FilesPage() {
         a.folders?.some((f) => file.path.startsWith(f.local_path))
       );
       if (!sourceAgent) {
-        toast({ title: "Cannot determine source agent", variant: "destructive" });
+        toast({ title: "Cannot determine source device", variant: "destructive" });
         return;
       }
       moveFileAgent.mutate({
@@ -211,7 +211,7 @@ export default function FilesPage() {
         a.folders?.some((f) => file.path.startsWith(f.local_path))
       );
       if (!sourceAgent) {
-        toast({ title: "Cannot determine source agent", variant: "destructive" });
+        toast({ title: "Cannot determine source device", variant: "destructive" });
         return;
       }
       moveFileFolder.mutate({
@@ -236,7 +236,7 @@ export default function FilesPage() {
         <div>
           <h1 className="text-2xl font-bold">Files</h1>
           <p className="text-muted-foreground">
-            Files ingested by edge agents
+            Files ingested by edge devices
           </p>
         </div>
       </div>
@@ -247,12 +247,12 @@ export default function FilesPage() {
             <Bot className="mb-4 h-12 w-12 text-muted-foreground opacity-50" />
             <p className="text-lg font-medium">No files yet</p>
             <p className="mb-4 mt-1 max-w-sm text-sm text-muted-foreground">
-              Files are ingested via Edge Agents. Set up an agent to start monitoring folders and processing documents.
+              Files are ingested via Edge Devices. Set up a device to start monitoring folders and processing documents.
             </p>
             <Link href="/agents">
               <Button>
                 <Bot className="mr-2 h-4 w-4" />
-                Set up an Edge Agent
+                Set up an Edge Device
               </Button>
             </Link>
           </CardContent>
@@ -411,7 +411,7 @@ export default function FilesPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Move File</AlertDialogTitle>
             <AlertDialogDescription>
-              Choose how to move this file. Moving between agents reassigns ownership.
+              Choose how to move this file. Moving between devices reassigns ownership.
               Moving between folders changes the file path prefix.
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -422,7 +422,7 @@ export default function FilesPage() {
                 variant={moveMode === "agent" ? "default" : "outline"}
                 onClick={() => setMoveMode("agent")}
               >
-                Move to Agent
+                Move to Device
               </Button>
               <Button
                 size="sm"
@@ -435,13 +435,13 @@ export default function FilesPage() {
 
             {moveMode === "agent" ? (
               <div className="space-y-2">
-                <p className="text-sm text-muted-foreground">Target Agent</p>
+                <p className="text-sm text-muted-foreground">Target Device</p>
                 <select
                   value={moveTargetAgent}
                   onChange={(e) => setMoveTargetAgent(e.target.value)}
                   className="w-full rounded-md border bg-background px-3 py-2 text-sm"
                 >
-                  <option value="">Select agent...</option>
+                  <option value="">Select device...</option>
                   {agents.map((a) => (
                     <option key={a.agent_id} value={a.agent_id}>
                       {a.name} ({a.agent_id})

@@ -731,7 +731,7 @@ class AgentViewSet(viewsets.ModelViewSet):
                         ExtractedEntity.objects.bulk_create([
                             ExtractedEntity(
                                 document=doc,
-                                entity_type=e.get("type", "unknown"),
+                                entity_type=e.get("entity_type", "unknown"),
                                 name=e.get("name", ""),
                                 context=e.get("context", ""),
                                 confidence=e.get("confidence"),

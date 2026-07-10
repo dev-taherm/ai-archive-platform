@@ -57,7 +57,7 @@ const ALL_COMMAND_TYPES = [
   { value: "restart", label: "Restart", destructive: true },
   { value: "shutdown", label: "Shutdown", destructive: true },
   { value: "config_update", label: "Config Update" },
-  { value: "update", label: "Update Agent" },
+  { value: "update", label: "Update Device" },
   { value: "start_scan", label: "Start Continuous Scan" },
   { value: "stop_scan", label: "Stop Continuous Scan" },
 ];
@@ -121,7 +121,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["agents", id, "commands"] });
-      toast({ title: "Command sent", description: "Command has been queued for the agent." });
+      toast({ title: "Command sent", description: "Command has been queued for the device." });
     },
     onError: () => {
       toast({ title: "Failed to send command", variant: "destructive" });
@@ -132,11 +132,11 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
     mutationFn: async () => api.delete(`/agents/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["agents"] });
-      toast({ title: "Agent deleted" });
+      toast({ title: "Device deleted" });
       router.push("/agents");
     },
     onError: () => {
-      toast({ title: "Failed to delete agent", variant: "destructive" });
+      toast({ title: "Failed to delete device", variant: "destructive" });
     },
   });
 
@@ -198,12 +198,12 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["agents", id] });
-      toast({ title: "Agent settings updated" });
+      toast({ title: "Device settings updated" });
       setEditingSettings(false);
     },
     onError: (err: any) => {
       toast({
-        title: "Failed to update agent",
+        title: "Failed to update device",
         description: err?.response?.data?.detail || "Unknown error",
         variant: "destructive",
       });
@@ -279,10 +279,10 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
     return (
       <div className="flex flex-col items-center justify-center py-12 gap-4">
         <AlertCircle className="h-12 w-12 text-muted-foreground" />
-        <p className="text-lg font-medium">Agent not found</p>
+        <p className="text-lg font-medium">Device not found</p>
         <Button variant="outline" onClick={() => router.push("/agents")}>
           <ArrowLeft className="h-4 w-4 mr-2" />
-          Back to Agents
+          Back to Devices
         </Button>
       </div>
     );
@@ -624,7 +624,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
           <div className="flex items-center justify-between">
             <CardTitle className="text-base flex items-center gap-2">
               <Settings className="h-4 w-4" />
-              Agent Configuration
+              Device Configuration
             </CardTitle>
             {!editingSettings && (
               <Button size="sm" variant="outline" onClick={startEditSettings}>
@@ -639,7 +639,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
             <div className="space-y-4">
               <div className="grid gap-4 md:grid-cols-3">
                 <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">Agent Name</p>
+                  <p className="text-xs text-muted-foreground">Device Name</p>
                   <Input
                     value={editName}
                     onChange={(e) => setEditName(e.target.value)}
@@ -721,10 +721,10 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Agent</AlertDialogTitle>
+            <AlertDialogTitle>Delete Device</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete this agent? This action cannot be undone.
-              The agent will be disconnected and all its data will be removed.
+              Are you sure you want to delete this device? This action cannot be undone.
+              The device will be disconnected and all its data will be removed.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -746,7 +746,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
             <AlertDialogTitle>Confirm {commandType}</AlertDialogTitle>
             <AlertDialogDescription>
               Are you sure you want to send the &quot;{commandType}&quot; command?
-              This is a destructive operation that will affect the agent.
+              This is a destructive operation that will affect the device.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

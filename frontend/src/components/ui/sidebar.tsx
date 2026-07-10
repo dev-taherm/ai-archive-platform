@@ -42,7 +42,7 @@ const navItems = [
     icon: Brain,
   },
   {
-    label: "Agents",
+    label: "Devices",
     href: "/agents",
     icon: Bot,
   },

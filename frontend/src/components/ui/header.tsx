@@ -14,7 +14,7 @@ const routeLabels: Record<string, string> = {
   files: "Files",
   documents: "Documents",
   search: "Search",
-  agents: "Agents",
+  agents: "Devices",
   chat: "Chat",
   settings: "Settings",
 };

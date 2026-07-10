@@ -231,6 +231,17 @@ class LocalDB:
         )
         self._conn.commit()
 
+    def mark_synced_by_hashes(self, content_hashes: list[str]) -> int:
+        now = self._now()
+        count = self._conn.execute(
+            "UPDATE files SET synced=1, synced_at=? WHERE content_hash IN ({}) AND synced=0".format(
+                ",".join("?" for _ in content_hashes)
+            ),
+            [now] + content_hashes,
+        )
+        self._conn.commit()
+        return count.rowcount
+
     def get_stats(self) -> dict[str, int]:
         total = self._conn.execute("SELECT COUNT(*) FROM files").fetchone()[0]
         synced = self._conn.execute("SELECT COUNT(*) FROM files WHERE synced=1").fetchone()[0]

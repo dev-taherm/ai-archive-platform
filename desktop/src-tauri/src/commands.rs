@@ -31,6 +31,26 @@ pub struct ServerConfig {
     pub web_url: String,
 }
 
+#[derive(Serialize, Deserialize)]
+pub struct RegisterResult {
+    pub agent_id: String,
+    pub api_key: String,
+    pub is_new: bool,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct SyncFilesResult {
+    pub accepted: i32,
+    pub rejected: i32,
+    pub errors: Vec<String>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct HeartbeatPayload {
+    pub status: String,
+    pub files_count: i32,
+}
+
 #[tauri::command]
 pub fn read_server_config() -> Result<ServerConfig, String> {
     let home = std::env::var("HOME")
@@ -159,6 +179,149 @@ pub async fn call_agent_api(
         .map_err(|e| format!("Failed to parse response: {e}"))
 }
 
+// ── SaaS Communication (desktop → backend) ──────────────────────────────────
+
+#[tauri::command]
+pub async fn register_agent(server_url: String, access_token: String) -> Result<RegisterResult, String> {
+    let client = reqwest::Client::new();
+    let url = format!("{}/api/v1/agents/auto-register", server_url.trim_end_matches('/'));
+
+    let hostname = whoami::fallible::hostname().unwrap_or_else(|_| "unknown".to_string());
+    let resp = client
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", access_token))
+        .json(&serde_json::json!({
+            "hostname": hostname,
+            "platform": std::env::consts::OS,
+            "agent_version": env!("CARGO_PKG_VERSION"),
+        }))
+        .send()
+        .await
+        .map_err(|e| format!("Registration failed: {e}"))?;
+
+    let status = resp.status();
+    if !status.is_success() {
+        let body = resp.text().await.unwrap_or_default();
+        return Err(format!("Registration returned {}: {}", status, body));
+    }
+
+    resp.json::<RegisterResult>()
+        .await
+        .map_err(|e| format!("Failed to parse registration response: {e}"))
+}
+
+#[tauri::command]
+pub async fn send_heartbeat(
+    server_url: String,
+    agent_id: String,
+    api_key: String,
+    files_count: i32,
+) -> Result<serde_json::Value, String> {
+    let client = reqwest::Client::new();
+    let url = format!(
+        "{}/api/v1/agents/{}/heartbeat",
+        server_url.trim_end_matches('/'),
+        agent_id
+    );
+
+    let resp = client
+        .post(&url)
+        .header("X-API-Key", &api_key)
+        .json(&serde_json::json!({
+            "status": "online",
+            "files_count": files_count,
+        }))
+        .send()
+        .await
+        .map_err(|e| format!("Heartbeat failed: {e}"))?;
+
+    let status = resp.status();
+    if !status.is_success() {
+        let body = resp.text().await.unwrap_or_default();
+        return Err(format!("Heartbeat returned {}: {}", status, body));
+    }
+
+    resp.json::<serde_json::Value>()
+        .await
+        .map_err(|e| format!("Failed to parse heartbeat response: {e}"))
+}
+
+#[tauri::command]
+pub async fn run_sync(
+    server_url: String,
+    agent_id: String,
+    api_key: String,
+    sidecar_port: u16,
+    batch_size: i32,
+) -> Result<serde_json::Value, String> {
+    let client = reqwest::Client::new();
+
+    // 1. Get pending sync payload from sidecar
+    let pending_url = format!("http://localhost:{sidecar_port}/api/pending-sync?batch_size={batch_size}");
+    let pending_resp = client
+        .get(&pending_url)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to get pending sync from sidecar: {e}"))?;
+
+    let pending: serde_json::Value = pending_resp
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse pending sync: {e}"))?;
+
+    let files = pending.get("files").and_then(|f| f.as_array()).ok_or("No files in pending sync")?;
+    if files.is_empty() {
+        return Ok(serde_json::json!({"status": "ok", "synced": 0, "message": "Nothing to sync"}));
+    }
+
+    // 2. Send to SaaS
+    let sync_url = format!(
+        "{}/api/v1/agents/{}/sync",
+        server_url.trim_end_matches('/'),
+        agent_id
+    );
+
+    let sync_resp = client
+        .post(&sync_url)
+        .header("X-API-Key", &api_key)
+        .json(&serde_json::json!({ "files": files }))
+        .send()
+        .await
+        .map_err(|e| format!("Sync to SaaS failed: {e}"))?;
+
+    let sync_status = sync_resp.status();
+    if !sync_status.is_success() {
+        let body = sync_resp.text().await.unwrap_or_default();
+        return Err(format!("Sync returned {}: {}", sync_status, body));
+    }
+
+    let sync_result: serde_json::Value = sync_resp
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse sync response: {e}"))?;
+
+    // 3. Mark files as synced in sidecar DB
+    let hashes: Vec<String> = files
+        .iter()
+        .filter_map(|f| f.get("content_hash").and_then(|h| h.as_str().map(String::from)))
+        .collect();
+
+    if !hashes.is_empty() {
+        let ack_url = format!("http://localhost:{sidecar_port}/api/mark-synced");
+        let _ = client
+            .post(&ack_url)
+            .json(&serde_json::json!({ "file_hashes": hashes }))
+            .send()
+            .await;
+    }
+
+    Ok(serde_json::json!({
+        "status": "ok",
+        "synced": hashes.len(),
+        "saas_result": sync_result,
+    }))
+}
+
 // ── Browser-based auth ─────────────────────────────────────────────────────
 
 #[derive(Serialize, Clone)]
@@ -194,7 +357,6 @@ pub fn start_auth_server(state: State<'_, AppState>) -> Result<u16, String> {
                     let mut request_line = String::new();
                     let _ = reader.read_line(&mut request_line);
 
-                    // Drain remaining headers
                     let mut header = String::new();
                     while reader.read_line(&mut header).unwrap_or(0) > 0 {
                         if header.trim().is_empty() {
@@ -240,7 +402,6 @@ pub fn start_auth_server(state: State<'_, AppState>) -> Result<u16, String> {
                         }
                     }
 
-                    // Unknown path — return 404
                     let resp = b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
                     let _ = stream.write_all(resp);
                 }

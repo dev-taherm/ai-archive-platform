@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from .server import get_config, get_db, get_watcher, _start_time
@@ -38,13 +38,13 @@ class ProcessRequest(BaseModel):
     file: str
 
 
-class SyncRequest(BaseModel):
-    batch_size: int = 50
-
-
 class FolderAddRequest(BaseModel):
     path: str
     label: str = ""
+
+
+class MarkSyncedRequest(BaseModel):
+    file_hashes: list[str]
 
 
 # --- Health & Status ---
@@ -118,7 +118,6 @@ async def update_config(update: ConfigUpdate):
 
 
 def _save_config_to_yaml(config):
-    """Persist config to YAML file."""
     try:
         from edge_agent.cli import _save_config
         config_path = Path(config.data_dir) / "config.yaml"
@@ -129,46 +128,32 @@ def _save_config_to_yaml(config):
 
 # --- Agent Operations ---
 
-class RegisterRequest(BaseModel):
-    jwt_token: str
-    server_url: str | None = None
-
-
-@router.post("/register")
-async def register_agent(req: RegisterRequest | None = None):
-    """Register agent with the SaaS platform.
-
-    Accepts JSON body: { jwt_token, server_url? }
-    """
+@router.get("/pending-sync")
+async def pending_sync(batch_size: int = Query(50, ge=1, le=500)):
+    """Build sync payload from pending local files (no SaaS call)."""
     from edge_agent.sync.manager import SyncManager
-    from edge_agent.db.local_db import LocalDB
     config = get_config()
-
-    # Update server_url if provided (desktop app sends it)
-    if req and req.server_url:
-        config.server.url = req.server_url
-        _save_config_to_yaml(config)
-
-    db = LocalDB(config.db_path)
+    db = get_db()
     sync = SyncManager(config, db)
     try:
-        token = (req.jwt_token if req else None) or config.server.jwt_token
-        if not token:
-            raise HTTPException(status_code=400, detail="JWT token required")
-        result = sync.register(name=config.agent_name, jwt_token=token)
-        if result.get("agent_id"):
-            config.agent_id = result["agent_id"]
-        if result.get("api_key"):
-            config.server.api_key = result["api_key"]
-        _save_config_to_yaml(config)
-        return {"status": "registered", "result": result}
-    except HTTPException:
-        raise
+        payload = sync.build_sync_payload(batch_size=batch_size)
+        return payload
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        sync.close()
-        db.close()
+
+
+@router.post("/mark-synced")
+async def mark_synced(req: MarkSyncedRequest):
+    """Mark files as synced in local DB by content_hash."""
+    from edge_agent.sync.manager import SyncManager
+    config = get_config()
+    db = get_db()
+    sync = SyncManager(config, db)
+    try:
+        count = sync.mark_synced(req.file_hashes)
+        return {"status": "ok", "marked": count}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/scan")
@@ -256,24 +241,6 @@ async def process_file(req: ProcessRequest):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-
-# --- Sync ---
-
-@router.post("/sync")
-async def sync_files(req: SyncRequest | None = None):
-    """Sync pending files to the SaaS platform."""
-    from edge_agent.sync.manager import SyncManager
-    config = get_config()
-    db = get_db()
-    sync = SyncManager(config, db)
-    try:
-        result = sync.sync_with_retry()
-        return {"status": "synced", "result": result}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        sync.close()
 
 
 # --- Files ---

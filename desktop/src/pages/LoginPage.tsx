@@ -4,7 +4,6 @@ import { useTranslation } from "react-i18next";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-shell";
 import { useAuthStore } from "../stores/auth-store";
-import { agentApi } from "../lib/agent-api";
 import { Button } from "../components/ui/button";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "../components/ui/card";
 import { LanguageSwitcher } from "../components/LanguageSwitcher";
@@ -88,17 +87,21 @@ export default function LoginPage() {
             if (pollRef.current) clearInterval(pollRef.current);
             await invoke("stop_auth_server");
 
-            // Register the agent sidecar with the backend
+            // Register this device with the SaaS backend directly
             setStep("registering");
             try {
-              await agentApi.register(tokens.access_token, serverUrl);
+              const result = await invoke<{ agent_id: string; api_key: string }>(
+                "register_agent",
+                { serverUrl, accessToken: tokens.access_token },
+              );
+              useAuthStore.getState().setAgent(result);
             } catch (regErr) {
-              setError(`Agent registration failed: ${String(regErr)}`);
+              setError(`Device registration failed: ${String(regErr)}`);
               setStep("error");
               return;
             }
 
-            // Store tokens and proceed
+            // Store tokens and proceed (login will start background tasks)
             login(serverUrl, tokens.access_token, tokens.refresh_token);
             navigate("/dashboard");
           }

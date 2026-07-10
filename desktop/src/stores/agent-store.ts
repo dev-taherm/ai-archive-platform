@@ -1,6 +1,8 @@
 import { create } from "zustand";
+import { invoke } from "@tauri-apps/api/core";
 import { agentApi } from "../lib/agent-api";
 import type { AgentStatus, FileRecord, FolderInfo } from "../lib/agent-api";
+import { useAuthStore } from "./auth-store";
 
 interface AgentState {
   connected: boolean;
@@ -84,7 +86,17 @@ export const useAgentStore = create<AgentState>((set, get) => ({
   syncNow: async () => {
     set({ loading: true, error: null });
     try {
-      await agentApi.sync();
+      const { serverUrl, agent } = useAuthStore.getState();
+      if (!serverUrl || !agent) {
+        throw new Error("Not authenticated");
+      }
+      await invoke("run_sync", {
+        serverUrl,
+        agentId: agent.agent_id,
+        apiKey: agent.api_key,
+        sidecarPort: 8420,
+        batchSize: 50,
+      });
       set({ loading: false });
       await get().fetchFiles();
     } catch (e) {

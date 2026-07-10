@@ -54,9 +54,9 @@ export default function AgentsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Agents</h1>
+          <h1 className="text-2xl font-bold">Devices</h1>
           <p className="text-muted-foreground">
-            Connected edge agents and their status
+            Connected edge devices and their status
           </p>
         </div>
         <Button onClick={() => setShowDownload(true)}>
@@ -85,15 +85,15 @@ export default function AgentsPage() {
           <CardContent className="flex flex-col items-center gap-4 py-12 text-muted-foreground">
             <Bot className="h-12 w-12" />
             <div className="text-center">
-              <p className="text-lg font-medium">No agents connected</p>
+              <p className="text-lg font-medium">No devices connected</p>
               <p className="text-sm mt-1">
-                Download and install the Edge Agent to start processing
+                Download and install the Edge Device to start processing
                 documents from your computer.
               </p>
             </div>
             <Button onClick={() => setShowDownload(true)}>
               <Download className="h-4 w-4 mr-2" />
-              Download Edge Agent
+              Download Edge Device
             </Button>
           </CardContent>
         </Card>
@@ -172,7 +172,7 @@ export default function AgentsPage() {
       )}
 
       <p className="text-sm text-muted-foreground">
-        {agents.length} agent(s)
+        {agents.length} device(s)
       </p>
 
       <DownloadAgentDialog

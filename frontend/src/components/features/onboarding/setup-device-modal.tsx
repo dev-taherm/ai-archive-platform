@@ -66,7 +66,7 @@ export function OnboardingModal({ open, onClose }: OnboardingModalProps) {
               <div>
                 <CardTitle>Welcome to AI Archive Platform</CardTitle>
                 <CardDescription>
-                  Let&apos;s get you started with your first edge agent
+                  Let&apos;s get you started with your first edge device
                 </CardDescription>
               </div>
             </div>
@@ -77,9 +77,9 @@ export function OnboardingModal({ open, onClose }: OnboardingModalProps) {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="bg-muted rounded-lg p-4 space-y-3">
-            <h3 className="font-medium">What is an Edge Agent?</h3>
+            <h3 className="font-medium">What is an Edge Device?</h3>
             <p className="text-sm text-muted-foreground">
-              The Edge Agent runs on your computer and automatically processes
+              The Edge Device runs on your computer and automatically processes
               documents — extracting text, classifying content, and syncing
               everything to the platform.
             </p>
@@ -112,7 +112,7 @@ export function OnboardingModal({ open, onClose }: OnboardingModalProps) {
             </Button>
             <Button onClick={() => setShowDownload(true)}>
               <Download className="h-4 w-4 mr-2" />
-              Set Up Agent
+              Set Up Device
             </Button>
           </div>
         </CardContent>

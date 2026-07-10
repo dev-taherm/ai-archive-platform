@@ -56,7 +56,9 @@ async def lifespan(app: FastAPI):
     _watcher = FolderWatcher(debounce_seconds=_config.watcher.debounce_seconds)
     _start_time = time.time()
     logger.info("Edge Agent API started on localhost:8420")
+
     yield
+
     if _watcher:
         _watcher.stop_all()
     logger.info("Edge Agent API shutting down")
