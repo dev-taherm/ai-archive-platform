@@ -18,6 +18,7 @@ interface AuthState {
   logout: () => void;
   setAgent: (agent: AgentInfo) => void;
   loadServerConfig: () => Promise<void>;
+  tryRegisterAgent: () => Promise<void>;
 }
 
 let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
@@ -30,7 +31,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   serverUrl: localStorage.getItem("serverUrl") || "",
   webUrl: "",
   configLoaded: false,
-  agent: null,
+  agent: (() => {
+    try { return JSON.parse(localStorage.getItem("agent") || "null"); } catch { return null; }
+  })(),
   login: (serverUrl, token, refreshToken) => {
     localStorage.setItem("token", token);
     localStorage.setItem("serverUrl", serverUrl);
@@ -43,9 +46,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     localStorage.removeItem("token");
     localStorage.removeItem("refreshToken");
     localStorage.removeItem("serverUrl");
+    localStorage.removeItem("agent");
     set({ isAuthenticated: false, token: null, refreshToken: null, agent: null });
   },
-  setAgent: (agent) => set({ agent }),
+  setAgent: (agent) => {
+    localStorage.setItem("agent", JSON.stringify(agent));
+    set({ agent });
+  },
   loadServerConfig: async () => {
     if (get().configLoaded) return;
     try {
@@ -58,6 +65,28 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
     } catch {
       set({ configLoaded: true });
+    }
+    tryRegisterAgent(get);
+  },
+  tryRegisterAgent: async () => {
+    const { isAuthenticated, serverUrl, token, agent } = get();
+    if (isAuthenticated && serverUrl && token && !agent) {
+      try {
+        const result = await invoke<{ agent_id: string; api_key: string }>("register_agent", {
+          serverUrl,
+          accessToken: token,
+        });
+        get().setAgent(result);
+        _startBackgroundTasks(get);
+      } catch (e) {
+        console.warn("Auto-register failed:", e);
+        _stopBackgroundTasks();
+        localStorage.removeItem("token");
+        localStorage.removeItem("refreshToken");
+        localStorage.removeItem("serverUrl");
+        localStorage.removeItem("agent");
+        set({ isAuthenticated: false, token: null, refreshToken: null, serverUrl: "", agent: null });
+      }
     }
   },
 }));

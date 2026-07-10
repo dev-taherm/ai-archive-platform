@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useAgentStore } from "../stores/agent-store";
 import { Button } from "../components/ui/button";
@@ -8,8 +8,14 @@ import { Scan, Loader2 } from "lucide-react";
 export function ScanButton() {
   const { t } = useTranslation();
   const { scanFolder, loading, folders } = useAgentStore();
-  const [selectedFolder, setSelectedFolder] = useState(folders[0]?.path || "");
+  const [selectedFolder, setSelectedFolder] = useState("");
   const [result, setResult] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!selectedFolder && folders.length > 0) {
+      setSelectedFolder(folders[0].path);
+    }
+  }, [folders]);
 
   const handleScan = async () => {
     if (!selectedFolder) return;

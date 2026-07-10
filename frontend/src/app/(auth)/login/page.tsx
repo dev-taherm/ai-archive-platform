@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
+import axios from "axios";
 import { useAuth } from "@/hooks/use-auth";
 import { useAuthStore } from "@/stores/auth-store";
 import api from "@/lib/api";
@@ -30,7 +31,13 @@ export default function LoginPage() {
   useEffect(() => {
     if (desktopCallback && isAuthenticated && accessToken && refreshToken) {
       setDesktopRedirecting(true);
-      window.location.href = `${desktopCallback}?access_token=${encodeURIComponent(accessToken)}&refresh_token=${encodeURIComponent(refreshToken)}`;
+      axios.post("/api/v1/token/refresh", { refresh: refreshToken })
+        .then(({ data }) => {
+          window.location.href = `${desktopCallback}?access_token=${encodeURIComponent(data.access)}&refresh_token=${encodeURIComponent(data.refresh || refreshToken)}`;
+        })
+        .catch(() => {
+          setDesktopRedirecting(false);
+        });
     }
   }, [desktopCallback, isAuthenticated, accessToken, refreshToken]);
 

@@ -32,15 +32,18 @@ class SyncManager:
 
         files_payload = []
         for f in batch:
+            text = _strip_nulls(f.get("extracted_text", ""))
+            md = _strip_nulls(f.get("markdown", ""))
+            summary = _strip_nulls(f.get("summary", ""))
             entry = {
                 "local_path": f["local_path"],
-                "content_hash": f["content_hash"],
+                "file_hash": f["content_hash"],
                 "file_size": f["size_bytes"],
                 "mime_type": f.get("mime_type", "application/octet-stream"),
                 "modified_at": f["modified_at"],
                 "metadata": _safe_json(f.get("metadata", "{}")),
-                "extracted_text": f.get("extracted_text", ""),
-                "markdown": f.get("markdown", ""),
+                "extracted_text": text,
+                "markdown": md,
                 "content_blocks": f.get("content_blocks", []),
                 "tables": f.get("tables", []),
                 "images": f.get("images", []),
@@ -53,7 +56,7 @@ class SyncManager:
                 "processing_version": f.get("processing_version", ""),
                 "parser_version": f.get("parser_version", ""),
                 "ocr_engine": f.get("ocr_engine", ""),
-                "summary": f.get("summary", ""),
+                "summary": summary,
                 "entities": self._get_entities_for_file(f["id"]),
             }
             files_payload.append(entry)
@@ -92,3 +95,9 @@ def _safe_json(value: str | dict | None) -> dict:
         return json.loads(value)
     except Exception:
         return {}
+
+
+def _strip_nulls(value: str | None) -> str:
+    if not value:
+        return ""
+    return value.replace("\0", "")

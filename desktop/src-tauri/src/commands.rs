@@ -303,7 +303,7 @@ pub async fn run_sync(
     // 3. Mark files as synced in sidecar DB
     let hashes: Vec<String> = files
         .iter()
-        .filter_map(|f| f.get("content_hash").and_then(|h| h.as_str().map(String::from)))
+        .filter_map(|f| f.get("file_hash").and_then(|h| h.as_str().map(String::from)))
         .collect();
 
     if !hashes.is_empty() {

@@ -93,11 +93,6 @@ export const agentApi = {
       { method: "POST", body: JSON.stringify({ file }) },
     ),
 
-  sync: () =>
-    request<{ status: string; result: unknown }>("/sync", {
-      method: "POST",
-    }),
-
   files: (status?: string, limit = 50) => {
     const params = new URLSearchParams();
     if (status) params.set("status", status);
@@ -133,9 +128,4 @@ export const agentApi = {
   stopWatcher: () =>
     request<{ status: string }>("/watch/stop", { method: "POST" }),
 
-  register: (jwt_token: string) =>
-    request<{ status: string; result: unknown }>("/register", {
-      method: "POST",
-      body: JSON.stringify({ jwt_token }),
-    }),
 };

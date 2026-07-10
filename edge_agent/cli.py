@@ -128,7 +128,7 @@ def _process_file(
     db.update_file(file_id, processing_status="processing")
     try:
         parsed = parser.parse(file_info["path"])
-        text = parsed.markdown or ""
+        text = (parsed.markdown or "").replace("\0", "")
         ocr_text = ""
 
         if not text or len(text.strip()) < 50:

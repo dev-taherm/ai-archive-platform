@@ -8,7 +8,7 @@ import { FileTable } from "../components/FileTable";
 import { LogsViewer } from "../components/LogsViewer";
 import { ScanButton } from "../components/ScanButton";
 import { Button } from "../components/ui/button";
-import { Play, Square, RefreshCw } from "lucide-react";
+import { Play, Square, RefreshCw, AlertCircle } from "lucide-react";
 
 export default function DashboardPage() {
   const { t } = useTranslation();
@@ -18,9 +18,11 @@ export default function DashboardPage() {
     files,
     logs,
     loading,
+    error,
     fetchStatus,
     fetchFiles,
     fetchLogs,
+    fetchFolders,
     startWatcher,
     stopWatcher,
     syncNow,
@@ -29,6 +31,7 @@ export default function DashboardPage() {
   useEffect(() => {
     fetchStatus();
     fetchFiles();
+    fetchFolders();
     fetchLogs(50);
     const interval = setInterval(() => {
       fetchStatus();
@@ -53,6 +56,12 @@ export default function DashboardPage() {
       </div>
 
       <main className="mx-auto max-w-6xl p-6 space-y-6">
+        {error && (
+          <div className="flex items-center gap-2 rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            <span>{error}</span>
+          </div>
+        )}
         {/* Agent Status */}
         <Card>
           <CardHeader>
@@ -118,7 +127,7 @@ export default function DashboardPage() {
         <FileTable files={files.slice(0, 10)} />
 
         {/* Logs */}
-        <LogsViewer logs={logs.slice(-30)} />
+        {/* <LogsViewer logs={logs.slice(-30)} /> */}
       </main>
     </div>
   );
