@@ -51,6 +51,7 @@ INSTALLED_APPS: list[str] = [
     "apps.chat.apps.ChatConfig",
     "apps.apikeys.apps.ApiKeysConfig",
     "apps.agents.apps.AgentsConfig",
+    "apps.organizations.apps.OrganizationsConfig",
 ]
 
 MIDDLEWARE: list[str] = [

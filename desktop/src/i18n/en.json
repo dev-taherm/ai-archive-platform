@@ -1,0 +1,101 @@
+{
+  "login": {
+    "title": "Basirah Edge Agent",
+    "subtitle": "Sign in to your account",
+    "serverUrl": "Server URL",
+    "serverUrlPlaceholder": "https://app.basirah.com",
+    "email": "Email",
+    "emailPlaceholder": "you@example.com",
+    "password": "Password",
+    "passwordPlaceholder": "Enter your password",
+    "apiKey": "API Key (optional)",
+    "apiKeyPlaceholder": "Your API key",
+    "submit": "Sign In",
+    "submitting": "Signing in...",
+    "error": "Login failed. Please check your credentials.",
+    "offline": "Offline mode — you can still use the local agent."
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "folders": "Folders",
+    "settings": "Settings"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "welcome": "Welcome back",
+    "agentStatus": "Agent Status",
+    "running": "Running",
+    "stopped": "Stopped",
+    "start": "Start Watching",
+    "stop": "Stop Watching",
+    "recentFiles": "Recent Files",
+    "noFiles": "No files processed yet",
+    "quickActions": "Quick Actions",
+    "scanFolder": "Scan Folder",
+    "syncNow": "Sync Now",
+    "viewSettings": "Settings",
+    "language": "Language"
+  },
+  "folders": {
+    "title": "Monitored Folders",
+    "add": "Add Folder",
+    "placeholder": "/path/to/folder",
+    "watching": "Watching",
+    "idle": "Idle",
+    "notFound": "Not Found",
+    "empty": "No folders configured. Add a folder to start monitoring."
+  },
+  "files": {
+    "title": "Files",
+    "empty": "No files processed yet",
+    "name": "Name",
+    "size": "Size",
+    "status": "Status",
+    "synced": "Synced",
+    "added": "Added",
+    "yes": "Yes",
+    "no": "No"
+  },
+  "stats": {
+    "total": "Total",
+    "completed": "Processed",
+    "synced": "Synced",
+    "pending": "Pending",
+    "failed": "Failed"
+  },
+  "scan": {
+    "button": "Scan",
+    "placeholder": "Folder path",
+    "success": "{{count}} files processed",
+    "errors": "{{count}} errors",
+    "noFiles": "No new files found"
+  },
+  "logs": {
+    "title": "Logs",
+    "empty": "No log entries yet"
+  },
+  "settings": {
+    "title": "Settings",
+    "general": "General",
+    "agentName": "Agent Name",
+    "agentNamePlaceholder": "My Desktop Agent",
+    "server": "Server",
+    "serverUrl": "Server URL",
+    "apiKey": "API Key",
+    "ocrLang": "OCR Language",
+    "save": "Save Settings",
+    "saved": "Settings saved!",
+    "language": "Language",
+    "logs": "Logs",
+    "clearLogs": "Clear Logs"
+  },
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "loading": "Loading...",
+    "error": "An error occurred",
+    "retry": "Retry",
+    "logout": "Logout"
+  }
+}

@@ -30,7 +30,6 @@ class DjangoUserRepository(UserRepository):
             "last_name": user.last_name,
             "role": user.role,
             "is_active": user.is_active,
-            "is_approved": user.is_approved,
             "is_staff": user.is_staff,
             "is_superuser": user.is_superuser,
             "last_login_ip": getattr(user, "last_login_ip", None),
@@ -59,8 +58,7 @@ class DjangoUserRepository(UserRepository):
                 obj = await self._qs().aget(id=user_id)
                 for field in (
                     "email", "username", "first_name", "last_name",
-                    "role", "is_active", "is_approved", "is_staff",
-                    "is_superuser",
+                    "role", "is_active", "is_staff", "is_superuser",
                 ):
                     if field in user:
                         setattr(obj, field, user[field])
@@ -79,7 +77,6 @@ class DjangoUserRepository(UserRepository):
             last_name=user.get("last_name", ""),
             role=user.get("role", self._model.Role.VIEWER),
             is_active=user.get("is_active", True),
-            is_approved=user.get("is_approved", False),
         )
         return self._to_dict(obj)
 

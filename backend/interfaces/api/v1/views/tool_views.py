@@ -46,6 +46,11 @@ class ToolViewSet(viewsets.GenericViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        # Inject user_id for org-scoped tools
+        org_scoped_tools = {"list_agents", "get_workflow_list"}
+        if tool_name in org_scoped_tools:
+            arguments["user_id"] = str(request.user.pk)
+
         import asyncio
 
         try:

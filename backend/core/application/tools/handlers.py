@@ -77,12 +77,23 @@ async def handle_get_document_details(document_id: str) -> dict[str, Any]:
         return {"result": f"Could not retrieve document {document_id}: {e}"}
 
 
-async def handle_list_agents() -> dict[str, Any]:
-    """List all registered edge agents."""
+async def handle_list_agents(user_id: str | None = None) -> dict[str, Any]:
+    """List all registered edge agents for the user's organization."""
     try:
         from apps.agents.models import Agent
 
-        agents = Agent.objects.all()
+        qs = Agent.objects.all()
+        if user_id:
+            try:
+                from apps.accounts.models import User
+                user = User.objects.get(id=user_id)
+                org = getattr(user, "organization", None)
+                if org:
+                    qs = qs.filter(organization=org)
+            except Exception:
+                pass
+
+        agents = qs.all()
         if not agents:
             return {"result": "No agents registered."}
 
@@ -178,12 +189,23 @@ async def handle_run_workflow(workflow_id: str) -> dict[str, Any]:
         return {"result": f"Failed to run workflow {workflow_id}: {e}"}
 
 
-async def handle_get_workflow_list() -> dict[str, Any]:
-    """List all available workflows."""
+async def handle_get_workflow_list(user_id: str | None = None) -> dict[str, Any]:
+    """List all available workflows for the user's organization."""
     try:
         from apps.workflows.models import Workflow
 
-        workflows = Workflow.objects.all()
+        qs = Workflow.objects.all()
+        if user_id:
+            try:
+                from apps.accounts.models import User
+                user = User.objects.get(id=user_id)
+                org = getattr(user, "organization", None)
+                if org:
+                    qs = qs.filter(organization=org)
+            except Exception:
+                pass
+
+        workflows = qs.all()
         if not workflows:
             return {"result": "No workflows configured."}
 

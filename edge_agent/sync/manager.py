@@ -176,7 +176,7 @@ class SyncManager:
             payload["result"] = result
 
         resp = self._client.post(
-            f"/api/v1/agents/{self._config.agent_id}/commands",
+            f"/api/v1/agents/{self._config.agent_id}/commands/create",
             json=payload,
         )
         resp.raise_for_status()

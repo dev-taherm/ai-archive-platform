@@ -6,7 +6,8 @@ Usage:
 
 Output:
     backend/media/agents/binaries/edge-agent-{platform}-{arch}
-    backend/media/agents/binaries/manifest.json
+    desktop/src-tauri/binaries/{triple}-edge-agent
+    Both directories get manifest.json
 """
 
 from __future__ import annotations
@@ -25,6 +26,7 @@ EDGE_AGENT_DIR = REPO_ROOT / "edge_agent"
 SPEC_FILE = REPO_ROOT / "edge-agent.spec"
 DIST_DIR = REPO_ROOT / "edge_agent" / "dist"
 BINARIES_DIR = REPO_ROOT / "backend" / "media" / "agents" / "binaries"
+TAURI_BINARIES_DIR = REPO_ROOT / "desktop" / "src-tauri" / "binaries"
 
 
 def get_platform_key() -> str:
@@ -32,15 +34,37 @@ def get_platform_key() -> str:
     system = platform.system().lower()
     machine = platform.machine().lower()
 
-    # Normalize machine names
     if machine in ("x86_64", "amd64"):
         machine = "x86_64"
     elif machine in ("arm64", "aarch64"):
         machine = "arm64"
     elif machine in ("i386", "i686", "x86"):
-        machine = "x86_64"  # treat 32-bit as 64-bit for simplicity
+        machine = "x86_64"
 
     return f"{system}-{machine}"
+
+
+def get_target_triple() -> str:
+    """Map platform to Rust target triple for Tauri sidecar naming."""
+    system = platform.system().lower()
+    machine = platform.machine().lower()
+
+    arch_map = {
+        "x86_64": "x86_64",
+        "amd64": "x86_64",
+        "arm64": "aarch64",
+        "aarch64": "aarch64",
+    }
+    arch = arch_map.get(machine, machine)
+
+    os_map = {
+        "linux": "unknown-linux-gnu",
+        "darwin": "apple-darwin",
+        "windows": "pc-windows-msvc",
+    }
+    os_part = os_map.get(system, "unknown-linux-gnu")
+
+    return f"{arch}-{os_part}"
 
 
 def get_binary_name() -> str:
@@ -63,7 +87,6 @@ def build_binary() -> Path:
     """Build the edge-agent binary using PyInstaller."""
     print(f"Building edge-agent for {get_platform_key()}...")
 
-    # Clean previous build artifacts
     for d in [REPO_ROOT / "build", DIST_DIR]:
         if d.exists():
             shutil.rmtree(d)
@@ -83,11 +106,9 @@ def build_binary() -> Path:
         print("STDERR:", result.stderr)
         sys.exit(1)
 
-    # Find the built binary
     binary_name = "edge-agent.exe" if platform.system() == "Windows" else "edge-agent"
     binary_path = DIST_DIR / binary_name
     if not binary_path.exists():
-        # Try nested directory (PyInstaller sometimes puts it in a subfolder)
         for p in DIST_DIR.rglob(binary_name):
             binary_path = p
             break
@@ -99,8 +120,8 @@ def build_binary() -> Path:
     return binary_path
 
 
-def copy_binary(binary_path: Path) -> Path:
-    """Copy the binary to the media directory with a platform-specific name."""
+def copy_to_legacy(binary_path: Path) -> Path:
+    """Copy binary to backend/media/agents/binaries/ with platform naming."""
     BINARIES_DIR.mkdir(parents=True, exist_ok=True)
 
     dest_name = get_binary_name()
@@ -108,25 +129,41 @@ def copy_binary(binary_path: Path) -> Path:
     shutil.copy2(binary_path, dest)
     dest.chmod(0o755)
 
-    print(f"Copied to: {dest}")
+    print(f"Copied to legacy: {dest}")
     return dest
 
 
-def update_manifest(binary_path: Path) -> None:
-    """Update or create the manifest.json file."""
-    manifest_path = BINARIES_DIR / "manifest.json"
+def copy_to_tauri(binary_path: Path) -> Path:
+    """Copy binary to desktop/src-tauri/binaries/ with Tauri triple naming."""
+    TAURI_BINARIES_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Load existing manifest or create new
+    triple = get_target_triple()
+    suffix = ".exe" if platform.system() == "Windows" else ""
+    dest_name = f"{triple}-edge-agent{suffix}"
+    dest = TAURI_BINARIES_DIR / dest_name
+    shutil.copy2(binary_path, dest)
+    dest.chmod(0o755)
+
+    print(f"Copied to Tauri: {dest}")
+    return dest
+
+
+def update_manifest(binary_path: Path, dest_dir: Path) -> None:
+    """Update or create manifest.json in the given directory."""
+    manifest_path = dest_dir / "manifest.json"
+
     manifest = {"version": "0.1.0", "builds": {}}
     if manifest_path.exists():
         with open(manifest_path) as f:
             manifest = json.load(f)
 
     platform_key = get_platform_key()
+    triple = get_target_triple()
     stat = binary_path.stat()
 
     manifest["builds"][platform_key] = {
         "filename": binary_path.name,
+        "triple": triple,
         "size_bytes": stat.st_size,
         "sha256": sha256_file(binary_path),
         "built_at": datetime.now(timezone.utc).isoformat(),
@@ -144,11 +181,17 @@ def main() -> None:
         sys.exit(1)
 
     binary_path = build_binary()
-    dest = copy_binary(binary_path)
-    update_manifest(dest)
+    copy_to_legacy(binary_path)
+    tauri_dest = copy_to_tauri(binary_path)
 
-    print(f"\nDone! Binary available at: {dest}")
-    print(f"Platform: {get_platform_key()}")
+    # Update manifests in both locations
+    update_manifest(binary_path, BINARIES_DIR)
+    update_manifest(binary_path, TAURI_BINARIES_DIR)
+
+    triple = get_target_triple()
+    print(f"\nDone! Built for {get_platform_key()} ({triple})")
+    print(f"  Legacy: {BINARIES_DIR / get_binary_name()}")
+    print(f"  Tauri:  {tauri_dest}")
 
 
 if __name__ == "__main__":

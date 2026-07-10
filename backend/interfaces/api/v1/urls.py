@@ -19,6 +19,7 @@ from interfaces.api.v1.views.provider_views import ProviderConfigViewSet
 from interfaces.api.v1.views.tool_views import ToolViewSet
 from apps.apikeys.views import ApiKeyViewSet
 from apps.agents.views import AgentViewSet
+from apps.organizations.views import InvitationViewSet, MembershipViewSet, OrganizationViewSet
 
 router = DefaultRouter()
 router.trailing_slash = ""
@@ -36,6 +37,9 @@ router.register(r"providers", ProviderConfigViewSet, basename="provider")
 router.register(r"api-keys", ApiKeyViewSet, basename="api-key")
 router.register(r"agents", AgentViewSet, basename="agent")
 router.register(r"tools", ToolViewSet, basename="tool")
+router.register(r"organizations", OrganizationViewSet, basename="organization")
+router.register(r"memberships", MembershipViewSet, basename="membership")
+router.register(r"invitations", InvitationViewSet, basename="invitation")
 
 # Custom URL patterns for non-standard REST paths the frontend expects
 urlpatterns = [

@@ -4,6 +4,13 @@
 
 // --- Auth ---
 
+export interface OrgMembership {
+  id: string;
+  name: string;
+  slug: string;
+  role: "owner" | "admin" | "member";
+}
+
 export interface User {
   id: string;
   email: string;
@@ -12,12 +19,27 @@ export interface User {
   last_name: string;
   is_active: boolean;
   date_joined: string;
+  current_organization: string | null;
+  organization_name: string | null;
+  organization_slug: string | null;
+  org_role: "owner" | "admin" | "member" | null;
+  organizations: OrgMembership[];
 }
 
 export interface AuthTokens {
   access: string;
   refresh: string;
   user: User;
+}
+
+export interface SwitchOrgRequest {
+  organization_id: string;
+}
+
+export interface SwitchOrgResponse {
+  access: string;
+  refresh: string;
+  organization: Organization;
 }
 
 export interface LoginRequest {
@@ -32,6 +54,7 @@ export interface RegisterRequest {
   username: string;
   first_name?: string;
   last_name?: string;
+  invitation_token?: string;
 }
 
 // --- Files ---
@@ -401,4 +424,38 @@ export interface Recommendation {
 export interface RecommendationList {
   recommendations: Recommendation[];
   generated_at: string;
+}
+
+// --- Organizations ---
+
+export interface Organization {
+  id: string;
+  name: string;
+  slug: string;
+  description: string;
+  member_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Membership {
+  id: string;
+  user: string;
+  user_email: string;
+  user_username: string;
+  organization: string;
+  role: "owner" | "admin" | "member";
+  joined_at: string;
+}
+
+export interface Invitation {
+  id: string;
+  organization: string;
+  email: string;
+  role: "owner" | "admin" | "member";
+  invited_by_email: string;
+  status: "pending" | "accepted" | "expired" | "revoked";
+  token: string;
+  created_at: string;
+  expires_at: string;
 }

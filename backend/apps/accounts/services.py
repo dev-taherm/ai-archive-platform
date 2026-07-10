@@ -86,17 +86,6 @@ class AccountService:
         return profile
 
     @staticmethod
-    def approve_user(user_id: uuid.UUID) -> User | None:
-        """Approve a user account."""
-        try:
-            user = User.objects.get(pk=user_id)
-            user.is_approved = True
-            user.save(update_fields=["is_approved"])
-            return user
-        except User.DoesNotExist:
-            return None
-
-    @staticmethod
     def set_user_role(user_id: uuid.UUID, role: str) -> User | None:
         """Set a user's role."""
         if role not in dict(User.Role.choices):
@@ -113,7 +102,6 @@ class AccountService:
     def list_users(
         *,
         role: str | None = None,
-        is_approved: bool | None = None,
         offset: int = 0,
         limit: int = 100,
     ) -> list[User]:
@@ -121,6 +109,4 @@ class AccountService:
         qs = User.objects.select_related("profile").all()
         if role is not None:
             qs = qs.filter(role=role)
-        if is_approved is not None:
-            qs = qs.filter(is_approved=is_approved)
         return list(qs.order_by("-date_joined")[offset:offset + limit])

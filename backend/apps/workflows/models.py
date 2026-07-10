@@ -15,6 +15,13 @@ class Workflow(models.Model):
         SCHEDULED = "scheduled", "Scheduled"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organization = models.ForeignKey(
+        "organizations.Organization",
+        on_delete=models.CASCADE,
+        related_name="workflows",
+        null=True,
+        blank=True,
+    )
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True, default="")
     trigger_type = models.CharField(
@@ -61,6 +68,13 @@ class WorkflowRun(models.Model):
         CANCELLED = "cancelled", "Cancelled"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organization = models.ForeignKey(
+        "organizations.Organization",
+        on_delete=models.CASCADE,
+        related_name="workflow_runs",
+        null=True,
+        blank=True,
+    )
     workflow = models.ForeignKey(
         Workflow,
         on_delete=models.CASCADE,

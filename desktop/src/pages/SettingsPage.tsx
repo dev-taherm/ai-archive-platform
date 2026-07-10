@@ -1,0 +1,181 @@
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
+import { useConfigStore } from "../stores/config-store";
+import { useAgentStore } from "../stores/agent-store";
+import { agentApi } from "../lib/agent-api";
+import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardContent,
+} from "../components/ui/card";
+import { LanguageSwitcher } from "../components/LanguageSwitcher";
+import { LogsViewer } from "../components/LogsViewer";
+import { ArrowLeft, Save } from "lucide-react";
+
+export default function SettingsPage() {
+  const { t, i18n } = useTranslation();
+  const navigate = useNavigate();
+  const { serverUrl, apiKey, agentName, setConfig } = useConfigStore();
+  const { logs, fetchLogs } = useAgentStore();
+
+  const [localServerUrl, setLocalServerUrl] = useState(serverUrl);
+  const [localApiKey, setLocalApiKey] = useState(apiKey);
+  const [localAgentName, setLocalAgentName] = useState(agentName);
+  const [ocrLang, setOcrLang] = useState("en");
+  const [saved, setSaved] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    agentApi
+      .config()
+      .then((cfg) => {
+        setLocalServerUrl(cfg.server_url);
+        setLocalApiKey(cfg.api_key);
+        setLocalAgentName(cfg.agent_name);
+        setOcrLang(cfg.ocr_lang);
+      })
+      .catch(() => {});
+    fetchLogs(200);
+  }, []);
+
+  const handleSave = async () => {
+    setLoading(true);
+    try {
+      setConfig({
+        serverUrl: localServerUrl,
+        apiKey: localApiKey,
+        agentName: localAgentName,
+      });
+      await agentApi.updateConfig({
+        server_url: localServerUrl,
+        api_key: localApiKey,
+        agent_name: localAgentName,
+        ocr_lang: ocrLang,
+      });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch {
+      // ignore
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-muted/40">
+      <header className="border-b bg-background px-6 py-3 flex items-center justify-between">
+        <h1 className="text-lg font-semibold">{t("settings.title")}</h1>
+        <div className="flex items-center gap-2">
+          <LanguageSwitcher />
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => navigate("/dashboard")}
+          >
+            <ArrowLeft className="h-4 w-4 mr-1" />
+            {t("dashboard.title")}
+          </Button>
+        </div>
+      </header>
+
+      <main className="mx-auto max-w-2xl p-6 space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>{t("settings.general")}</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">
+                {t("settings.agentName")}
+              </label>
+              <Input
+                placeholder={t("settings.agentNamePlaceholder")}
+                value={localAgentName}
+                onChange={(e) => setLocalAgentName(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">
+                {t("settings.language")}
+              </label>
+              <div className="flex gap-2">
+                <Button
+                  variant={i18n.language === "en" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => i18n.changeLanguage("en")}
+                >
+                  English
+                </Button>
+                <Button
+                  variant={i18n.language === "ar" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => i18n.changeLanguage("ar")}
+                >
+                  العربية
+                </Button>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">
+                {t("settings.ocrLang")}
+              </label>
+              <Input
+                value={ocrLang}
+                onChange={(e) => setOcrLang(e.target.value)}
+                placeholder="en"
+              />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>{t("settings.server")}</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">
+                {t("settings.serverUrl")}
+              </label>
+              <Input
+                type="url"
+                placeholder="https://app.basirah.com"
+                value={localServerUrl}
+                onChange={(e) => setLocalServerUrl(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">
+                {t("settings.apiKey")}
+              </label>
+              <Input
+                type="text"
+                placeholder="your-api-key"
+                value={localApiKey}
+                onChange={(e) => setLocalApiKey(e.target.value)}
+              />
+            </div>
+          </CardContent>
+        </Card>
+
+        <LogsViewer logs={logs.slice(-50)} />
+
+        <div className="flex justify-end gap-2">
+          {saved && (
+            <p className="text-sm text-green-600 self-center">
+              {t("settings.saved")}
+            </p>
+          )}
+          <Button onClick={handleSave} disabled={loading}>
+            <Save className="h-4 w-4 mr-1" />
+            {t("settings.save")}
+          </Button>
+        </div>
+      </main>
+    </div>
+  );
+}

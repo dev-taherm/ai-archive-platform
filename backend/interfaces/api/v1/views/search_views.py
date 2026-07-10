@@ -119,7 +119,7 @@ class SearchView(viewsets.GenericViewSet):
             try:
                 from apps.search.models import SearchLog
 
-                SearchLog.objects.create(
+                log_kwargs = dict(
                     user_id=request.user.pk if request.user.is_authenticated else None,
                     query=validated["query"],
                     search_type=validated.get("search_type", "hybrid"),
@@ -127,6 +127,9 @@ class SearchView(viewsets.GenericViewSet):
                     search_time_ms=response_dto.search_time_ms,
                     filters_used=filters_data,
                 )
+                if request.user.is_authenticated and hasattr(request.user, "current_organization") and request.user.current_organization:
+                    log_kwargs["organization"] = request.user.current_organization
+                SearchLog.objects.create(**log_kwargs)
             except Exception:
                 logger.debug("Failed to log search")
 

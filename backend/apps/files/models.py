@@ -21,6 +21,20 @@ class FileRecord(models.Model):
         AGENT = "agent", "Agent Synced"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organization = models.ForeignKey(
+        "organizations.Organization",
+        on_delete=models.CASCADE,
+        related_name="files",
+        null=True,
+        blank=True,
+    )
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="owned_files",
+    )
     path = models.TextField()
     mime_type = models.CharField(max_length=255)
     size_bytes = models.BigIntegerField(default=0)
@@ -81,6 +95,13 @@ class AuditLog(models.Model):
         LOGOUT = "logout", "Logout"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organization = models.ForeignKey(
+        "organizations.Organization",
+        on_delete=models.CASCADE,
+        related_name="audit_logs",
+        null=True,
+        blank=True,
+    )
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,

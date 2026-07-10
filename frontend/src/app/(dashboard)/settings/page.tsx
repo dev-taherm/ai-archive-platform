@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import api from "@/lib/api";
 import AIProviders from "@/components/features/settings/ai-providers";
+import OrganizationSettings from "@/components/features/settings/organization-settings";
 import {
   User,
   Palette,
@@ -17,6 +18,7 @@ import {
   Plus,
   Eye,
   EyeOff,
+  Building2,
 } from "lucide-react";
 
 interface ApiKey {
@@ -27,10 +29,11 @@ interface ApiKey {
   last_used: string | null;
 }
 
-type Tab = "profile" | "appearance" | "api-keys" | "ai-providers";
+type Tab = "profile" | "appearance" | "api-keys" | "ai-providers" | "organization";
 
 const tabs: { id: Tab; label: string; icon: typeof User }[] = [
   { id: "profile", label: "Profile", icon: User },
+  { id: "organization", label: "Organization", icon: Building2 },
   { id: "appearance", label: "Appearance", icon: Palette },
   { id: "api-keys", label: "API Keys", icon: Key },
   { id: "ai-providers", label: "AI Providers", icon: Brain },
@@ -295,6 +298,9 @@ export default function SettingsPage() {
 
       {/* AI Providers Tab */}
       {activeTab === "ai-providers" && <AIProviders />}
+
+      {/* Organization Tab */}
+      {activeTab === "organization" && <OrganizationSettings />}
     </div>
   );
 }

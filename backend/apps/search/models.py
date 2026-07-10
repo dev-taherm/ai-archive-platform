@@ -15,6 +15,13 @@ class SearchLog(models.Model):
         HYBRID = "hybrid", "Hybrid"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organization = models.ForeignKey(
+        "organizations.Organization",
+        on_delete=models.CASCADE,
+        related_name="search_logs",
+        null=True,
+        blank=True,
+    )
     user_id = models.UUIDField(null=True, blank=True, db_index=True)
     query = models.TextField()
     search_type = models.CharField(
@@ -45,6 +52,13 @@ class SavedSearch(models.Model):
     """A user's saved search query for quick re-execution."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organization = models.ForeignKey(
+        "organizations.Organization",
+        on_delete=models.CASCADE,
+        related_name="saved_searches",
+        null=True,
+        blank=True,
+    )
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,

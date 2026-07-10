@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import api from "@/lib/api";
 import { detectOS, osLabel, type OSType } from "@/lib/detect-os";
-import type { AgentSetupResponse } from "@/types/api";
+import type { AgentSetupResponse, AgentDownloadManifest } from "@/types/api";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -79,6 +79,26 @@ export function DownloadAgentDialog({ open, onClose }: DownloadAgentDialogProps)
     enabled: step === "waiting",
     refetchInterval: 3000,
   });
+
+  // Fetch build manifest to know which platforms are available
+  const { data: manifest } = useQuery({
+    queryKey: ["agents", "manifest"],
+    queryFn: async () => {
+      const res = await api.get<AgentDownloadManifest>("/agents/manifest");
+      return res.data;
+    },
+  });
+
+  const isOSAvailable = (os: OSType): boolean => {
+    if (!manifest?.builds) return true;
+    const triple =
+      os === "linux"
+        ? "x86_64-unknown-linux-gnu"
+        : os === "darwin"
+          ? "aarch64-apple-darwin"
+          : "x86_64-pc-windows-msvc";
+    return triple in manifest.builds;
+  };
 
   useEffect(() => {
     if (step === "waiting" && agentsList && agentsCountBeforeRef.current !== null) {
@@ -198,11 +218,13 @@ export function DownloadAgentDialog({ open, onClose }: DownloadAgentDialogProps)
                         variant={os === selectedOS ? "default" : "outline"}
                         size="sm"
                         onClick={() => setSelectedOS(os)}
+                        disabled={!isOSAvailable(os)}
                       >
                         {os === "linux" && <Terminal className="h-3 w-3 mr-1" />}
                         {os === "darwin" && <Monitor className="h-3 w-3 mr-1" />}
                         {os === "windows" && <Monitor className="h-3 w-3 mr-1" />}
                         {osLabel(os)}
+                        {!isOSAvailable(os) && " (coming soon)"}
                       </Button>
                     ))}
                   </div>

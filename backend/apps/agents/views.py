@@ -59,6 +59,11 @@ class AgentViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         agent = serializer.save(user=self.request.user)
 
+        # Set organization from the creating user
+        if hasattr(self.request.user, "current_organization") and self.request.user.current_organization:
+            agent.organization = self.request.user.current_organization
+            agent.save(update_fields=["organization"])
+
         # Auto-create an API key for the agent
         from apps.apikeys.models import ApiKey
 
@@ -250,6 +255,17 @@ class AgentViewSet(viewsets.ModelViewSet):
             content_type="application/zip",
             filename=zip_filename,
         )
+
+    @action(detail=False, methods=["get"], url_path="manifest")
+    def manifest(self, request):
+        """Return build manifest showing available binaries."""
+        binaries_dir = Path(settings.MEDIA_ROOT) / "agents" / "binaries"
+        manifest_path = binaries_dir / "manifest.json"
+        if not manifest_path.exists():
+            return Response({"builds": {}}, status=status.HTTP_200_OK)
+        with open(manifest_path) as f:
+            manifest = json.load(f)
+        return Response(manifest, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=["get"], url_path="download-package")
     def download_package(self, request):
