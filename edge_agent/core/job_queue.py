@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from typing import Any
+from datetime import datetime, timezone
 
 from edge_agent.db.local_db import LocalDB
 
@@ -28,13 +29,11 @@ class JobQueue:
         return self.db.list_jobs(status, limit)
 
     def start_job(self, job_id: str) -> None:
-        from datetime import datetime, timezone
         self.db.update_job(
             job_id, status="running", started_at=datetime.now(timezone.utc).isoformat()
         )
 
     def complete_job(self, job_id: str, result: Any = None) -> None:
-        from datetime import datetime, timezone
         self.db.update_job(
             job_id,
             status="completed",
@@ -44,7 +43,6 @@ class JobQueue:
         )
 
     def fail_job(self, job_id: str, error: str) -> None:
-        from datetime import datetime, timezone
         self.db.update_job(
             job_id,
             status="failed",

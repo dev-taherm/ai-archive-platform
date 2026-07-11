@@ -112,6 +112,7 @@ class LocalDB:
     def _get_conn(self) -> sqlite3.Connection:
         if not hasattr(self._local, "conn") or self._local.conn is None:
             conn = sqlite3.connect(self._db_path, timeout=30)
+            conn.row_factory = sqlite3.Row
             conn.execute("PRAGMA busy_timeout=30000")
             self._local.conn = conn
         return self._local.conn
@@ -180,27 +181,27 @@ class LocalDB:
 
     def _file_row_to_dict(self, row: sqlite3.Row) -> dict[str, Any]:
         return {
-            "id": row[0],
-            "local_path": row[1],
-            "filename": row[2],
-            "extension": row[3],
-            "file_hash": row[4],
-            "size_bytes": row[5],
-            "mime_type": row[6],
-            "modified_at": row[7],
-            "processing_status": row[8],
-            "extracted_text": row[9],
-            "markdown": row[10],
-            "content_blocks": row[11],
-            "tables": row[12],
-            "images": row[13],
-            "language": row[14],
-            "word_count": row[15],
-            "char_count": row[16],
-            "page_count": row[17],
-            "synced": bool(row[18]),
-            "first_seen_at": row[19],
-            "updated_at": row[20],
+            "id": row["id"],
+            "local_path": row["local_path"],
+            "filename": row["filename"],
+            "extension": row["extension"],
+            "file_hash": row["file_hash"],
+            "size_bytes": row["size_bytes"],
+            "mime_type": row["mime_type"],
+            "modified_at": row["modified_at"],
+            "processing_status": row["processing_status"],
+            "extracted_text": row["extracted_text"],
+            "markdown": row["markdown"],
+            "content_blocks": row["content_blocks"],
+            "tables": row["tables"],
+            "images": row["images"],
+            "language": row["language"],
+            "word_count": row["word_count"],
+            "char_count": row["char_count"],
+            "page_count": row["page_count"],
+            "synced": bool(row["synced"]),
+            "first_seen_at": row["first_seen_at"],
+            "updated_at": row["updated_at"],
         }
 
     def upsert_files(self, files: list[dict[str, Any]]) -> int:
@@ -332,6 +333,27 @@ class LocalDB:
             "synced": synced,
         }
 
+    def count_completed_files(self) -> int:
+        """Count files with processing_status='completed'."""
+        return self.conn.execute(
+            "SELECT COUNT(*) FROM files WHERE processing_status='completed'"
+        ).fetchone()[0]
+
+    def get_job_stats(self) -> dict[str, int]:
+        """Return pending and total job counts."""
+        pending = self.conn.execute(
+            "SELECT COUNT(*) FROM jobs WHERE status='pending'"
+        ).fetchone()[0]
+        total = self.conn.execute(
+            "SELECT COUNT(*) FROM jobs"
+        ).fetchone()[0]
+        return {"pending_jobs": pending, "total_jobs": total}
+
+    def delete_files_by_path(self, path: str) -> None:
+        """Delete file records by exact local_path."""
+        self.conn.execute("DELETE FROM files WHERE local_path=?", (path,))
+        self.conn.commit()
+
     # ── Jobs ──────────────────────────────────────────────────────────────────
 
     def create_job(self, job_type: str, payload: dict[str, Any] | None = None) -> str:
@@ -353,17 +375,17 @@ class LocalDB:
         if not row:
             return None
         return {
-            "id": row[0],
-            "type": row[1],
-            "status": row[2],
-            "payload": json.loads(row[3]),
-            "progress": row[4],
-            "result": json.loads(row[5]) if row[5] else None,
-            "error": row[6],
-            "created_at": row[7],
-            "updated_at": row[8],
-            "started_at": row[9],
-            "completed_at": row[10],
+            "id": row["id"],
+            "type": row["type"],
+            "status": row["status"],
+            "payload": json.loads(row["payload"]),
+            "progress": row["progress"],
+            "result": json.loads(row["result"]) if row["result"] else None,
+            "error": row["error"],
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+            "started_at": row["started_at"],
+            "completed_at": row["completed_at"],
         }
 
     def list_jobs(
@@ -380,17 +402,17 @@ class LocalDB:
         rows = self.conn.execute(query, params).fetchall()
         return [
             {
-                "id": r[0],
-                "type": r[1],
-                "status": r[2],
-                "payload": json.loads(r[3]),
-                "progress": r[4],
-                "result": json.loads(r[5]) if r[5] else None,
-                "error": r[6],
-                "created_at": r[7],
-                "updated_at": r[8],
-                "started_at": r[9],
-                "completed_at": r[10],
+                "id": r["id"],
+                "type": r["type"],
+                "status": r["status"],
+                "payload": json.loads(r["payload"]),
+                "progress": r["progress"],
+                "result": json.loads(r["result"]) if r["result"] else None,
+                "error": r["error"],
+                "created_at": r["created_at"],
+                "updated_at": r["updated_at"],
+                "started_at": r["started_at"],
+                "completed_at": r["completed_at"],
             }
             for r in rows
         ]
@@ -426,11 +448,11 @@ class LocalDB:
         if not row:
             return None
         return {
-            "id": row[0],
-            "original_path": row[1],
-            "original_file_id": row[2],
-            "deleted_at": row[3],
-            "size_bytes": row[4],
+            "id": row["id"],
+            "original_path": row["original_path"],
+            "original_file_id": row["original_file_id"],
+            "deleted_at": row["deleted_at"],
+            "size_bytes": row["size_bytes"],
         }
 
     def list_trash(self) -> list[dict[str, Any]]:
@@ -439,11 +461,11 @@ class LocalDB:
         ).fetchall()
         return [
             {
-                "id": r[0],
-                "original_path": r[1],
-                "original_file_id": r[2],
-                "deleted_at": r[3],
-                "size_bytes": r[4],
+                "id": r["id"],
+                "original_path": r["original_path"],
+                "original_file_id": r["original_file_id"],
+                "deleted_at": r["deleted_at"],
+                "size_bytes": r["size_bytes"],
             }
             for r in rows
         ]

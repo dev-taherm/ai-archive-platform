@@ -8,6 +8,12 @@ import time
 from pathlib import Path
 from typing import Any
 
+from edge_agent.core.event_bus import (
+    EVENT_SCAN_COMPLETED,
+    EVENT_SCAN_FAILED,
+    EVENT_SCAN_STARTED,
+    EVENT_STATUS_CHANGED,
+)
 from edge_agent.core.job_queue import JobQueue
 from edge_agent.db.local_db import LocalDB
 
@@ -30,7 +36,6 @@ class Worker:
         self._running = False
         self._paused = False
         self._thread: threading.Thread | None = None
-        self._events: dict[str, threading.Event] = {}
         self._last_heartbeat: float = 0.0
         self._last_sync: float = 0.0
 
@@ -45,6 +50,8 @@ class Worker:
     @property
     def processing_count(self) -> int:
         return len([j for j in self.queue.list_jobs(status="running", limit=100)])
+
+    # ── Lifecycle ─────────────────────────────────────────────────────────────
 
     def start(self) -> None:
         if self._running:
@@ -66,16 +73,30 @@ class Worker:
 
     def pause(self) -> None:
         self._paused = True
+        self._publish_event({"type": EVENT_STATUS_CHANGED, "paused": True})
         logger.info("Worker paused")
 
     def resume(self) -> None:
         self._paused = False
+        self._publish_event({"type": EVENT_STATUS_CHANGED, "paused": False})
         logger.info("Worker resumed")
 
     def restart(self) -> None:
         logger.info("Worker restarting")
         self.stop()
         self.start()
+
+    # ── Event publishing helper ───────────────────────────────────────────────
+
+    def _publish_event(self, event: dict[str, Any]) -> None:
+        """Publish an event to the EventBus (safe to call from any thread)."""
+        if self._event_bus:
+            try:
+                self._event_bus.publish(event)
+            except Exception:
+                logger.exception("Failed to publish event")
+
+    # ── Stale job recovery ────────────────────────────────────────────────────
 
     def _recover_stale_jobs(self) -> None:
         try:
@@ -88,12 +109,7 @@ class Worker:
         except Exception:
             logger.exception("Failed to recover stale jobs")
 
-    def wait_for_job(self, job_id: str, timeout: float = 300.0) -> dict[str, Any] | None:
-        ev = threading.Event()
-        self._events[job_id] = ev
-        ev.wait(timeout=timeout)
-        self._events.pop(job_id, None)
-        return self.queue.get_job(job_id)
+    # ── Main loop ─────────────────────────────────────────────────────────────
 
     def _loop(self) -> None:
         while self._running:
@@ -130,6 +146,8 @@ class Worker:
                 logger.exception("Sync failed")
             self._last_sync = now
 
+    # ── Job processing ────────────────────────────────────────────────────────
+
     def _process_job(self, job: dict[str, Any]) -> None:
         job_id = job["id"]
         job_type = job["type"]
@@ -138,21 +156,19 @@ class Worker:
             self.queue.start_job(job_id)
             logger.info("Processing job %s (%s)", job_id, job_type)
 
-            if self._event_bus:
-                self._event_bus.publish({
-                    "type": "scan_started",
-                    "job_id": job_id,
-                    "file_id": payload.get("file_id"),
-                })
+            self._publish_event({
+                "type": EVENT_SCAN_STARTED,
+                "job_id": job_id,
+                "file_id": payload.get("file_id"),
+            })
 
             if job_type == "scan_file":
                 self._execute_scan(job_id, payload)
-                if self._event_bus:
-                    self._event_bus.publish({
-                        "type": "scan_completed",
-                        "job_id": job_id,
-                        "file_id": payload.get("file_id"),
-                    })
+                self._publish_event({
+                    "type": EVENT_SCAN_COMPLETED,
+                    "job_id": job_id,
+                    "file_id": payload.get("file_id"),
+                })
             else:
                 self.queue.fail_job(job_id, f"Unknown job type: {job_type}")
         except Exception as e:
@@ -164,20 +180,12 @@ class Worker:
                 logger.exception("Failed to mark job %s as failed", job_id)
             if self._metrics:
                 self._metrics.parse_errors += 1
-            if self._event_bus:
-                try:
-                    self._event_bus.publish({
-                        "type": "scan_failed",
-                        "job_id": job_id,
-                        "file_id": payload.get("file_id"),
-                        "error": str(e),
-                    })
-                except Exception:
-                    logger.exception("Failed to publish scan_failed event")
-        finally:
-            ev = self._events.pop(job_id, None)
-            if ev:
-                ev.set()
+            self._publish_event({
+                "type": EVENT_SCAN_FAILED,
+                "job_id": job_id,
+                "file_id": payload.get("file_id"),
+                "error": str(e),
+            })
 
     def _execute_scan(self, job_id: str, payload: dict[str, Any]) -> None:
         from edge_agent.parsers.router import ParserRouter

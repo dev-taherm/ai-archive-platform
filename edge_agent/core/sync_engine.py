@@ -103,10 +103,7 @@ class SyncEngine:
 
         url = f"{creds['server_url'].rstrip('/')}/api/v1/agents/{creds['agent_id']}/heartbeat"
 
-        # Count completed files
-        completed = self.db.conn.execute(
-            "SELECT COUNT(*) FROM files WHERE processing_status='completed'"
-        ).fetchone()[0]
+        completed = self.db.count_completed_files()
 
         body = json.dumps({"status": "online", "files_count": completed}).encode()
         req = urllib.request.Request(
@@ -145,7 +142,9 @@ class SyncEngine:
 
         files_payload = []
         for f in pending:
-            if not (f.get("extracted_text") or f.get("markdown")):
+            raw_text = _sanitize_text(f.get("extracted_text") or "")
+            raw_md = _sanitize_text(f.get("markdown") or "")
+            if not (raw_text.strip() or raw_md.strip()):
                 logger.warning(
                     "Skipping sync for %s: extracted_text and markdown are both empty",
                     f.get("local_path"),
@@ -157,8 +156,8 @@ class SyncEngine:
                 "file_size": f["size_bytes"],
                 "mime_type": f["mime_type"],
                 "modified_at": _to_epoch(f["modified_at"]),
-                "extracted_text": _sanitize_text(f["extracted_text"]),
-                "markdown": _sanitize_text(f["markdown"]),
+                "extracted_text": raw_text,
+                "markdown": raw_md,
                 "language": f["language"],
                 "word_count": f["word_count"],
                 "char_count": f["char_count"],

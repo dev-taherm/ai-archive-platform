@@ -6,6 +6,11 @@ import threading
 import time
 from typing import Any
 
+from edge_agent.core.event_bus import (
+    EVENT_FILE_CREATED,
+    EVENT_FILE_DELETED,
+    EVENT_FILE_MODIFIED,
+)
 from edge_agent.core.job_queue import JobQueue
 from edge_agent.db.local_db import LocalDB
 
@@ -31,6 +36,8 @@ class FolderWatcher:
     def folder_count(self) -> int:
         return len(self.db.get_folders())
 
+    # ── Lifecycle ─────────────────────────────────────────────────────────────
+
     def start(self, folders: list[str]) -> None:
         if self._running:
             return
@@ -46,6 +53,17 @@ class FolderWatcher:
             self._thread.join(timeout=10)
             self._thread = None
         logger.info("Watcher stopped")
+
+    # ── Event publishing helper ───────────────────────────────────────────────
+
+    def _publish_event(self, event: dict[str, Any]) -> None:
+        if self.event_bus:
+            try:
+                self.event_bus.publish(event)
+            except Exception:
+                logger.exception("Failed to publish event")
+
+    # ── Initial scan ──────────────────────────────────────────────────────────
 
     def _scan_and_enqueue(self, folders: list[str]) -> None:
         from edge_agent.core.scanner import scan_single
@@ -81,13 +99,14 @@ class FolderWatcher:
         if count > 0:
             job_id = self.job_queue.create_job("scan_file", {"file_id": meta["id"]})
             logger.debug("Enqueued scan for %s", fpath)
-            if self.event_bus:
-                self.event_bus.publish({
-                    "type": "file_created",
-                    "local_path": fpath,
-                    "file_id": meta["id"],
-                    "job_id": job_id,
-                })
+            self._publish_event({
+                "type": EVENT_FILE_CREATED,
+                "local_path": fpath,
+                "file_id": meta["id"],
+                "job_id": job_id,
+            })
+
+    # ── Deleted file detection ────────────────────────────────────────────────
 
     def _check_deleted(self) -> None:
         with self._lock:
@@ -95,14 +114,14 @@ class FolderWatcher:
             for path in gone:
                 del self._known[path]
         for path in gone:
-            self.db.conn.execute("DELETE FROM files WHERE local_path=?", (path,))
-            self.db.conn.commit()
+            self.db.delete_files_by_path(path)
             logger.debug("Removed deleted file record: %s", path)
-            if self.event_bus:
-                self.event_bus.publish({
-                    "type": "file_deleted",
-                    "local_path": path,
-                })
+            self._publish_event({
+                "type": EVENT_FILE_DELETED,
+                "local_path": path,
+            })
+
+    # ── Main loop ─────────────────────────────────────────────────────────────
 
     def _loop(self) -> None:
         while self._running:
@@ -132,11 +151,10 @@ class FolderWatcher:
                                 self._known[full] = (mtime, size)
                             if prev:
                                 logger.info("Detected change: %s", full)
-                                if self.event_bus:
-                                    self.event_bus.publish({
-                                        "type": "file_modified",
-                                        "local_path": full,
-                                    })
+                                self._publish_event({
+                                    "type": EVENT_FILE_MODIFIED,
+                                    "local_path": full,
+                                })
                             self._upsert_and_enqueue(full)
             except Exception:
                 logger.exception("Watcher loop error")
