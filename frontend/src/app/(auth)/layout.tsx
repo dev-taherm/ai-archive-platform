@@ -1,20 +1,21 @@
-import { Archive } from "lucide-react";
+import { BasirahLogo } from "@/components/ui/basirah-logo";
+import { useTranslations } from "next-intl";
 
 export default function AuthLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const t = useTranslations("auth");
   return (
-    <div className="flex min-h-screen items-center justify-center bg-muted/50 px-4">
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-background via-background to-brand-teal/5 px-4">
       <div className="w-full max-w-md">
         <div className="mb-8 flex flex-col items-center text-center">
-          <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-            <Archive className="h-6 w-6" />
+          <div className="mb-4">
+            <BasirahLogo size={48} variant="full" />
           </div>
-          <h1 className="text-2xl font-bold">AI Archive Platform</h1>
-          <p className="text-sm text-muted-foreground">
-            Intelligent document management
+          <p className="text-sm text-muted-foreground max-w-xs">
+            {t("tagline")}
           </p>
         </div>
         {children}

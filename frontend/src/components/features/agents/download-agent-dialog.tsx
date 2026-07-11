@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useState, useEffect, useCallback } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 import {
   Download,
   Monitor,
@@ -11,11 +12,10 @@ import {
   Copy,
   ChevronDown,
   Bot,
-  Wifi,
 } from "lucide-react";
 import api from "@/lib/api";
 import { detectOS, osLabel, type OSType } from "@/lib/detect-os";
-import type { AgentSetupResponse, AgentDownloadManifest } from "@/types/api";
+import type { DesktopBuildManifest } from "@/types/api";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -24,103 +24,55 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 
 interface DownloadAgentDialogProps {
   open: boolean;
   onClose: () => void;
 }
 
-type Step = "creating" | "download" | "instructions" | "waiting" | "connected";
+type Step = "download" | "instructions" | "done";
 
 export function DownloadAgentDialog({ open, onClose }: DownloadAgentDialogProps) {
-  const [step, setStep] = useState<Step>("creating");
+  const t = useTranslations("downloadAgent");
+  const tc = useTranslations("common");
+  const [step, setStep] = useState<Step>("download");
   const [selectedOS, setSelectedOS] = useState<OSType>("linux");
-  const [agentData, setAgentData] = useState<AgentSetupResponse | null>(null);
   const [showAllOS, setShowAllOS] = useState(false);
   const [downloading, setDownloading] = useState(false);
-  const agentsCountBeforeRef = useRef<number | null>(null);
 
   useEffect(() => {
     setSelectedOS(detectOS());
   }, []);
 
-  const setupMutation = useMutation({
-    mutationFn: async () => {
-      const res = await api.post<AgentSetupResponse>("/agents/setup", {
-        name: `Edge Agent (${navigator.platform})`,
-        platform: detectOS(),
-        hostname: navigator.userAgent.split(" ").pop() || "",
-      });
-      return res.data;
-    },
-    onSuccess: (data) => {
-      setAgentData(data);
-      agentsCountBeforeRef.current = data.existing_agents_count;
-      setStep("download");
-    },
-  });
-
-  // Auto-trigger setup on open
-  useEffect(() => {
-    if (open && step === "creating" && !agentData) {
-      setupMutation.mutate();
-    }
-  }, [open]);
-
-  // Poll agents list when waiting — detect new agent by count increase
-  const { data: agentsList } = useQuery({
-    queryKey: ["agents"],
-    queryFn: async () => {
-      const res = await api.get("/agents");
-      const data = res.data;
-      return Array.isArray(data) ? data : data.results || [];
-    },
-    enabled: step === "waiting",
-    refetchInterval: 3000,
-  });
-
-  // Fetch build manifest to know which platforms are available
+  // Fetch desktop manifest to know which platforms are available
   const { data: manifest } = useQuery({
-    queryKey: ["agents", "manifest"],
+    queryKey: ["agents", "desktop-manifest"],
     queryFn: async () => {
-      const res = await api.get<AgentDownloadManifest>("/agents/manifest");
+      const res = await api.get<DesktopBuildManifest>("/agents/desktop-manifest");
       return res.data;
     },
   });
 
   const isOSAvailable = (os: OSType): boolean => {
-    if (!manifest?.builds) return true;
-    const triple =
-      os === "linux"
-        ? "x86_64-unknown-linux-gnu"
-        : os === "darwin"
-          ? "aarch64-apple-darwin"
-          : "x86_64-pc-windows-msvc";
-    return triple in manifest.builds;
+    if (!manifest?.builds) return false;
+    if (os === "linux") return "linux-x86_64" in manifest.builds;
+    if (os === "darwin") return "darwin-arm64" in manifest.builds || "darwin-x86_64" in manifest.builds;
+    if (os === "windows") return "windows-x86_64" in manifest.builds;
+    return false;
   };
 
-  useEffect(() => {
-    if (step === "waiting" && agentsList && agentsCountBeforeRef.current !== null) {
-      if (agentsList.length > agentsCountBeforeRef.current) {
-        setStep("connected");
-      }
-    }
-  }, [agentsList, step]);
-
   const handleDownload = useCallback(async () => {
-    if (!agentData) return;
     setDownloading(true);
     try {
       const res = await api.get(
-        `/agents/download-package?os=${selectedOS}&jwt_token=${encodeURIComponent(agentData.jwt_token)}`,
+        `/agents/download-desktop?os=${selectedOS}`,
         { responseType: "blob" },
       );
       const blob = new Blob([res.data], { type: "application/zip" });
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = "edge-agent.zip";
+      a.download = `basirah-desktop-${selectedOS}.zip`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
@@ -131,7 +83,7 @@ export function DownloadAgentDialog({ open, onClose }: DownloadAgentDialogProps)
     } finally {
       setDownloading(false);
     }
-  }, [agentData, selectedOS]);
+  }, [selectedOS]);
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
@@ -151,36 +103,28 @@ export function DownloadAgentDialog({ open, onClose }: DownloadAgentDialogProps)
                 <Bot className="h-6 w-6 text-primary" />
               </div>
               <div>
-                <CardTitle>Set Up Edge Agent</CardTitle>
+                <CardTitle>{t('title')}</CardTitle>
                 <CardDescription>
-                  Download and install the agent to start processing documents
+                  {t('description')}
                 </CardDescription>
               </div>
             </div>
             <Button variant="ghost" size="sm" onClick={onClose}>
-              Skip for now
+              {t('skip')}
             </Button>
           </div>
         </CardHeader>
         <CardContent className="space-y-6">
-          {/* Step: Creating */}
-          {step === "creating" && (
-            <div className="flex flex-col items-center py-8 gap-4">
-              <Loader2 className="h-8 w-8 animate-spin text-primary" />
-              <p className="text-muted-foreground">Setting up your agent...</p>
-            </div>
-          )}
-
           {/* Step: Download */}
           {step === "download" && (
             <div className="space-y-4">
               <div className="text-center py-4">
                 <Download className="h-12 w-12 mx-auto text-primary mb-3" />
                 <h3 className="text-lg font-semibold">
-                  Download for {osLabel(selectedOS)}
+                  {t('downloadFor', { os: osLabel(selectedOS) })}
                 </h3>
                 <p className="text-sm text-muted-foreground mt-1">
-                  The agent will auto-register when you run it
+                  {t('preconfigured')}
                 </p>
               </div>
 
@@ -188,24 +132,30 @@ export function DownloadAgentDialog({ open, onClose }: DownloadAgentDialogProps)
                 <Button
                   size="lg"
                   onClick={handleDownload}
-                  disabled={downloading}
+                  disabled={downloading || !isOSAvailable(selectedOS)}
                   className="px-8"
                 >
                   {downloading ? (
-                    <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+                    <Loader2 className="h-5 w-5 mr-2 animate-spin text-brand-teal" />
                   ) : (
                     <Download className="h-5 w-5 mr-2" />
                   )}
-                  {downloading ? "Downloading..." : "Download Edge Agent"}
+                  {downloading ? t('downloading') : t('download')}
                 </Button>
               </div>
+
+              {!isOSAvailable(selectedOS) && manifest?.builds && Object.keys(manifest.builds).length > 0 && (
+                <p className="text-center text-sm text-muted-foreground">
+                  {t('notAvailable', { os: osLabel(selectedOS) })}
+                </p>
+              )}
 
               <div className="text-center">
                 <button
                   onClick={() => setShowAllOS(!showAllOS)}
                   className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1 mx-auto"
                 >
-                  Other platforms
+                  {t('otherPlatforms')}
                   <ChevronDown
                     className={`h-3 w-3 transition-transform ${showAllOS ? "rotate-180" : ""}`}
                   />
@@ -238,130 +188,85 @@ export function DownloadAgentDialog({ open, onClose }: DownloadAgentDialogProps)
             <div className="space-y-4">
               <div className="flex items-center gap-2">
                 <CheckCircle2 className="h-5 w-5 text-green-500" />
-                <span className="font-medium">Download started</span>
+                <span className="font-medium">{t('downloadStarted')}</span>
               </div>
 
               <div className="bg-muted rounded-lg p-4 space-y-3">
-                <h4 className="font-medium text-sm">Installation Steps</h4>
+                <h4 className="font-medium text-sm">{t('installationSteps')}</h4>
 
                 {selectedOS === "windows" ? (
                   <ol className="list-decimal list-inside space-y-2 text-sm text-muted-foreground">
-                    <li>Extract the zip to a folder of your choice</li>
+                    <li>{t('windowsStep1')}</li>
                     <li>
-                      Run{" "}
-                      <code className="bg-background px-1 rounded">
-                        install.bat
-                      </code>{" "}
-                      (double-click or in Command Prompt)
+                      {t('windowsStep2')}
                     </li>
-                    <li>
-                      Start the agent:
-                      <div className="relative mt-1">
-                        <code className="block bg-background p-2 rounded text-xs">
-                          %USERPROFILE%\.edge-agent\edge-agent.exe run
-                        </code>
-                        <button
-                          onClick={() =>
-                            copyToClipboard(
-                              "%USERPROFILE%\\.edge-agent\\edge-agent.exe run"
-                            )
-                          }
-                          className="absolute right-2 top-2 p-1 hover:bg-muted rounded"
-                        >
-                          <Copy className="h-3 w-3" />
-                        </button>
-                      </div>
-                    </li>
+                    <li>{t('windowsStep3')}</li>
+                    <li>{t('windowsStep4')}</li>
                   </ol>
                 ) : (
                   <ol className="list-decimal list-inside space-y-2 text-sm text-muted-foreground">
-                    <li>Extract the zip:</li>
+                    <li>{t('unixStep1')}</li>
                     <div className="relative">
                       <code className="block bg-background p-2 rounded text-xs">
-                        unzip edge-agent.zip -d edge-agent
+                        {t('unzipCommand')}
                       </code>
                       <button
                         onClick={() =>
-                          copyToClipboard("unzip edge-agent.zip -d edge-agent")
+                          copyToClipboard(t('unzipCommand'))
                         }
                         className="absolute right-2 top-2 p-1 hover:bg-muted rounded"
                       >
                         <Copy className="h-3 w-3" />
                       </button>
                     </div>
-                    <li>Run the installer:</li>
+                    <li>{t('unixStep2')}</li>
                     <div className="relative">
                       <code className="block bg-background p-2 rounded text-xs">
-                        cd edge-agent && chmod +x install.sh && ./install.sh
+                        {t('installCommand')}
                       </code>
                       <button
                         onClick={() =>
-                          copyToClipboard(
-                            "cd edge-agent && chmod +x install.sh && ./install.sh"
-                          )
+                          copyToClipboard(t('installCommand'))
                         }
                         className="absolute right-2 top-2 p-1 hover:bg-muted rounded"
                       >
                         <Copy className="h-3 w-3" />
                       </button>
                     </div>
-                    <li>Start the agent:</li>
-                    <div className="relative">
-                      <code className="block bg-background p-2 rounded text-xs">
-                        ~/.edge-agent/edge-agent run
-                      </code>
-                      <button
-                        onClick={() =>
-                          copyToClipboard("~/.edge-agent/edge-agent run")
-                        }
-                        className="absolute right-2 top-2 p-1 hover:bg-muted rounded"
-                      >
-                        <Copy className="h-3 w-3" />
-                      </button>
-                    </div>
+                    <li>{t('unixStep3')}</li>
+                    <li>{t('unixStep4')}</li>
                   </ol>
                 )}
               </div>
 
+              <div className="bg-primary/5 border border-primary/20 rounded-lg p-3">
+                <p className="text-sm text-primary">
+                  {t('preconfiguredInfo')}
+                </p>
+              </div>
+
               <div className="flex justify-center">
-                <Button onClick={() => setStep("waiting")}>
-                  <Wifi className="h-4 w-4 mr-2" />
-                  I&apos;ve started the agent
+                <Button onClick={() => setStep("done")}>
+                  <CheckCircle2 className="h-4 w-4 mr-2" />
+                  {t('gotIt')}
                 </Button>
               </div>
             </div>
           )}
 
-          {/* Step: Waiting for connection */}
-          {step === "waiting" && (
-            <div className="flex flex-col items-center py-8 gap-4">
-              <div className="relative">
-                <Loader2 className="h-12 w-12 animate-spin text-primary" />
-                <Wifi className="h-5 w-5 absolute bottom-0 right-0 text-primary animate-pulse" />
-              </div>
-              <h3 className="text-lg font-semibold">
-                Waiting for agent to connect...
-              </h3>
-              <p className="text-sm text-muted-foreground text-center max-w-md">
-                Make sure the agent is running. It will auto-register and connect
-                within a few seconds.
-              </p>
-            </div>
-          )}
-
-          {/* Step: Connected */}
-          {step === "connected" && (
+          {/* Step: Done */}
+          {step === "done" && (
             <div className="flex flex-col items-center py-8 gap-4">
               <div className="p-3 bg-green-500/10 rounded-full">
                 <CheckCircle2 className="h-12 w-12 text-green-500" />
               </div>
               <h3 className="text-lg font-semibold text-green-600">
-                Agent Connected!
+                {t('youreAllSet')}
               </h3>
-              <p className="text-sm text-muted-foreground text-center">
-                Your edge agent is now online and ready to process documents.
+              <p className="text-sm text-muted-foreground text-center max-w-md">
+                {t('doneStepDesc')}
               </p>
-              <Button onClick={onClose}>Go to Dashboard</Button>
+              <Button onClick={onClose}>{tc('goToDashboard')}</Button>
             </div>
           )}
         </CardContent>

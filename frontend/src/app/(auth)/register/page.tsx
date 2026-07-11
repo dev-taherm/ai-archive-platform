@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,6 +35,7 @@ function getGeneralError(error: any): string {
 }
 
 export default function RegisterPage() {
+  const t = useTranslations("auth");
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -56,9 +58,9 @@ export default function RegisterPage() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Create an account</CardTitle>
+        <CardTitle>{t("createAccount")}</CardTitle>
         <CardDescription>
-          Enter your information to get started
+          {t("enterInfo")}
         </CardDescription>
       </CardHeader>
       <form onSubmit={handleSubmit}>
@@ -70,16 +72,16 @@ export default function RegisterPage() {
           )}
           {passwordMismatch && (
             <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
-              Passwords do not match
+              {t("passwordsDoNotMatch")}
             </div>
           )}
           <div className="space-y-2">
             <label htmlFor="username" className="text-sm font-medium">
-              Username
+              {t("username")}
             </label>
             <Input
               id="username"
-              placeholder="johndoe"
+              placeholder={t("usernamePlaceholder")}
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               required
@@ -90,12 +92,12 @@ export default function RegisterPage() {
           </div>
           <div className="space-y-2">
             <label htmlFor="email" className="text-sm font-medium">
-              Email
+              {t("email")}
             </label>
             <Input
               id="email"
               type="email"
-              placeholder="name@example.com"
+              placeholder={t("emailPlaceholder")}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
@@ -106,12 +108,12 @@ export default function RegisterPage() {
           </div>
           <div className="space-y-2">
             <label htmlFor="password" className="text-sm font-medium">
-              Password
+              {t("password")}
             </label>
             <Input
               id="password"
               type="password"
-              placeholder="••••••••"
+              placeholder={t("passwordPlaceholder")}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
@@ -123,12 +125,12 @@ export default function RegisterPage() {
           </div>
           <div className="space-y-2">
             <label htmlFor="confirmPassword" className="text-sm font-medium">
-              Confirm Password
+              {t("confirmPassword")}
             </label>
             <Input
               id="confirmPassword"
               type="password"
-              placeholder="••••••••"
+              placeholder={t("passwordPlaceholder")}
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               required
@@ -141,12 +143,12 @@ export default function RegisterPage() {
         </CardContent>
         <CardFooter className="flex flex-col space-y-4">
           <Button type="submit" className="w-full" disabled={isRegistering}>
-            {isRegistering ? "Creating account..." : "Create account"}
+            {isRegistering ? t("creatingAccount") : t("createAccount")}
           </Button>
           <p className="text-sm text-muted-foreground">
-            Already have an account?{" "}
-            <Link href="/login" className="text-primary hover:underline">
-              Sign in
+            {t("alreadyHaveAccount")}{" "}
+              <Link href="/login" className="text-brand-cyan hover:underline">
+              {t("signIn")}
             </Link>
           </p>
         </CardFooter>

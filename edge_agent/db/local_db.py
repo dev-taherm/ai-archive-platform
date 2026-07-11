@@ -1,291 +1,493 @@
-"""Local SQLite database — stores file records and sync state.
-
-No Django dependency — uses stdlib sqlite3.
-"""
-
 from __future__ import annotations
 
 import json
-import logging
 import sqlite3
 import uuid
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-logger = logging.getLogger(__name__)
 
-_SCHEMA = """
+def _generate_id() -> str:
+    return str(uuid.uuid4())
+
+
+def _now() -> str:
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).isoformat()
+
+
+_SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS config (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS folders (
+    path TEXT PRIMARY KEY,
+    label TEXT NOT NULL DEFAULT '',
+    added_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS files (
     id TEXT PRIMARY KEY,
     local_path TEXT NOT NULL UNIQUE,
     filename TEXT NOT NULL,
     extension TEXT NOT NULL DEFAULT '',
-    mime_type TEXT NOT NULL DEFAULT 'application/octet-stream',
+    file_hash TEXT NOT NULL DEFAULT '',
     size_bytes INTEGER NOT NULL DEFAULT 0,
-    content_hash TEXT NOT NULL DEFAULT '',
-    modified_at REAL NOT NULL DEFAULT 0,
-    created_at REAL NOT NULL DEFAULT 0,
-    first_seen_at TEXT NOT NULL,
+    mime_type TEXT NOT NULL DEFAULT '',
+    modified_at TEXT NOT NULL DEFAULT '',
+    processing_status TEXT NOT NULL DEFAULT 'pending',
     extracted_text TEXT NOT NULL DEFAULT '',
     markdown TEXT NOT NULL DEFAULT '',
-    metadata TEXT NOT NULL DEFAULT '{}',
-    classification TEXT NOT NULL DEFAULT '{}',
-    summary TEXT NOT NULL DEFAULT '',
-    processing_status TEXT NOT NULL DEFAULT 'pending',
-    chunk_count INTEGER NOT NULL DEFAULT 0,
+    content_blocks TEXT NOT NULL DEFAULT '[]',
+    tables TEXT NOT NULL DEFAULT '[]',
+    images TEXT NOT NULL DEFAULT '[]',
+    language TEXT NOT NULL DEFAULT 'unknown',
+    word_count INTEGER NOT NULL DEFAULT 0,
+    char_count INTEGER NOT NULL DEFAULT 0,
+    page_count INTEGER NOT NULL DEFAULT 0,
     synced INTEGER NOT NULL DEFAULT 0,
-    synced_at TEXT,
-    last_error TEXT NOT NULL DEFAULT '',
+    first_seen_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_files_hash ON files(content_hash);
 CREATE INDEX IF NOT EXISTS idx_files_status ON files(processing_status);
 CREATE INDEX IF NOT EXISTS idx_files_synced ON files(synced);
+CREATE INDEX IF NOT EXISTS idx_files_hash ON files(file_hash);
 CREATE INDEX IF NOT EXISTS idx_files_path ON files(local_path);
 
-CREATE TABLE IF NOT EXISTS sync_log (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    sync_batch_id TEXT NOT NULL,
-    file_id TEXT NOT NULL,
+CREATE TABLE IF NOT EXISTS jobs (
+    id TEXT PRIMARY KEY,
+    type TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'pending',
-    response TEXT NOT NULL DEFAULT '',
+    payload TEXT NOT NULL DEFAULT '{}',
+    progress REAL NOT NULL DEFAULT 0.0,
+    result TEXT,
+    error TEXT,
     created_at TEXT NOT NULL,
-    FOREIGN KEY (file_id) REFERENCES files(id)
+    updated_at TEXT NOT NULL,
+    started_at TEXT,
+    completed_at TEXT
 );
 
-CREATE INDEX IF NOT EXISTS idx_sync_log_batch ON sync_log(sync_batch_id);
+CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
 
-CREATE TABLE IF NOT EXISTS entities (
+CREATE TABLE IF NOT EXISTS sync_queue (
     id TEXT PRIMARY KEY,
     file_id TEXT NOT NULL,
-    entity_type TEXT NOT NULL,
-    name TEXT NOT NULL,
-    context TEXT NOT NULL DEFAULT '',
-    confidence REAL,
-    source TEXT NOT NULL DEFAULT 'agent',
+    status TEXT NOT NULL DEFAULT 'pending',
+    retries INTEGER NOT NULL DEFAULT 0,
+    max_retries INTEGER NOT NULL DEFAULT 5,
+    error TEXT,
     created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
     FOREIGN KEY (file_id) REFERENCES files(id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_entities_file ON entities(file_id);
-CREATE INDEX IF NOT EXISTS idx_entities_type ON entities(entity_type);
-CREATE INDEX IF NOT EXISTS idx_entities_name ON entities(name);
-"""
+CREATE INDEX IF NOT EXISTS idx_sync_queue_status ON sync_queue(status);
 
-_MIGRATIONS = """
-ALTER TABLE files ADD COLUMN content_blocks TEXT NOT NULL DEFAULT '[]';
-ALTER TABLE files ADD COLUMN tables TEXT NOT NULL DEFAULT '[]';
-ALTER TABLE files ADD COLUMN images TEXT NOT NULL DEFAULT '[]';
-ALTER TABLE files ADD COLUMN language TEXT NOT NULL DEFAULT 'unknown';
-ALTER TABLE files ADD COLUMN word_count INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE files ADD COLUMN char_count INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE files ADD COLUMN page_count INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE files ADD COLUMN ocr_used INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE files ADD COLUMN agent_version TEXT NOT NULL DEFAULT '';
-ALTER TABLE files ADD COLUMN processing_version TEXT NOT NULL DEFAULT '';
-ALTER TABLE files ADD COLUMN parser_version TEXT NOT NULL DEFAULT '';
-ALTER TABLE files ADD COLUMN ocr_engine TEXT NOT NULL DEFAULT '';
+CREATE TABLE IF NOT EXISTS trash (
+    id TEXT PRIMARY KEY,
+    original_path TEXT NOT NULL,
+    original_file_id TEXT NOT NULL DEFAULT '',
+    deleted_at TEXT NOT NULL,
+    size_bytes INTEGER NOT NULL DEFAULT 0
+);
 """
 
 
 class LocalDB:
-    """SQLite database for local file tracking and sync state."""
-
     def __init__(self, db_path: str) -> None:
-        self._db_path = db_path
-        Path(db_path).parent.mkdir(parents=True, exist_ok=True)
-        self._conn = sqlite3.connect(db_path, check_same_thread=False)
-        self._conn.row_factory = sqlite3.Row
-        self._conn.execute("PRAGMA journal_mode=WAL")
-        self._conn.execute("PRAGMA foreign_keys=ON")
-        self._conn.executescript(_SCHEMA)
-        try:
-            self._conn.executescript(_MIGRATIONS)
-        except Exception:
-            self._conn.rollback()
-        self._conn.commit()
+        path = Path(db_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        self.conn = sqlite3.connect(str(path))
+        self.conn.execute("PRAGMA journal_mode=WAL")
+        self.conn.execute("PRAGMA foreign_keys=ON")
+        self.conn.executescript(_SCHEMA_SQL)
 
     def close(self) -> None:
-        self._conn.close()
+        self.conn.close()
 
-    def _now(self) -> str:
-        return datetime.now(timezone.utc).isoformat()
+    # ── Config ────────────────────────────────────────────────────────────────
 
-    def upsert_file(self, file_info: dict[str, Any]) -> str:
-        """Insert or update a file record. Returns the file ID."""
-        file_id = str(uuid.uuid5(uuid.NAMESPACE_URL, file_info["content_hash"]))
-        now = self._now()
-        existing = self._conn.execute("SELECT id FROM files WHERE content_hash = ?", (file_info["content_hash"],)).fetchone()
-        if existing:
-            file_id = existing["id"]
-            self._conn.execute("""
-                UPDATE files SET local_path=?, filename=?, extension=?, mime_type=?,
-                    size_bytes=?, modified_at=?, updated_at=?
-                WHERE id=?
-            """, (
-                file_info["path"], file_info["filename"], file_info.get("extension", ""),
-                file_info.get("mime_type", ""), file_info.get("size_bytes", 0),
-                file_info.get("modified_at", 0), now, file_id,
-            ))
-        else:
-            self._conn.execute("""
-                INSERT INTO files (id, local_path, filename, extension, mime_type,
-                    size_bytes, content_hash, modified_at, created_at, first_seen_at,
-                    updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                file_id, file_info["path"], file_info["filename"],
-                file_info.get("extension", ""), file_info.get("mime_type", ""),
-                file_info.get("size_bytes", 0), file_info.get("content_hash", ""),
-                file_info.get("modified_at", 0), file_info.get("created_at", 0),
-                now, now,
-            ))
-        self._conn.commit()
-        return file_id
+    def get_config(self) -> dict[str, str]:
+        rows = self.conn.execute("SELECT key, value FROM config").fetchall()
+        return dict(rows)
 
-    def update_file(self, file_id: str, **kwargs: Any) -> None:
-        """Update specific fields on a file record."""
-        allowed = {
-            "extracted_text", "markdown", "content_blocks", "tables", "images",
-            "metadata", "classification", "summary",
-            "processing_status", "synced", "synced_at", "last_error",
-            "language", "word_count", "char_count", "page_count",
-            "ocr_used", "agent_version", "processing_version",
-            "parser_version", "ocr_engine",
+    def set_config(self, key: str, value: str) -> None:
+        self.conn.execute(
+            "INSERT INTO config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            (key, value),
+        )
+        self.conn.commit()
+
+    def set_config_batch(self, config: dict[str, str]) -> None:
+        for key, value in config.items():
+            self.set_config(key, value)
+
+    def seed_default_config(self, defaults: dict[str, str]) -> None:
+        existing = self.conn.execute("SELECT COUNT(*) FROM config").fetchone()[0]
+        if existing == 0:
+            for key, value in defaults.items():
+                self.conn.execute(
+                    "INSERT INTO config (key, value) VALUES (?, ?)", (key, value)
+                )
+            self.conn.commit()
+
+    # ── Folders ───────────────────────────────────────────────────────────────
+
+    def add_folder(self, path: str) -> None:
+        label = Path(path).name or ""
+        now = _now()
+        self.conn.execute(
+            "INSERT OR IGNORE INTO folders (path, label, added_at) VALUES (?, ?, ?)",
+            (path, label, now),
+        )
+        self.conn.commit()
+
+    def remove_folder(self, path: str) -> None:
+        self.conn.execute("DELETE FROM folders WHERE path=?", (path,))
+        self.conn.execute("DELETE FROM files WHERE local_path LIKE ?", (f"{path}%",))
+        self.conn.commit()
+
+    def get_folders(self) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            "SELECT path, label FROM folders ORDER BY path"
+        ).fetchall()
+        return [
+            {"path": row[0], "label": row[1], "exists": Path(row[0]).exists()}
+            for row in rows
+        ]
+
+    # ── Files ─────────────────────────────────────────────────────────────────
+
+    def _file_row_to_dict(self, row: sqlite3.Row) -> dict[str, Any]:
+        return {
+            "id": row[0],
+            "local_path": row[1],
+            "filename": row[2],
+            "extension": row[3],
+            "file_hash": row[4],
+            "size_bytes": row[5],
+            "mime_type": row[6],
+            "modified_at": row[7],
+            "processing_status": row[8],
+            "extracted_text": row[9],
+            "markdown": row[10],
+            "content_blocks": row[11],
+            "tables": row[12],
+            "images": row[13],
+            "language": row[14],
+            "word_count": row[15],
+            "char_count": row[16],
+            "page_count": row[17],
+            "synced": bool(row[18]),
+            "first_seen_at": row[19],
+            "updated_at": row[20],
         }
-        _JSON_LIST_FIELDS = {"content_blocks", "tables", "images"}
-        _JSON_DICT_FIELDS = {"metadata", "classification"}
-        updates: dict[str, Any] = {}
-        for k, v in kwargs.items():
-            if k not in allowed:
-                continue
-            if k in _JSON_LIST_FIELDS and isinstance(v, (list, tuple)):
-                updates[k] = json.dumps(v, default=str)
-            elif k in _JSON_DICT_FIELDS and isinstance(v, dict):
-                updates[k] = json.dumps(v, default=str)
-            else:
-                updates[k] = v
-        if not updates:
-            return
-        updates["updated_at"] = self._now()
-        set_clause = ", ".join(f"{k}=?" for k in updates)
-        values = list(updates.values()) + [file_id]
-        self._conn.execute(f"UPDATE files SET {set_clause} WHERE id=?", values)
-        self._conn.commit()
 
-    def _deserialize_row(self, row: sqlite3.Row | None) -> dict[str, Any] | None:
-        if row is None:
-            return None
-        data = dict(row)
-        _JSON_LIST_FIELDS = {"content_blocks", "tables", "images"}
-        _JSON_DICT_FIELDS = {"metadata", "classification"}
-        for k in _JSON_LIST_FIELDS:
-            if k in data and isinstance(data[k], str):
-                try:
-                    data[k] = json.loads(data[k]) if data[k] else []
-                except (json.JSONDecodeError, TypeError):
-                    data[k] = []
-        for k in _JSON_DICT_FIELDS:
-            if k in data and isinstance(data[k], str):
-                try:
-                    data[k] = json.loads(data[k]) if data[k] else {}
-                except (json.JSONDecodeError, TypeError):
-                    data[k] = {}
-        return data
+    def upsert_files(self, files: list[dict[str, Any]]) -> int:
+        count = 0
+        now = _now()
+        for f in files:
+            self.conn.execute(
+                """INSERT INTO files (id, local_path, filename, extension, file_hash,
+                    size_bytes, mime_type, modified_at, first_seen_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(local_path) DO UPDATE SET
+                    filename=excluded.filename, extension=excluded.extension,
+                    file_hash=excluded.file_hash, size_bytes=excluded.size_bytes,
+                    mime_type=excluded.mime_type, modified_at=excluded.modified_at,
+                    updated_at=excluded.updated_at""",
+                (
+                    f.get("id", _generate_id()),
+                    f["local_path"],
+                    f.get("filename", ""),
+                    f.get("extension", ""),
+                    f.get("file_hash", ""),
+                    f.get("size_bytes", 0),
+                    f.get("mime_type", ""),
+                    f.get("modified_at", ""),
+                    now,
+                    now,
+                ),
+            )
+            count += 1
+        self.conn.commit()
+        return count
 
-    def get_file(self, file_id: str) -> dict[str, Any] | None:
-        row = self._conn.execute("SELECT * FROM files WHERE id=?", (file_id,)).fetchone()
-        return self._deserialize_row(row)
+    def update_file_after_scan(
+        self,
+        file_id: str,
+        markdown: str,
+        content_blocks: str,
+        tables: str,
+        images: str,
+        language: str,
+        word_count: int,
+        char_count: int,
+        page_count: int,
+        **_kwargs: Any,
+    ) -> None:
+        extracted_text = markdown[:10000]
+        now = _now()
+        self.conn.execute(
+            """UPDATE files SET extracted_text=?, markdown=?, content_blocks=?, tables=?,
+                images=?, language=?, word_count=?, char_count=?, page_count=?,
+                processing_status='completed', updated_at=?
+            WHERE id=?""",
+            (
+                extracted_text, markdown, content_blocks, tables, images,
+                language, word_count, char_count, page_count, now, file_id,
+            ),
+        )
+        self.conn.commit()
 
-    def get_file_by_hash(self, content_hash: str) -> dict[str, Any] | None:
-        row = self._conn.execute("SELECT * FROM files WHERE content_hash=?", (content_hash,)).fetchone()
-        return self._deserialize_row(row)
+    def mark_file_failed(self, file_id: str) -> None:
+        now = _now()
+        self.conn.execute(
+            "UPDATE files SET processing_status='failed', updated_at=? WHERE id=?",
+            (now, file_id),
+        )
+        self.conn.commit()
 
-    def get_file_by_path(self, local_path: str) -> dict[str, Any] | None:
-        row = self._conn.execute("SELECT * FROM files WHERE local_path=?", (local_path,)).fetchone()
-        return self._deserialize_row(row)
-
-    def list_files(self, status: str | None = None, synced: int | None = None, limit: int = 1000) -> list[dict[str, Any]]:
-        query = "SELECT * FROM files WHERE 1=1"
+    def get_files(
+        self, status: str | None = None, limit: int = 1000, folder: str | None = None
+    ) -> list[dict[str, Any]]:
+        query = """SELECT id, local_path, filename, extension, file_hash, size_bytes,
+            mime_type, modified_at, processing_status, extracted_text, markdown,
+            content_blocks, tables, images, language, word_count, char_count, page_count,
+            synced, first_seen_at, updated_at FROM files WHERE 1=1"""
         params: list[Any] = []
         if status:
             query += " AND processing_status=?"
             params.append(status)
-        if synced is not None:
-            query += " AND synced=?"
-            params.append(synced)
-        query += " ORDER BY first_seen_at DESC LIMIT ?"
+        if folder:
+            query += " AND local_path LIKE ?"
+            params.append(f"{folder}%")
+        query += " ORDER BY updated_at DESC LIMIT ?"
         params.append(limit)
-        return [self._deserialize_row(r) for r in self._conn.execute(query, params).fetchall()]  # type: ignore[arg-type]
+        rows = self.conn.execute(query, params).fetchall()
+        return [self._file_row_to_dict(row) for row in rows]
 
-    def get_pending_sync(self, batch_size: int = 50) -> list[dict[str, Any]]:
-        return self.list_files(synced=0, limit=batch_size)
-
-    def mark_synced(self, file_ids: list[str]) -> None:
-        now = self._now()
-        self._conn.executemany(
-            "UPDATE files SET synced=1, synced_at=? WHERE id=?",
-            [(now, fid) for fid in file_ids],
-        )
-        self._conn.commit()
-
-    def get_stats(self) -> dict[str, int]:
-        total = self._conn.execute("SELECT COUNT(*) FROM files").fetchone()[0]
-        synced = self._conn.execute("SELECT COUNT(*) FROM files WHERE synced=1").fetchone()[0]
-        pending = self._conn.execute("SELECT COUNT(*) FROM files WHERE processing_status='pending'").fetchone()[0]
-        processing = self._conn.execute("SELECT COUNT(*) FROM files WHERE processing_status='processing'").fetchone()[0]
-        completed = self._conn.execute("SELECT COUNT(*) FROM files WHERE processing_status='completed'").fetchone()[0]
-        failed = self._conn.execute("SELECT COUNT(*) FROM files WHERE processing_status='failed'").fetchone()[0]
-        return {"total": total, "synced": synced, "pending": pending, "processing": processing, "completed": completed, "failed": failed}
-
-    def delete_file(self, file_id: str) -> bool:
-        # Also delete associated entities
-        self._conn.execute("DELETE FROM entities WHERE file_id=?", (file_id,))
-        cursor = self._conn.execute("DELETE FROM files WHERE id=?", (file_id,))
-        self._conn.commit()
-        return cursor.rowcount > 0
-
-    def save_entities(self, file_id: str, entities: list[dict[str, Any]]) -> None:
-        """Save extracted entities for a file. Replaces existing entities."""
-        self._conn.execute("DELETE FROM entities WHERE file_id=?", (file_id,))
-        now = self._now()
-        for ent in entities:
-            ent_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{file_id}:{ent.get('entity_type', '')}:{ent.get('name', '')}"))
-            self._conn.execute("""
-                INSERT INTO entities (id, file_id, entity_type, name, context, confidence, source, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                ent_id, file_id,
-                ent.get("entity_type", ""),
-                ent.get("name", ""),
-                ent.get("context", ""),
-                ent.get("confidence"),
-                ent.get("source", "agent"),
-                now,
-            ))
-        self._conn.commit()
-
-    def get_entities(self, file_id: str) -> list[dict[str, Any]]:
-        """Get all entities for a file."""
-        rows = self._conn.execute(
-            "SELECT * FROM entities WHERE file_id=? ORDER BY entity_type, name",
+    def get_file_by_id(self, file_id: str) -> dict[str, Any] | None:
+        row = self.conn.execute(
+            """SELECT id, local_path, filename, extension, file_hash, size_bytes,
+                mime_type, modified_at, processing_status, extracted_text, markdown,
+                content_blocks, tables, images, language, word_count, char_count, page_count,
+                synced, first_seen_at, updated_at FROM files WHERE id=?""",
             (file_id,),
-        ).fetchall()
-        return [dict(r) for r in rows]
+        ).fetchone()
+        return self._file_row_to_dict(row) if row else None
 
-    def get_all_entities(self, limit: int = 10000) -> list[dict[str, Any]]:
-        """Get all entities across all files."""
-        rows = self._conn.execute(
-            "SELECT * FROM entities ORDER BY entity_type, name LIMIT ?",
+    def mark_synced(self, file_hashes: list[str]) -> int:
+        if not file_hashes:
+            return 0
+        now = _now()
+        placeholders = ",".join("?" for _ in file_hashes)
+        query = f"UPDATE files SET synced=1, updated_at=? WHERE file_hash IN ({placeholders})"
+        self.conn.execute(query, (now, *file_hashes))
+        self.conn.commit()
+        return len(file_hashes)
+
+    def get_pending_sync(self, limit: int = 50) -> list[dict[str, Any]]:
+        return self.get_files(status="completed", limit=limit)
+
+    def get_stats(self) -> dict[str, Any]:
+        total = self.conn.execute("SELECT COUNT(*) FROM files").fetchone()[0]
+        pending = self.conn.execute(
+            "SELECT COUNT(*) FROM files WHERE processing_status='pending'"
+        ).fetchone()[0]
+        completed = self.conn.execute(
+            "SELECT COUNT(*) FROM files WHERE processing_status='completed'"
+        ).fetchone()[0]
+        failed = self.conn.execute(
+            "SELECT COUNT(*) FROM files WHERE processing_status='failed'"
+        ).fetchone()[0]
+        synced = self.conn.execute(
+            "SELECT COUNT(*) FROM files WHERE synced=1"
+        ).fetchone()[0]
+        return {
+            "total": total,
+            "pending": pending,
+            "completed": completed,
+            "failed": failed,
+            "synced": synced,
+        }
+
+    # ── Jobs ──────────────────────────────────────────────────────────────────
+
+    def create_job(self, job_type: str, payload: dict[str, Any] | None = None) -> str:
+        job_id = _generate_id()
+        now = _now()
+        self.conn.execute(
+            "INSERT INTO jobs (id, type, payload, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+            (job_id, job_type, json.dumps(payload or {}), now, now),
+        )
+        self.conn.commit()
+        return job_id
+
+    def get_job(self, job_id: str) -> dict[str, Any] | None:
+        row = self.conn.execute(
+            """SELECT id, type, status, payload, progress, result, error,
+                created_at, updated_at, started_at, completed_at FROM jobs WHERE id=?""",
+            (job_id,),
+        ).fetchone()
+        if not row:
+            return None
+        return {
+            "id": row[0],
+            "type": row[1],
+            "status": row[2],
+            "payload": json.loads(row[3]),
+            "progress": row[4],
+            "result": row[5],
+            "error": row[6],
+            "created_at": row[7],
+            "updated_at": row[8],
+            "started_at": row[9],
+            "completed_at": row[10],
+        }
+
+    def list_jobs(
+        self, status: str | None = None, limit: int = 50
+    ) -> list[dict[str, Any]]:
+        query = """SELECT id, type, status, payload, progress, result, error,
+            created_at, updated_at, started_at, completed_at FROM jobs"""
+        params: list[Any] = []
+        if status:
+            query += " WHERE status=?"
+            params.append(status)
+        query += " ORDER BY created_at DESC LIMIT ?"
+        params.append(limit)
+        rows = self.conn.execute(query, params).fetchall()
+        return [
+            {
+                "id": r[0],
+                "type": r[1],
+                "status": r[2],
+                "payload": json.loads(r[3]),
+                "progress": r[4],
+                "result": r[5],
+                "error": r[6],
+                "created_at": r[7],
+                "updated_at": r[8],
+                "started_at": r[9],
+                "completed_at": r[10],
+            }
+            for r in rows
+        ]
+
+    def update_job(self, job_id: str, **kwargs: Any) -> None:
+        now = _now()
+        fields = {"updated_at": now, **kwargs}
+        sets = ", ".join(f"{k}=?" for k in fields)
+        values = list(fields.values())
+        values.append(job_id)
+        self.conn.execute(
+            f"UPDATE jobs SET {sets} WHERE id=?", values
+        )
+        self.conn.commit()
+
+    # ── Trash ─────────────────────────────────────────────────────────────────
+
+    def add_to_trash(self, original_path: str, original_file_id: str, size_bytes: int = 0) -> str:
+        entry_id = _generate_id()
+        now = _now()
+        self.conn.execute(
+            "INSERT INTO trash (id, original_path, original_file_id, deleted_at, size_bytes) VALUES (?, ?, ?, ?, ?)",
+            (entry_id, original_path, original_file_id, now, size_bytes),
+        )
+        self.conn.commit()
+        return entry_id
+
+    def get_trash_entry(self, trash_id: str) -> dict[str, Any] | None:
+        row = self.conn.execute(
+            "SELECT id, original_path, original_file_id, deleted_at, size_bytes FROM trash WHERE id=?",
+            (trash_id,),
+        ).fetchone()
+        if not row:
+            return None
+        return {
+            "id": row[0],
+            "original_path": row[1],
+            "original_file_id": row[2],
+            "deleted_at": row[3],
+            "size_bytes": row[4],
+        }
+
+    def list_trash(self) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            "SELECT id, original_path, original_file_id, deleted_at, size_bytes FROM trash ORDER BY deleted_at DESC"
+        ).fetchall()
+        return [
+            {
+                "id": r[0],
+                "original_path": r[1],
+                "original_file_id": r[2],
+                "deleted_at": r[3],
+                "size_bytes": r[4],
+            }
+            for r in rows
+        ]
+
+    def remove_from_trash(self, trash_id: str) -> None:
+        self.conn.execute("DELETE FROM trash WHERE id=?", (trash_id,))
+        self.conn.commit()
+
+    # ── File Operations ───────────────────────────────────────────────────────
+
+    def update_file_path(self, file_id: str, local_path: str, filename: str, extension: str) -> None:
+        now = _now()
+        self.conn.execute(
+            "UPDATE files SET local_path=?, filename=?, extension=?, updated_at=? WHERE id=?",
+            (local_path, filename, extension, now, file_id),
+        )
+        self.conn.commit()
+
+    def delete_file_record(self, file_id: str) -> None:
+        self.conn.execute("DELETE FROM files WHERE id=?", (file_id,))
+        self.conn.commit()
+
+    def delete_file_records_by_ids(self, file_ids: list[str]) -> None:
+        if not file_ids:
+            return
+        placeholders = ",".join("?" for _ in file_ids)
+        self.conn.execute(
+            f"DELETE FROM files WHERE id IN ({placeholders})", file_ids
+        )
+        self.conn.commit()
+
+    # ── Sync Queue ────────────────────────────────────────────────────────────
+
+    def add_to_sync_queue(self, file_id: str) -> str:
+        entry_id = _generate_id()
+        now = _now()
+        self.conn.execute(
+            "INSERT INTO sync_queue (id, file_id, created_at, updated_at) VALUES (?, ?, ?, ?)",
+            (entry_id, file_id, now, now),
+        )
+        self.conn.commit()
+        return entry_id
+
+    def get_pending_sync_queue(self, limit: int = 50) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            """SELECT id, file_id, status, retries, max_retries, error,
+                created_at, updated_at FROM sync_queue
+            WHERE status='pending' ORDER BY created_at ASC LIMIT ?""",
             (limit,),
         ).fetchall()
-        return [dict(r) for r in rows]
-
-    def get_entity_stats(self) -> dict[str, int]:
-        """Get entity counts by type."""
-        rows = self._conn.execute(
-            "SELECT entity_type, COUNT(*) as cnt FROM entities GROUP BY entity_type"
-        ).fetchall()
-        return {r["entity_type"]: r["cnt"] for r in rows}
+        return [
+            {
+                "id": r[0],
+                "file_id": r[1],
+                "status": r[2],
+                "retries": r[3],
+                "max_retries": r[4],
+                "error": r[5],
+                "created_at": r[6],
+                "updated_at": r[7],
+            }
+            for r in rows
+        ]

@@ -1,176 +1,131 @@
+
+# -----------------------------------------------------------------------------
 # =============================================================================
-# AI Archive Platform - Git Ignore
-# =============================================================================
-
-# -----------------------------------------------------------------------------
-# Python
-# -----------------------------------------------------------------------------
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-*.egg-info/
-*.egg
-dist/
-build/
-eggs/
-*.whl
-pip-log.txt
-pip-delete-this-directory.txt
-.pytest_cache/
-.coverage
-.coverage.*
-htmlcov/
-coverage.xml
-*.cover
-*.py,cover
-.hypothesis/
-.tox/
-.nox/
-
-# Virtual environments
-venv/
-.venv/
-env/
-ENV/
-
-# Mypy
-.mypy_cache/
-.dmypy.json
-dmypy.json
-
-# Pytype
-.pytype/
-
-# Black
-.black
-
-# Ruff
-.ruff_cache/
-
-# -----------------------------------------------------------------------------
-# Django
-# -----------------------------------------------------------------------------
-*.log
-local_settings.py
-db.sqlite3
-db.sqlite3-journal
-media/
-staticfiles/
-static/
-collected_static/
-*.pid
-
-# -----------------------------------------------------------------------------
-# Node.js / Next.js
-# -----------------------------------------------------------------------------
-node_modules/
-.next/
-out/
-.nuxt/
-.env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-.pnpm-store/
-
-# -----------------------------------------------------------------------------
-# Docker
-# -----------------------------------------------------------------------------
-docker-compose.override.yml
-*.tar
-*.tar.gz
-
-# -----------------------------------------------------------------------------
-# IDE / Editor
-# -----------------------------------------------------------------------------
-# VSCode
-.vscode/
-*.code-workspace
-.history/
-
-# JetBrains (PyCharm, IntelliJ, WebStorm)
-.idea/
-*.iml
-*.iws
-*.ipr
-out/
-
-# Sublime Text
-*.sublime-project
-*.sublime-workspace
-
-# Vim
-*.swp
-*.swo
-*~
-tags
-tags.lock
-
-# Emacs
 *\#*
+*~
 *~*
 .\#*
-
-# OS
-.DS_Store
-.DS_Store?
 ._*
-.Spotlight-V100
-.Trashes
-Thumbs.db
-ehthumbs.db
-Desktop.ini
-
-# -----------------------------------------------------------------------------
-# Testing
-# -----------------------------------------------------------------------------
-.pytest_cache/
-htmlcov/
+*$py.class
+# AI Archive Platform - Git Ignore
+backend/media/agents/binaries/
+*.bak
+.black
+# Black
+build/
+.cache/
+celerybeat.pid
+celerybeat-schedule
+*.code-workspace
+collected_static/
+*.cover
 .coverage
 .coverage.*
 coverage.xml
-*.cover
-.tox/
-.nox/
-screenshots/
-test-results/
-
-# -----------------------------------------------------------------------------
-# Security
-# -----------------------------------------------------------------------------
-*.pem
-*.key
+credentials/
 *.crt
-*.p12
-*.pfx
+db.sqlite3
+db.sqlite3-journal
+Desktop.ini
+desktop/src-tauri/binaries/
+dist/
+# Django
+.dmypy.json
+dmypy.json
+# Docker
+docker-compose.override.yml
+.DS_Store
+.DS_Store?
+edge_agent/dist/
+*.egg
+*.egg-info/
+eggs/
+ehthumbs.db
+# Emacs
 .env
 .env.*
+env/
+ENV/
+.env.development.local
 !.env.example
-secrets/
-credentials/
-
-# -----------------------------------------------------------------------------
-# Logs
-# -----------------------------------------------------------------------------
-logs/
+.env.local
+.env.production.local
+.env.test.local
+.history/
+htmlcov/
+.hypothesis/
+.idea/
+# IDE / Editor
+*.iml
+*.ipr
+*.iws
+# JetBrains (PyCharm, IntelliJ, WebStorm)
+*.key
+local_settings.py
 *.log
-npm-debug.log*
-celerybeat-schedule
-celerybeat.pid
-
-# -----------------------------------------------------------------------------
+logs/
+# Logs
+media/
 # Misc
-# -----------------------------------------------------------------------------
-*.bak
-*.tmp
-*.temp
+# Mypy
+.mypy_cache/
+.next/
+# Node.js / Next.js
+node_modules/
+.nox/
+npm-debug.log*
+.nuxt/
 *.orig
-.cache/
-tmp/
+# OS
+out/
+*.p12
+*.pem
+*.pfx
+*.pid
+pip-delete-this-directory.txt
+pip-log.txt
+pnpm-debug.log*
+.pnpm-store/
+__pycache__/
+*.py[cod]
+*.py,cover
+.pytest_cache/
+# Python
+.pytype/
+# Pytype
+# Ruff
+.ruff_cache/
+screenshots/
+secrets/
+# Security
+*.so
+.Spotlight-V100
+static/
+staticfiles/
+*.sublime-project
+# Sublime Text
+*.sublime-workspace
+*.swo
+*.swp
+tags
+tags.lock
+*.tar
+*.tar.gz
+*.temp
 temp/
+# Testing
+test-results/
+Thumbs.db
+*.tmp
+tmp/
+.tox/
+.Trashes
+.venv/
+venv/
+# Vim
+# Virtual environments
+.vscode/
+# VSCode
+*.whl
+yarn-debug.log*
+yarn-error.log*

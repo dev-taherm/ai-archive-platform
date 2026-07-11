@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 import { Bot, ArrowRight, Download, X } from "lucide-react";
 import api from "@/lib/api";
 import { DownloadAgentDialog } from "@/components/features/agents/download-agent-dialog";
@@ -20,6 +21,7 @@ interface OnboardingModalProps {
 }
 
 export function OnboardingModal({ open, onClose }: OnboardingModalProps) {
+  const t = useTranslations("onboarding");
   const [showDownload, setShowDownload] = useState(false);
 
   // Check if user has any agents
@@ -64,9 +66,9 @@ export function OnboardingModal({ open, onClose }: OnboardingModalProps) {
                 <Bot className="h-6 w-6 text-primary" />
               </div>
               <div>
-                <CardTitle>Welcome to AI Archive Platform</CardTitle>
+                <CardTitle>{t("title")}</CardTitle>
                 <CardDescription>
-                  Let&apos;s get you started with your first edge agent
+                  {t("description")}
                 </CardDescription>
               </div>
             </div>
@@ -77,11 +79,9 @@ export function OnboardingModal({ open, onClose }: OnboardingModalProps) {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="bg-muted rounded-lg p-4 space-y-3">
-            <h3 className="font-medium">What is an Edge Agent?</h3>
+            <h3 className="font-medium">{t("whatIsEdgeDevice")}</h3>
             <p className="text-sm text-muted-foreground">
-              The Edge Agent runs on your computer and automatically processes
-              documents — extracting text, classifying content, and syncing
-              everything to the platform.
+              {t("edgeDeviceDesc")}
             </p>
           </div>
 
@@ -90,29 +90,29 @@ export function OnboardingModal({ open, onClose }: OnboardingModalProps) {
               <div className="p-1 bg-primary/10 rounded">
                 <ArrowRight className="h-3 w-3 text-primary" />
               </div>
-              <span>Detects and processes new documents automatically</span>
+              <span>{t("feature1")}</span>
             </div>
             <div className="flex items-center gap-3 text-sm">
               <div className="p-1 bg-primary/10 rounded">
                 <ArrowRight className="h-3 w-3 text-primary" />
               </div>
-              <span>Runs OCR, text extraction, and entity detection locally</span>
+              <span>{t("feature2")}</span>
             </div>
             <div className="flex items-center gap-3 text-sm">
               <div className="p-1 bg-primary/10 rounded">
                 <ArrowRight className="h-3 w-3 text-primary" />
               </div>
-              <span>Syncs structured data to the platform for search and chat</span>
+              <span>{t("feature3")}</span>
             </div>
           </div>
 
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="outline" onClick={onClose}>
-              Skip for now
+              {t("skip")}
             </Button>
             <Button onClick={() => setShowDownload(true)}>
               <Download className="h-4 w-4 mr-2" />
-              Set Up Agent
+              {t("setUpDevice")}
             </Button>
           </div>
         </CardContent>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useTranslations } from "next-intl";
 import {
   Bot,
   Save,
@@ -52,6 +53,7 @@ const PROVIDER_INFO: Record<
 };
 
 export default function AIProviders() {
+  const t = useTranslations("settings");
   const { toast } = useToast();
 
   // ── Provider list state ──
@@ -123,7 +125,7 @@ export default function AIProviders() {
       const res = await api.get("/providers");
       setProviders(res.data);
     } catch {
-      toast({ title: "Failed to load providers", variant: "destructive" });
+      toast({ title: t("failedToLoadProviders"), variant: "destructive" });
     } finally {
       setLoading(false);
     }
@@ -184,22 +186,22 @@ export default function AIProviders() {
 
       if (isCreating) {
         const res = await api.post("/providers", payload);
-        toast({ title: "Provider added" });
+        toast({ title: t("providerAdded") });
         setProviders((prev) => [...prev, res.data]);
         setSelectedId(res.data.id);
         setIsCreating(false);
-        setSuccess("Provider created!");
+        setSuccess(t("providerCreated"));
         if (editApiKey) setEditApiKeySet(true);
       } else if (selectedId) {
         await api.put(`/providers/${selectedId}`, payload);
-        toast({ title: "Provider updated" });
-        setSuccess("Provider saved!");
+        toast({ title: t("providerUpdated") });
+        setSuccess(t("providerSaved"));
         if (editApiKey) setEditApiKeySet(true);
         fetchProviders();
       }
     } catch (err: unknown) {
       const error = err as { response?: { data?: { detail?: string } } };
-      setError(error.response?.data?.detail || "Failed to save provider");
+      setError(error.response?.data?.detail || t("failedToSave"));
     } finally {
       setSaving(false);
     }
@@ -208,16 +210,16 @@ export default function AIProviders() {
   // ── Delete provider ──
   const handleDelete = async () => {
     if (!selectedId) return;
-    if (!confirm("Delete this provider?")) return;
+    if (!confirm(t("deleteConfirm"))) return;
 
     try {
       await api.delete(`/providers/${selectedId}`);
-      toast({ title: "Provider deleted" });
+      toast({ title: t("providerDeleted") });
       setProviders((prev) => prev.filter((p) => p.id !== selectedId));
       setSelectedId(null);
-      setSuccess("Provider deleted");
+      setSuccess(t("providerDeleted"));
     } catch {
-      toast({ title: "Failed to delete provider", variant: "destructive" });
+      toast({ title: t("failedToDeleteProvider"), variant: "destructive" });
     }
   };
 
@@ -227,13 +229,13 @@ export default function AIProviders() {
 
     try {
       await api.post(`/providers/${selectedId}/set-default`);
-      toast({ title: "Default provider updated" });
+      toast({ title: t("defaultUpdated") });
       setProviders((prev) =>
         prev.map((p) => ({ ...p, is_default: p.id === selectedId }))
       );
-      setSuccess("Default provider updated!");
+      setSuccess(t("defaultUpdated"));
     } catch {
-      toast({ title: "Failed to set default", variant: "destructive" });
+      toast({ title: t("failedToSetDefault"), variant: "destructive" });
     }
   };
 
@@ -245,7 +247,7 @@ export default function AIProviders() {
       });
       fetchProviders();
     } catch {
-      toast({ title: "Failed to update provider", variant: "destructive" });
+      toast({ title: t("failedToUpdateProvider"), variant: "destructive" });
     }
   };
 
@@ -280,7 +282,7 @@ export default function AIProviders() {
       setTestResult({
         ok: data.success,
         message: data.success
-          ? `${data.detail} Response: "${data.response_preview}"`
+          ? t("testResult", { detail: data.detail, preview: data.response_preview })
           : data.detail,
       });
     } catch (err: unknown) {
@@ -288,7 +290,7 @@ export default function AIProviders() {
         response?: { data?: { detail?: string; success?: boolean } };
       };
       const detail =
-        error.response?.data?.detail || "Connection failed";
+        error.response?.data?.detail || t("connectionFailed");
       setTestResult({ ok: false, message: detail });
     } finally {
       setTesting(false);
@@ -301,7 +303,7 @@ export default function AIProviders() {
     return (
       <Card>
         <CardContent className="py-8 text-center text-muted-foreground">
-          Loading providers...
+          {t("loadingProviders")}
         </CardContent>
       </Card>
     );
@@ -309,9 +311,9 @@ export default function AIProviders() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-bold flex items-center gap-2">
+      <h1 className="text-2xl font-bold bg-gradient-to-r from-brand-teal to-brand-cyan bg-clip-text text-transparent flex items-center gap-2">
         <Bot className="h-6 w-6" />
-        AI Providers
+        {t("providers")}
       </h1>
 
       {/* ── Master-Detail Layout ── */}
@@ -320,17 +322,17 @@ export default function AIProviders() {
         <Card className="md:row-span-2">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-base">Providers</CardTitle>
+              <CardTitle className="text-base">{t("providers")}</CardTitle>
               <Button size="sm" variant="outline" onClick={handleNew}>
                 <Plus className="h-3.5 w-3.5 me-1" />
-                New
+                {t("new")}
               </Button>
             </div>
           </CardHeader>
           <CardContent className="p-2">
             {providers.length === 0 && !isCreating ? (
               <div className="p-4 text-sm text-muted-foreground text-center">
-                No providers yet. Click &quot;New&quot; to create one.
+                {t("noProviders")}
               </div>
             ) : (
               <div className="space-y-1">
@@ -346,7 +348,7 @@ export default function AIProviders() {
                     }}
                     className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors flex items-center gap-2 ${
                       selectedId === p.id && !isCreating
-                        ? "bg-primary/10 text-primary border border-primary/20"
+                        ? "bg-brand-teal/10 text-brand-teal border border-brand-teal/20"
                         : "hover:bg-muted border border-transparent"
                     }`}
                   >
@@ -355,7 +357,7 @@ export default function AIProviders() {
                     )}
                     <span className="truncate flex-1">{p.name}</span>
                     <span className="text-xs text-muted-foreground shrink-0">
-                      {PROVIDER_INFO[p.provider_type as ProviderType]?.label || p.provider_type}
+                      {t(p.provider_type === "google" ? "googleGemini" : p.provider_type)}
                     </span>
                   </button>
                 ))}
@@ -369,23 +371,23 @@ export default function AIProviders() {
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-base">
-                {isCreating ? "New Provider" : "Edit Provider"}
+                {isCreating ? t("newProvider") : t("editProvider")}
               </CardTitle>
               {!isCreating && selectedId && (
                 <div className="flex gap-1.5">
                   <Button
                     size="sm"
-                    variant={activeProvider?.id === selectedId ? "default" : "outline"}
+                    variant={activeProvider?.id === selectedId ? "brand" : "outline"}
                     onClick={handleSetDefault}
                     disabled={activeProvider?.id === selectedId}
                   >
                     {activeProvider?.id === selectedId ? (
                       <>
-                        <CheckCircle className="h-3.5 w-3.5 me-1" /> Default
+                        <CheckCircle className="h-3.5 w-3.5 me-1" /> {t("default")}
                       </>
                     ) : (
                       <>
-                        <Star className="h-3.5 w-3.5 me-1" /> Set Default
+                        <Star className="h-3.5 w-3.5 me-1" /> {t("setDefault")}
                       </>
                     )}
                   </Button>
@@ -398,8 +400,8 @@ export default function AIProviders() {
                     }}
                   >
                     {providers.find((x) => x.id === selectedId)?.is_active
-                      ? "Disable"
-                      : "Enable"}
+                      ? t("disable")
+                      : t("enable")}
                   </Button>
                   <Button size="sm" variant="destructive" onClick={handleDelete}>
                     <Trash2 className="h-3.5 w-3.5" />
@@ -413,17 +415,17 @@ export default function AIProviders() {
               <>
                 {/* Provider Name */}
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Provider Name</label>
+                  <label className="text-sm font-medium">{t("providerName")}</label>
                   <Input
                     value={editName}
                     onChange={(e) => setEditName(e.target.value)}
-                    placeholder="e.g. OpenAI GPT-4, Ollama Local"
+                    placeholder={t("providerNamePlaceholder")}
                   />
                 </div>
 
                 {/* Provider Type (2x2 button grid) */}
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">AI Provider</label>
+                  <label className="text-sm font-medium">{t("aiProvider")}</label>
                   <div className="grid grid-cols-2 gap-2">
                     {(Object.keys(PROVIDER_INFO) as ProviderType[]).map((p) => (
                       <button
@@ -431,11 +433,11 @@ export default function AIProviders() {
                         onClick={() => handleProviderChange(p)}
                         className={`px-3 py-2 rounded-md border text-sm text-left transition-colors ${
                           editProviderType === p
-                            ? "border-primary bg-primary/10 text-primary"
-                            : "border-border hover:bg-muted"
+                            ? "border-brand-teal bg-brand-teal/10 text-brand-teal"
+                            : "border-brand-teal/10 hover:bg-muted"
                         }`}
                       >
-                        {PROVIDER_INFO[p].label}
+                        {t(p === "google" ? "googleGemini" : p)}
                       </button>
                     ))}
                   </div>
@@ -444,10 +446,10 @@ export default function AIProviders() {
                 {/* API Key */}
                 <div className="space-y-2">
                   <label className="text-sm font-medium">
-                    API Key
+                    {t("apiKey")}
                     {editApiKeySet && !editApiKey && (
                       <span className="text-green-500 ml-2 text-xs">
-                        (already set)
+                        {t("alreadySet")}
                       </span>
                     )}
                   </label>
@@ -457,34 +459,34 @@ export default function AIProviders() {
                     onChange={(e) => setEditApiKey(e.target.value)}
                     placeholder={
                       editApiKeySet
-                        ? "Enter new key to replace"
+                        ? t("enterNewKey")
                         : editProviderType === "ollama"
-                          ? "Optional for local, required for cloud"
-                          : `Enter ${PROVIDER_INFO[editProviderType].label} API key`
+                          ? t("optionalForLocal")
+                          : t("enterProviderKey", { provider: PROVIDER_INFO[editProviderType].label })
                     }
                   />
                 </div>
 
                 {/* Base URL */}
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Base URL</label>
+                  <label className="text-sm font-medium">{t("baseUrl")}</label>
                   <Input
                     value={editBaseUrl}
                     onChange={(e) => setEditBaseUrl(e.target.value)}
                     placeholder={PROVIDER_INFO[editProviderType].defaultBaseUrl}
                   />
                   <p className="text-xs text-muted-foreground">
-                    Default: {PROVIDER_INFO[editProviderType].defaultBaseUrl}
+                    {t("defaultUrl", { url: PROVIDER_INFO[editProviderType].defaultBaseUrl })}
                     {editProviderType === "ollama" &&
-                      " — For Ollama Cloud, use https://ollama.com"}
+                      t("ollamaHint")}
                     {editProviderType === "openai" &&
-                      " (works with OpenAI, OpenRouter, Together, etc.)"}
+                      t("openaiHint")}
                   </p>
                 </div>
 
                 {/* Model (with datalist autocomplete) */}
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Model</label>
+                  <label className="text-sm font-medium">{t("model")}</label>
                   <Input
                     value={editModel}
                     onChange={(e) => setEditModel(e.target.value)}
@@ -500,7 +502,7 @@ export default function AIProviders() {
 
                 {/* Capabilities */}
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Capabilities</label>
+                  <label className="text-sm font-medium">{t("capabilities")}</label>
                   <div className="flex gap-2">
                     {["llm", "embedding"].map((cap) => (
                       <Badge
@@ -528,14 +530,14 @@ export default function AIProviders() {
                   <Button onClick={handleSave} disabled={saving || !editName}>
                     <Save className="me-2 h-4 w-4" />
                     {saving
-                      ? "Saving..."
+                      ? t("saving")
                       : isCreating
-                        ? "Create Provider"
-                        : "Save"}
+                        ? t("createProvider")
+                        : t("saveAction")}
                   </Button>
                   {isCreating && (
                     <Button variant="outline" onClick={handleCancelNew}>
-                      Cancel
+                      {t("cancelAction")}
                     </Button>
                   )}
                   <Button
@@ -544,17 +546,17 @@ export default function AIProviders() {
                     disabled={testing || isCreating || !selectedId}
                   >
                     {testing ? (
-                      <Loader2 className="me-2 h-4 w-4 animate-spin" />
+                      <Loader2 className="me-2 h-4 w-4 animate-spin text-brand-teal" />
                     ) : (
                       <TestTube className="me-2 h-4 w-4" />
                     )}
-                    {testing ? "Testing..." : "Test"}
+                    {testing ? t("testingConnection") : t("testConnection")}
                   </Button>
                 </div>
               </>
             ) : (
               <div className="text-sm text-muted-foreground text-center py-8">
-                Select a provider to edit, or create a new one.
+                {t("selectProvider")}
               </div>
             )}
 

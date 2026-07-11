@@ -9,7 +9,10 @@ import logging
 import mimetypes
 from pathlib import Path
 
+from typing import Any
+
 from edge_agent.core.models import ParsedDocument
+from edge_agent.core.providers import ParserProvider
 from edge_agent.parsers.mineru import MinerUParser
 
 logger = logging.getLogger(__name__)
@@ -28,11 +31,16 @@ LIGHTWEIGHT_MIME_TYPES = {
 }
 
 
-class ParserRouter:
+class ParserRouter(ParserProvider):
     """Routes documents to MinerU (complex) or lightweight reader (text)."""
 
-    def __init__(self, mineru_parser: MinerUParser | None = None) -> None:
+    def __init__(
+        self,
+        mineru_parser: MinerUParser | None = None,
+        plugin_registry: Any = None,
+    ) -> None:
         self._mineru = mineru_parser or MinerUParser()
+        self._registry = plugin_registry
 
     def parse(self, file_path: str, **kwargs) -> ParsedDocument:
         path = Path(file_path)

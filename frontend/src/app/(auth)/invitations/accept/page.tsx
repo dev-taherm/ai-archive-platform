@@ -2,12 +2,15 @@
 
 import { useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Archive, Check, AlertCircle } from "lucide-react";
 
 export default function InvitationAcceptPage() {
+  const t = useTranslations("auth");
+  const tc = useTranslations("common");
   const searchParams = useSearchParams();
   const router = useRouter();
   const { register, isAuthenticated, isRegistering, registerError } = useAuth();
@@ -26,13 +29,12 @@ export default function InvitationAcceptPage() {
       <div className="flex min-h-screen items-center justify-center bg-muted/30">
         <div className="w-full max-w-md space-y-6 rounded-lg border bg-card p-8 text-center shadow-sm">
           <AlertCircle className="mx-auto h-12 w-12 text-destructive" />
-          <h1 className="text-xl font-bold">Invalid Invitation</h1>
+          <h1 className="text-xl font-bold">{t("invalidInvitation")}</h1>
           <p className="text-muted-foreground">
-            This invitation link is invalid or missing a token. Please request a new
-            invitation from your organization administrator.
+            {t("invalidInvitationDesc")}
           </p>
           <Button onClick={() => router.push("/login")} className="w-full">
-            Go to Login
+            {t("goToLogin")}
           </Button>
         </div>
       </div>
@@ -44,12 +46,12 @@ export default function InvitationAcceptPage() {
       <div className="flex min-h-screen items-center justify-center bg-muted/30">
         <div className="w-full max-w-md space-y-6 rounded-lg border bg-card p-8 text-center shadow-sm">
           <Check className="mx-auto h-12 w-12 text-green-500" />
-          <h1 className="text-xl font-bold">Already Signed In</h1>
+          <h1 className="text-xl font-bold">{t("alreadySignedIn")}</h1>
           <p className="text-muted-foreground">
-            You are already signed in. Please log out first to accept a new invitation.
+            {t("alreadySignedInDesc")}
           </p>
           <Button onClick={() => router.push("/dashboard")} className="w-full">
-            Go to Dashboard
+            {tc("goToDashboard")}
           </Button>
         </div>
       </div>
@@ -61,12 +63,12 @@ export default function InvitationAcceptPage() {
       <div className="flex min-h-screen items-center justify-center bg-muted/30">
         <div className="w-full max-w-md space-y-6 rounded-lg border bg-card p-8 text-center shadow-sm">
           <Check className="mx-auto h-12 w-12 text-green-500" />
-          <h1 className="text-xl font-bold">Welcome!</h1>
+          <h1 className="text-xl font-bold">{t("welcome")}</h1>
           <p className="text-muted-foreground">
-            Your account has been created and you have been added to the organization.
+            {t("accountCreated")}
           </p>
           <Button onClick={() => router.push("/dashboard")} className="w-full">
-            Go to Dashboard
+            {tc("goToDashboard")}
           </Button>
         </div>
       </div>
@@ -111,9 +113,9 @@ export default function InvitationAcceptPage() {
           <div className="flex justify-center">
             <Archive className="h-10 w-10 text-primary" />
           </div>
-          <h1 className="text-xl font-bold">Accept Invitation</h1>
+          <h1 className="text-xl font-bold">{t("acceptInvitation")}</h1>
           <p className="text-sm text-muted-foreground">
-            Create your account to join the organization.
+            {t("joinOrganization")}
           </p>
         </div>
 
@@ -126,7 +128,7 @@ export default function InvitationAcceptPage() {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
             <label htmlFor="email" className="text-sm font-medium">
-              Email
+              {t("email")}
             </label>
             <Input
               id="email"
@@ -142,7 +144,7 @@ export default function InvitationAcceptPage() {
 
           <div className="space-y-2">
             <label htmlFor="username" className="text-sm font-medium">
-              Username
+              {t("username")}
             </label>
             <Input
               id="username"
@@ -158,7 +160,7 @@ export default function InvitationAcceptPage() {
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <label htmlFor="firstName" className="text-sm font-medium">
-                First Name
+                {t("firstName")}
               </label>
               <Input
                 id="firstName"
@@ -168,7 +170,7 @@ export default function InvitationAcceptPage() {
             </div>
             <div className="space-y-2">
               <label htmlFor="lastName" className="text-sm font-medium">
-                Last Name
+                {t("lastName")}
               </label>
               <Input
                 id="lastName"
@@ -180,7 +182,7 @@ export default function InvitationAcceptPage() {
 
           <div className="space-y-2">
             <label htmlFor="password" className="text-sm font-medium">
-              Password
+              {t("password")}
             </label>
             <Input
               id="password"
@@ -197,7 +199,7 @@ export default function InvitationAcceptPage() {
 
           <div className="space-y-2">
             <label htmlFor="passwordConfirm" className="text-sm font-medium">
-              Confirm Password
+              {t("confirmPassword")}
             </label>
             <Input
               id="passwordConfirm"
@@ -219,7 +221,7 @@ export default function InvitationAcceptPage() {
           )}
 
           <Button type="submit" className="w-full" disabled={isRegistering}>
-            {isRegistering ? "Creating Account..." : "Create Account & Join"}
+            {isRegistering ? t("creatingAccount") : t("createAccountAndJoin")}
           </Button>
         </form>
       </div>

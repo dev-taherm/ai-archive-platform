@@ -1,12 +1,10 @@
-"""Edge Agent — local document processing for the AI Archive Platform.
+"""Edge Agent — Stateless document parse server for the AI Archive Platform.
 
-Runs on user machines (laptop, desktop, NAS) to:
-- Watch folders for changes
-- Scan and fingerprint files
+Runs as a sidecar process to:
 - Parse documents (MinerU / fallback)
 - OCR scanned documents (PaddleOCR / Tesseract)
-- Store metadata in local SQLite
-- Sync results to the SaaS platform
+
+All persistence, file discovery, and sync lives in the desktop Rust app.
 """
 
 __version__ = "0.1.0"

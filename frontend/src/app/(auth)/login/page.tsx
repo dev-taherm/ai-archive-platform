@@ -1,8 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
+import axios from "axios";
+import { useTranslations } from "next-intl";
 import { useAuth } from "@/hooks/use-auth";
+import { useAuthStore } from "@/stores/auth-store";
+import api from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -15,40 +20,94 @@ import {
 } from "@/components/ui/card";
 
 export default function LoginPage() {
+  const t = useTranslations("auth");
+  const searchParams = useSearchParams();
+  const desktopCallback = searchParams.get("desktop_callback");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [desktopError, setDesktopError] = useState("");
   const { login, isLoggingIn, loginError } = useAuth();
+  const { isAuthenticated, accessToken, refreshToken } = useAuthStore();
+  const [desktopRedirecting, setDesktopRedirecting] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  useEffect(() => {
+    if (desktopCallback && isAuthenticated && accessToken && refreshToken) {
+      setDesktopRedirecting(true);
+      axios.post("/api/v1/token/refresh", { refresh: refreshToken })
+        .then(({ data }) => {
+          window.location.href = `${desktopCallback}?access_token=${encodeURIComponent(data.access)}&refresh_token=${encodeURIComponent(data.refresh || refreshToken)}`;
+        })
+        .catch(() => {
+          setDesktopRedirecting(false);
+        });
+    }
+  }, [desktopCallback, isAuthenticated, accessToken, refreshToken]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (desktopCallback) {
+      setDesktopError("");
+      try {
+        const response = await api.post<{ access: string; refresh: string }>(
+          "/auth/login",
+          { email, password }
+        );
+        const { access, refresh } = response.data;
+        window.location.href = `${desktopCallback}?access_token=${encodeURIComponent(access)}&refresh_token=${encodeURIComponent(refresh)}`;
+      } catch (err: any) {
+        setDesktopError(
+          err?.response?.data?.detail
+            || err?.response?.data?.email
+            || t("invalidCredentials")
+        );
+      }
+      return;
+    }
+
     login({ email, password });
   };
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Sign in</CardTitle>
+        <CardTitle>
+          {desktopCallback ? t("authenticateDesktop") : t("signIn")}
+        </CardTitle>
         <CardDescription>
-          Enter your credentials to access your account
+          {desktopCallback
+            ? t("logInToConnectDesktop")
+            : t("enterCredentials")}
         </CardDescription>
       </CardHeader>
+      {desktopCallback && desktopRedirecting ? (
+        <CardContent className="flex flex-col items-center space-y-4 py-8">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-brand-cyan border-t-transparent" />
+          <p className="text-sm text-muted-foreground">{t("connectingDesktop")}</p>
+        </CardContent>
+      ) : (
       <form onSubmit={handleSubmit}>
         <CardContent className="space-y-4">
-          {loginError && (
+          {desktopCallback && desktopError && (
+            <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+              {desktopError}
+            </div>
+          )}
+          {!desktopCallback && loginError && (
             <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
               {(loginError as any)?.response?.data?.detail
                 || (loginError as any)?.response?.data?.email
-                || "Invalid credentials"}
+                || t("invalidCredentials")}
             </div>
           )}
           <div className="space-y-2">
             <label htmlFor="email" className="text-sm font-medium">
-              Email
+              {t("email")}
             </label>
             <Input
               id="email"
               type="email"
-              placeholder="name@example.com"
+              placeholder={t("emailPlaceholder")}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
@@ -56,12 +115,12 @@ export default function LoginPage() {
           </div>
           <div className="space-y-2">
             <label htmlFor="password" className="text-sm font-medium">
-              Password
+              {t("password")}
             </label>
             <Input
               id="password"
               type="password"
-              placeholder="••••••••"
+              placeholder={t("passwordPlaceholder")}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
@@ -70,16 +129,19 @@ export default function LoginPage() {
         </CardContent>
         <CardFooter className="flex flex-col space-y-4">
           <Button type="submit" className="w-full" disabled={isLoggingIn}>
-            {isLoggingIn ? "Signing in..." : "Sign in"}
+            {isLoggingIn ? t("signingIn") : t("signIn")}
           </Button>
-          <p className="text-sm text-muted-foreground">
-            Don&apos;t have an account?{" "}
-            <Link href="/register" className="text-primary hover:underline">
-              Sign up
-            </Link>
-          </p>
+          {!desktopCallback && (
+            <p className="text-sm text-muted-foreground">
+              {t("dontHaveAccount")}{" "}
+               <Link href="/register" className="text-brand-cyan hover:underline">
+                {t("signUp")}
+              </Link>
+            </p>
+          )}
         </CardFooter>
       </form>
+      )}
     </Card>
   );
 }

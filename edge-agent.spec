@@ -6,11 +6,11 @@ a = Analysis(
     pathex=[],
     binaries=[],
     datas=[('edge_agent/config.yaml', 'edge_agent')],
-    hiddenimports=['edge_agent', 'edge_agent.cli', 'edge_agent.config', 'edge_agent.core.scanner', 'edge_agent.core.chunker', 'edge_agent.core.models', 'edge_agent.db.local_db', 'edge_agent.parsers.document_reader', 'edge_agent.parsers.mineru', 'edge_agent.parsers.router', 'edge_agent.ocr.engine', 'edge_agent.ocr.worker', 'edge_agent.sync.manager', 'edge_agent.watcher.monitor', 'httpx', 'yaml', 'watchdog', 'watchdog.observers', 'watchdog.events'],
+    hiddenimports=['edge_agent', 'edge_agent.cli', 'edge_agent.config', 'edge_agent.core.scanner', 'edge_agent.core.chunker', 'edge_agent.core.models', 'edge_agent.db.local_db', 'edge_agent.parsers.document_reader', 'edge_agent.parsers.mineru', 'edge_agent.parsers.router', 'edge_agent.ocr.engine', 'edge_agent.ocr.worker', 'edge_agent.sync.manager', 'edge_agent.watcher.monitor', 'httpx', 'yaml', 'watchdog', 'watchdog.observers', 'watchdog.events', 'pdfplumber', 'docx', 'openpyxl', 'PIL', 'PIL._tkinter_finder', 'fitz'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=['paddleocr', 'paddlepaddle', 'torch', 'numpy', 'scipy', 'pandas', 'matplotlib', 'tkinter', 'unittest', 'pytest', 'pdfplumber', 'docx', 'openpyxl', 'PIL', 'fitz', 'cv2', 'pytesseract', 'mineru'],
+    excludes=['paddleocr', 'paddlepaddle', 'torch', 'numpy', 'scipy', 'pandas', 'matplotlib', 'tkinter', 'unittest', 'pytest', 'cv2', 'pytesseract', 'mineru'],
     noarchive=False,
     optimize=0,
 )

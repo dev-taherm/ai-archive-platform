@@ -1,11 +1,10 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAgentStore } from "../stores/agent-store";
 import { Card, CardHeader, CardTitle, CardContent } from "../components/ui/card";
 import { FolderPlus, Trash2 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
-import { useState } from "react";
 
 export default function FoldersPage() {
   const { t } = useTranslation();
@@ -24,7 +23,11 @@ export default function FoldersPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="min-h-full bg-muted/40">
+      <div className="border-b bg-background px-6 py-3">
+        <h1 className="text-lg font-semibold">{t("folders.title")}</h1>
+      </div>
+      <div className="p-6 space-y-6">
       <Card>
         <CardHeader>
           <CardTitle>{t("folders.title")}</CardTitle>
@@ -56,15 +59,6 @@ export default function FoldersPage() {
                       {folder.path}
                     </p>
                   </div>
-                  <span
-                    className={`text-xs px-2 py-0.5 rounded-full ${
-                      folder.watching
-                        ? "bg-green-100 text-green-700"
-                        : "bg-gray-100 text-gray-500"
-                    }`}
-                  >
-                    {folder.watching ? t("folders.watching") : t("folders.idle")}
-                  </span>
                   {!folder.exists && (
                     <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700">
                       {t("folders.notFound")}
@@ -88,6 +82,7 @@ export default function FoldersPage() {
           </div>
         </CardContent>
       </Card>
+      </div>
     </div>
   );
 }

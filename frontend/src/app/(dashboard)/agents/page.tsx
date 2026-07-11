@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import {
   Bot,
   Cpu,
@@ -38,6 +39,7 @@ const statusVariant: Record<
 };
 
 export default function AgentsPage() {
+  const t = useTranslations("agents");
   const [showDownload, setShowDownload] = useState(false);
 
   const { data: agents = [], isLoading } = useQuery<Agent[]>({
@@ -54,14 +56,14 @@ export default function AgentsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Agents</h1>
+          <h1 className="text-2xl font-bold bg-gradient-to-r from-brand-teal to-brand-cyan bg-clip-text text-transparent">{t("title")}</h1>
           <p className="text-muted-foreground">
-            Connected edge agents and their status
+            {t("subtitle")}
           </p>
         </div>
         <Button onClick={() => setShowDownload(true)}>
           <Plus className="h-4 w-4 mr-2" />
-          Add Device
+          {t("addDevice")}
         </Button>
       </div>
 
@@ -85,15 +87,14 @@ export default function AgentsPage() {
           <CardContent className="flex flex-col items-center gap-4 py-12 text-muted-foreground">
             <Bot className="h-12 w-12" />
             <div className="text-center">
-              <p className="text-lg font-medium">No agents connected</p>
+              <p className="text-lg font-medium">{t("noDevices")}</p>
               <p className="text-sm mt-1">
-                Download and install the Edge Agent to start processing
-                documents from your computer.
+                {t("noDevicesDesc")}
               </p>
             </div>
             <Button onClick={() => setShowDownload(true)}>
               <Download className="h-4 w-4 mr-2" />
-              Download Edge Agent
+              {t("downloadEdgeDevice")}
             </Button>
           </CardContent>
         </Card>
@@ -137,18 +138,18 @@ export default function AgentsPage() {
                   </div>
                   <div className="flex items-center gap-2 text-muted-foreground">
                     <HardDrive className="h-3.5 w-3.5" />
-                    <span>{agent.files_count} files</span>
+                    <span>{t("countFiles", { count: agent.files_count })}</span>
                   </div>
                   <div className="flex items-center gap-2 text-muted-foreground">
                     <FolderOpen className="h-3.5 w-3.5" />
-                    <span>{agent.folders?.length || 0} folders</span>
+                    <span>{t("countFolders", { count: agent.folders?.length || 0 })}</span>
                   </div>
                   <div className="flex items-center gap-2 text-muted-foreground">
                     <Clock className="h-3.5 w-3.5" />
                     <span>
                       {agent.last_seen
                         ? formatDate(agent.last_seen)
-                        : "Never seen"}
+                        : t("neverSeen")}
                     </span>
                   </div>
                   {agent.capabilities && agent.capabilities.length > 0 && (
@@ -172,7 +173,7 @@ export default function AgentsPage() {
       )}
 
       <p className="text-sm text-muted-foreground">
-        {agents.length} agent(s)
+        {t("deviceCount", { count: agents.length })}
       </p>
 
       <DownloadAgentDialog

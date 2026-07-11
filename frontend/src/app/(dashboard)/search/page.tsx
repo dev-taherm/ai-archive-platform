@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import {
   Search as SearchIcon,
   FileText,
@@ -59,6 +60,7 @@ function HighlightedText({ text, query }: { text: string; query: string }) {
 }
 
 function FacetsCard({ data }: { data: SearchResponse }) {
+  const t = useTranslations("search");
   const facets = useMemo(() => {
     const docTypes: Record<string, number> = {};
     const languages: Record<string, number> = {};
@@ -83,14 +85,14 @@ function FacetsCard({ data }: { data: SearchResponse }) {
       <CardHeader className="pb-2">
         <CardTitle className="flex items-center gap-2 text-sm">
           <Filter className="h-4 w-4" />
-          Result Facets
+          {t("resultFacets")}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         {Object.keys(facets.matchSources).length > 0 && (
           <div>
             <p className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1">
-              <Sparkles className="h-3 w-3" /> Match Source
+              <Sparkles className="h-3 w-3" /> {t("matchSource")}
             </p>
             <div className="space-y-1">
               {Object.entries(facets.matchSources)
@@ -107,7 +109,7 @@ function FacetsCard({ data }: { data: SearchResponse }) {
         {Object.keys(facets.docTypes).length > 0 && (
           <div>
             <p className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1">
-              <FileText className="h-3 w-3" /> Document Type
+              <FileText className="h-3 w-3" /> {t("documentType")}
             </p>
             <div className="space-y-1">
               {Object.entries(facets.docTypes)
@@ -124,7 +126,7 @@ function FacetsCard({ data }: { data: SearchResponse }) {
         {Object.keys(facets.languages).length > 0 && (
           <div>
             <p className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1">
-              <Globe className="h-3 w-3" /> Language
+              <Globe className="h-3 w-3" /> {t("language")}
             </p>
             <div className="space-y-1">
               {Object.entries(facets.languages)
@@ -144,6 +146,8 @@ function FacetsCard({ data }: { data: SearchResponse }) {
 }
 
 export default function SearchPage() {
+  const t = useTranslations("search");
+  const tc = useTranslations("common");
   const [query, setQuery] = useState("");
   const [lastQuery, setLastQuery] = useState("");
   const [showFilters, setShowFilters] = useState(false);
@@ -220,7 +224,7 @@ export default function SearchPage() {
       queryClient.invalidateQueries({ queryKey: ["search", "saved"] });
       setSaveName("");
       setShowSave(false);
-      toast({ title: "Search saved" });
+      toast({ title: t("save") });
     },
   });
 
@@ -230,7 +234,7 @@ export default function SearchPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["search", "saved"] });
-      toast({ title: "Saved search removed" });
+      toast({ title: t("save") });
     },
   });
 
@@ -255,18 +259,18 @@ export default function SearchPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Search</h1>
+        <h1 className="text-2xl font-bold bg-gradient-to-r from-brand-teal to-brand-cyan bg-clip-text text-transparent">{t("title")}</h1>
         <p className="text-muted-foreground">
-          Search through your archived documents
+          {t("subtitle")}
         </p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-3">
         <div className="flex gap-3">
           <div className="relative flex-1">
-            <SearchIcon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <SearchIcon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-brand-teal" />
             <Input
-              placeholder="Search documents..."
+              placeholder={t("searchPlaceholder")}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               className="pl-10"
@@ -279,10 +283,10 @@ export default function SearchPage() {
             className={showFilters ? "bg-primary/10" : ""}
           >
             <Filter className="mr-2 h-4 w-4" />
-            Filters
+            {t("filters")}
           </Button>
           <Button type="submit" disabled={searchMutation.isPending}>
-            {searchMutation.isPending ? "Searching..." : "Search"}
+            {searchMutation.isPending ? t("searching") : t("search")}
           </Button>
         </div>
 
@@ -290,7 +294,7 @@ export default function SearchPage() {
           <Card>
             <CardContent className="pt-4 space-y-3">
               <div className="flex items-center gap-2">
-                <span className="text-sm font-medium">Type:</span>
+                <span className="text-sm font-medium">{t("type")}</span>
                 {(["hybrid", "semantic", "keyword"] as const).map((type) => (
                   <Badge
                     key={type}
@@ -304,27 +308,27 @@ export default function SearchPage() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs text-muted-foreground">Doc Types (comma separated)</label>
+                  <label className="text-xs text-muted-foreground">{t("docTypes")}</label>
                   <Input
-                    placeholder="pdf, text, code..."
+                    placeholder={t("docTypesPlaceholder")}
                     value={filters.doc_types}
                     onChange={(e) => setFilters((f) => ({ ...f, doc_types: e.target.value }))}
                     className="mt-1"
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-muted-foreground">Languages</label>
+                  <label className="text-xs text-muted-foreground">{t("languages")}</label>
                   <Input
-                    placeholder="en, ar..."
+                    placeholder={t("languagesPlaceholder")}
                     value={filters.languages}
                     onChange={(e) => setFilters((f) => ({ ...f, languages: e.target.value }))}
                     className="mt-1"
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-muted-foreground">Tags</label>
+                  <label className="text-xs text-muted-foreground">{t("tags")}</label>
                   <Input
-                    placeholder="important, draft..."
+                    placeholder={t("tagsPlaceholder")}
                     value={filters.tags}
                     onChange={(e) => setFilters((f) => ({ ...f, tags: e.target.value }))}
                     className="mt-1"
@@ -332,7 +336,7 @@ export default function SearchPage() {
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className="text-xs text-muted-foreground">From</label>
+                    <label className="text-xs text-muted-foreground">{t("from")}</label>
                     <Input
                       type="date"
                       value={filters.date_from}
@@ -341,7 +345,7 @@ export default function SearchPage() {
                     />
                   </div>
                   <div>
-                    <label className="text-xs text-muted-foreground">To</label>
+                    <label className="text-xs text-muted-foreground">{t("to")}</label>
                     <Input
                       type="date"
                       value={filters.date_to}
@@ -364,8 +368,7 @@ export default function SearchPage() {
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Clock className="h-4 w-4" />
                   <span>
-                    Found {searchMutation.data.total_count} results for &quot;{lastQuery}&quot; in{" "}
-                    {searchMutation.data.search_time_ms.toFixed(0)}ms
+                    {t("resultsSummary", { count: searchMutation.data.total_count, query: lastQuery, time: searchMutation.data.search_time_ms.toFixed(0) })}
                   </span>
                   <Badge variant="outline" className="ml-2">
                     {searchMutation.data.search_type}
@@ -376,7 +379,7 @@ export default function SearchPage() {
                     {showSave ? (
                       <div className="flex items-center gap-2">
                         <Input
-                          placeholder="Search name"
+                          placeholder={t("saveSearchPlaceholder")}
                           value={saveName}
                           onChange={(e) => setSaveName(e.target.value)}
                           className="h-8 w-40 text-sm"
@@ -386,7 +389,7 @@ export default function SearchPage() {
                           onClick={() => saveMutation.mutate()}
                           disabled={!saveName.trim() || saveMutation.isPending}
                         >
-                          Save
+                          {t("save")}
                         </Button>
                         <Button size="sm" variant="ghost" onClick={() => setShowSave(false)}>
                           <X className="h-4 w-4" />
@@ -395,7 +398,7 @@ export default function SearchPage() {
                     ) : (
                       <Button size="sm" variant="outline" onClick={() => setShowSave(true)}>
                         <BookmarkPlus className="mr-2 h-4 w-4" />
-                        Save Search
+                        {t("saveSearch")}
                       </Button>
                     )}
                   </div>
@@ -405,10 +408,10 @@ export default function SearchPage() {
               {searchMutation.data.results.length === 0 ? (
                 <Card>
                   <CardContent className="flex flex-col items-center justify-center py-12">
-                    <SearchIcon className="mb-4 h-12 w-12 text-muted-foreground" />
-                    <p className="text-lg font-medium">No results found</p>
+                    <SearchIcon className="mb-4 h-12 w-12 text-brand-teal opacity-50" />
+                    <p className="text-lg font-medium">{t("noResults")}</p>
                     <p className="text-sm text-muted-foreground">
-                      Try different keywords or adjust your filters
+                      {t("noResultsDesc")}
                     </p>
                   </CardContent>
                 </Card>
@@ -423,8 +426,8 @@ export default function SearchPage() {
                         <CardHeader className="pb-2">
                           <div className="flex items-center justify-between">
                             <CardTitle className="flex items-center gap-2 text-base">
-                              <FileText className="h-4 w-4" />
-                              <HighlightedText text={result.title || "Untitled"} query={lastQuery} />
+                              <FileText className="h-4 w-4 text-brand-teal" />
+                              <HighlightedText text={result.title || t("untitled")} query={lastQuery} />
                             </CardTitle>
                             <div className="flex items-center gap-2 shrink-0">
                               <Badge variant="outline" className="text-xs">
@@ -471,7 +474,7 @@ export default function SearchPage() {
               {totalPages > 1 && (
                 <div className="flex items-center justify-between pt-2">
                   <span className="text-sm text-muted-foreground">
-                    Page {currentPage} of {totalPages}
+                    {t("pageInfo", { current: currentPage, total: totalPages })}
                   </span>
                   <div className="flex gap-2">
                     <Button
@@ -481,7 +484,7 @@ export default function SearchPage() {
                       disabled={offset === 0}
                     >
                       <ChevronLeft className="h-4 w-4" />
-                      Prev
+                      {tc("previous")}
                     </Button>
                     <Button
                       variant="outline"
@@ -489,7 +492,7 @@ export default function SearchPage() {
                       onClick={() => handlePageChange(offset + maxResults)}
                       disabled={currentPage >= totalPages}
                     >
-                      Next
+                      {tc("next")}
                       <ChevronRight className="h-4 w-4" />
                     </Button>
                   </div>
@@ -502,7 +505,7 @@ export default function SearchPage() {
             <Card>
               <CardContent className="flex flex-col items-center justify-center py-12">
                 <p className="text-sm text-destructive">
-                  Search failed. Please try again.
+                  {t("searchFailed")}
                 </p>
               </CardContent>
             </Card>
@@ -519,7 +522,7 @@ export default function SearchPage() {
               <CardHeader className="pb-2">
                 <CardTitle className="flex items-center gap-2 text-sm">
                   <History className="h-4 w-4" />
-                  Recent Searches
+                  {t("recentSearches")}
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-1">
@@ -550,7 +553,7 @@ export default function SearchPage() {
               <CardHeader className="pb-2">
                 <CardTitle className="flex items-center gap-2 text-sm">
                   <BookmarkPlus className="h-4 w-4" />
-                  Saved Searches
+                  {t("savedSearches")}
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-1">

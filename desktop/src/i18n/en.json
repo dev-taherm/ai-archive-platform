@@ -18,6 +18,7 @@
   "nav": {
     "dashboard": "Dashboard",
     "folders": "Folders",
+    "trash": "Trash",
     "settings": "Settings"
   },
   "dashboard": {
@@ -53,6 +54,8 @@
     "status": "Status",
     "synced": "Synced",
     "added": "Added",
+    "actions": "Actions",
+    "clear": "Clear",
     "yes": "Yes",
     "no": "No"
   },

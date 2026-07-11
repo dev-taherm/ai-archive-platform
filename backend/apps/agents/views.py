@@ -267,6 +267,108 @@ class AgentViewSet(viewsets.ModelViewSet):
             manifest = json.load(f)
         return Response(manifest, status=status.HTTP_200_OK)
 
+    @action(detail=False, methods=["get"], url_path="desktop-manifest")
+    def desktop_manifest(self, request):
+        """Return build manifest showing available desktop app installers."""
+        desktop_dir = Path(settings.MEDIA_ROOT) / "desktop"
+        manifest_path = desktop_dir / "desktop-manifest.json"
+        if not manifest_path.exists():
+            return Response({"builds": {}}, status=status.HTTP_200_OK)
+        with open(manifest_path) as f:
+            manifest = json.load(f)
+        return Response(manifest, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=["get"], url_path="download-desktop")
+    def download_desktop(self, request):
+        """Serve a zip with desktop app installer + config with pre-configured server URL.
+
+        Query params:
+            os: "linux" | "darwin" | "windows" (required)
+            server_url: Override server URL (optional, defaults to request host)
+        """
+        os_param = request.query_params.get("os", "").lower()
+        valid_os = {"linux", "darwin", "windows"}
+        if os_param not in valid_os:
+            return Response(
+                {"detail": f"os must be one of: {', '.join(sorted(valid_os))}"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Determine server URL
+        server_url = request.query_params.get("server_url", "").strip()
+        if not server_url:
+            server_url = request.build_absolute_uri("/").rstrip("/")
+
+        # Find the right installer
+        desktop_dir = Path(settings.MEDIA_ROOT) / "desktop"
+        manifest_path = desktop_dir / "desktop-manifest.json"
+        if not manifest_path.exists():
+            return Response(
+                {"detail": "Desktop builds not available yet."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        with open(manifest_path) as f:
+            manifest = json.load(f)
+
+        # Map OS to manifest keys
+        os_key_map = {
+            "linux": ["linux-x86_64", "linux-arm64"],
+            "darwin": ["darwin-arm64", "darwin-x86_64"],
+            "windows": ["windows-x86_64"],
+        }
+
+        build = None
+        build_key = None
+        for key in os_key_map.get(os_param, []):
+            if key in manifest.get("builds", {}):
+                build = manifest["builds"][key]
+                build_key = key
+                break
+
+        if not build:
+            return Response(
+                {"detail": f"No desktop build available for {os_param}."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        installer_path = desktop_dir / build["filename"]
+        if not installer_path.exists():
+            return Response(
+                {"detail": "Installer file not found on server."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Build a zip with: installer + config.json + install script
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+            # Add installer
+            zf.write(installer_path, build["filename"])
+
+            # Add config.json with pre-configured server URL
+            config = {"server_url": server_url}
+            zf.writestr("config.json", json.dumps(config, indent=2))
+
+            # Add install script
+            if os_param == "linux":
+                install_script = _generate_desktop_install_sh(build["filename"], server_url)
+                zf.writestr("install.sh", install_script)
+            elif os_param == "windows":
+                install_script = _generate_desktop_install_bat(build["filename"], server_url)
+                zf.writestr("install.bat", install_script)
+            else:
+                install_script = _generate_desktop_readme(os_param, build["filename"], server_url)
+                zf.writestr("README.txt", install_script)
+
+        zip_buffer.seek(0)
+
+        zip_filename = f"basirah-desktop-{os_param}.zip"
+        return FileResponse(
+            zip_buffer,
+            content_type="application/zip",
+            filename=zip_filename,
+        )
+
     @action(detail=False, methods=["get"], url_path="download-package")
     def download_package(self, request):
         """Serve a zip with edge-agent binary + config pre-filled with JWT token.
@@ -344,12 +446,18 @@ class AgentViewSet(viewsets.ModelViewSet):
 
         now = timezone.now()
         agent.status = data["status"]
-        agent.platform = data.get("platform", agent.platform)
-        agent.hostname = data.get("hostname", agent.hostname)
-        agent.ip_address = data.get("ip_address", agent.ip_address)
-        agent.agent_version = data.get("agent_version", agent.agent_version)
-        agent.files_count = data.get("files_count", agent.files_count)
-        agent.total_size_bytes = data.get("total_size_bytes", agent.total_size_bytes)
+        if "platform" in request.data:
+            agent.platform = data["platform"]
+        if "hostname" in request.data:
+            agent.hostname = data["hostname"]
+        if "ip_address" in request.data:
+            agent.ip_address = data["ip_address"]
+        if "agent_version" in request.data:
+            agent.agent_version = data["agent_version"]
+        if "files_count" in request.data:
+            agent.files_count = data["files_count"]
+        if "total_size_bytes" in request.data:
+            agent.total_size_bytes = data["total_size_bytes"]
         agent.last_seen = now
         agent.save(update_fields=[
             "status", "platform", "hostname", "ip_address",
@@ -629,7 +737,7 @@ class AgentViewSet(viewsets.ModelViewSet):
                         ExtractedEntity.objects.bulk_create([
                             ExtractedEntity(
                                 document=doc,
-                                entity_type=e.get("type", "unknown"),
+                                entity_type=e.get("entity_type", "unknown"),
                                 name=e.get("name", ""),
                                 context=e.get("context", ""),
                                 confidence=e.get("confidence"),
@@ -842,4 +950,94 @@ Troubleshooting
 - Check logs: ~/.edge-agent/agent.log
 - Test connection: ~/.edge-agent/edge-agent status
 - View help: ~/.edge-agent/edge-agent --help
+"""
+
+
+def _generate_desktop_install_sh(filename: str, server_url: str) -> str:
+    """Generate an install.sh for the desktop app on Linux/macOS."""
+    return f"""\
+#!/bin/bash
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+INSTALL_DIR="$HOME/.basirah"
+mkdir -p "$INSTALL_DIR"
+
+echo "Installing Basirah Desktop..."
+
+# Copy config
+cp "$SCRIPT_DIR/config.json" "$INSTALL_DIR/config.json" 2>/dev/null || true
+
+# Install .deb
+DEB_FILE="$SCRIPT_DIR/{filename}"
+if [ -f "$DEB_FILE" ]; then
+    if command -v dpkg &> /dev/null; then
+        sudo dpkg -i "$DEB_FILE"
+    elif command -v apt &> /dev/null; then
+        sudo apt install -y "$DEB_FILE"
+    else
+        echo "Please install the .deb manually: sudo dpkg -i $DEB_FILE"
+    fi
+fi
+
+echo ""
+echo "Installation complete!"
+echo "Open Basirah Desktop from your applications menu."
+echo "Server URL: {server_url}"
+"""
+
+
+def _generate_desktop_install_bat(filename: str, server_url: str) -> str:
+    """Generate an install.bat for the desktop app on Windows."""
+    return f"""\
+@echo off
+setlocal
+
+echo Installing Basirah Desktop...
+
+set INSTALL_DIR=%USERPROFILE%\\.basirah
+if not exist "%INSTALL_DIR%" mkdir "%INSTALL_DIR%"
+
+REM Copy config
+if exist "config.json" copy "config.json" "%INSTALL_DIR%\\config.json"
+
+REM Run installer
+if exist "{filename}" (
+    echo Running installer...
+    "{filename}"
+) else (
+    echo Installer not found: {filename}
+    pause
+    exit /b 1
+)
+
+echo.
+echo Installation complete!
+echo Open Basirah Desktop from your Start Menu.
+echo Server URL: {server_url}
+pause
+"""
+
+
+def _generate_desktop_readme(os_name: str, filename: str, server_url: str) -> str:
+    """Generate a README for macOS/other platforms."""
+    return f"""\
+Basirah Desktop - AI Archive Platform
+=====================================
+
+Platform: {os_name}
+Server URL: {server_url}
+
+Installation
+------------
+
+1. Open the installer file: {filename}
+2. Follow the installation prompts
+3. Open Basirah Desktop from your applications
+4. Log in with your email and password
+
+The server URL is pre-configured to:
+  {server_url}
+
+You don't need to enter the server URL — just log in!
 """

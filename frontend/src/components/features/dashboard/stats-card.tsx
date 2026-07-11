@@ -1,3 +1,4 @@
+import { useTranslations } from "next-intl";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { LucideIcon } from "lucide-react";
@@ -20,11 +21,14 @@ export function StatsCard({
   icon: Icon,
   trend,
 }: StatsCardProps) {
+  const t = useTranslations("dashboard");
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
         <CardTitle className="text-sm font-medium">{title}</CardTitle>
-        <Icon className="h-4 w-4 text-muted-foreground" />
+        <div className="rounded-md bg-brand-teal/10 p-1.5">
+          <Icon className="h-4 w-4 text-brand-teal" />
+        </div>
       </CardHeader>
       <CardContent>
         <div className="text-2xl font-bold">{value}</div>
@@ -35,11 +39,12 @@ export function StatsCard({
           <p
             className={cn(
               "text-xs font-medium",
-              trend.isPositive ? "text-emerald-600" : "text-red-600"
+              trend.isPositive ? "text-brand-teal" : "text-red-600"
             )}
           >
-            {trend.isPositive ? "+" : ""}
-            {trend.value}% from last month
+            {t("percentFromLastMonth", {
+              value: `${trend.isPositive ? "+" : ""}${trend.value}`,
+            })}
           </p>
         )}
       </CardContent>

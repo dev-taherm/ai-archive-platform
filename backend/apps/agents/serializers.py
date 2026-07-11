@@ -131,7 +131,7 @@ class SyncFileSerializer(serializers.Serializer):
     file_hash = serializers.CharField(max_length=128)
     file_size = serializers.IntegerField()
     mime_type = serializers.CharField(max_length=255, required=False, default="")
-    modified_at = serializers.CharField(required=False, default="")
+    modified_at = serializers.FloatField(required=False, default=0.0)
     metadata = serializers.DictField(required=False, default=dict)
     extracted_text = serializers.CharField(required=False, default="")
     markdown = serializers.CharField(required=False, default="")

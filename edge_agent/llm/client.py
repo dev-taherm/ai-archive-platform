@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from edge_agent.config import LLMConfig
+from edge_agent.core.providers import LLMProvider
 
 logger = logging.getLogger(__name__)
 
@@ -41,10 +42,12 @@ Document text:
 """
 
 
-class LLMClient:
+class LLMClient(LLMProvider):
     """Unified LLM client for entity extraction."""
 
-    def __init__(self, config: LLMConfig) -> None:
+    provider_name = "llm"
+
+    def __init__(self, config: LLMConfig, plugin_registry: Any = None) -> None:
         self._config = config
         self._provider = config.provider.lower()
 

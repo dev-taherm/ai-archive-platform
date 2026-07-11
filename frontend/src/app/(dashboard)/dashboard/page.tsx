@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
 import {
   FileText,
@@ -21,6 +22,7 @@ import {
 import type { DashboardStats, ActivityResponse } from "@/types/api";
 
 export default function DashboardPage() {
+  const t = useTranslations("dashboard");
   const { data: stats, isLoading: statsLoading } = useQuery<DashboardStats>({
     queryKey: ["dashboard", "stats"],
     queryFn: async () => {
@@ -40,7 +42,7 @@ export default function DashboardPage() {
   if (statsLoading) {
     return (
       <div className="flex h-96 items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-brand-cyan border-t-transparent" />
       </div>
     );
   }
@@ -48,51 +50,51 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Dashboard</h1>
+        <h1 className="text-2xl font-bold bg-gradient-to-r from-brand-teal to-brand-cyan bg-clip-text text-transparent">{t("title")}</h1>
         <p className="text-muted-foreground">
-          Overview of your archive platform
+          {t("subtitle")}
         </p>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <StatsCard
-          title="Total Files"
+          title={t("totalFiles")}
           value={stats?.total_files ?? 0}
           icon={FolderOpen}
         />
         <StatsCard
-          title="Total Documents"
+          title={t("totalDocuments")}
           value={stats?.total_documents ?? 0}
           icon={FileText}
         />
         <StatsCard
-          title="Storage Used"
+          title={t("storageUsed")}
           value={formatBytes(stats?.storage_used_bytes ?? 0)}
           icon={HardDrive}
         />
         <StatsCard
-          title="Failed Processing"
+          title={t("failedProcessing")}
           value={
             (stats?.files_by_status?.failed ?? 0) +
             (stats?.documents_by_status?.failed ?? 0)
           }
           icon={AlertCircle}
-          description="Files or documents requiring attention"
+          description={t("failedProcessingDesc")}
         />
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <StatsCard
-          title="Agents Online"
+          title={t("agentsOnline")}
           value={`${stats?.agents_online ?? 0} / ${stats?.agents_total ?? 0}`}
           icon={Bot}
-          description="Connected edge agents"
+          description={t("agentsOnlineDesc")}
         />
         <StatsCard
-          title="Duplicate Files"
+          title={t("duplicateFiles")}
           value={stats?.duplicate_files ?? 0}
           icon={Copy}
-          description={`Across ${stats?.duplicate_groups ?? 0} groups`}
+          description={t("acrossGroups", { count: stats?.duplicate_groups ?? 0 })}
         />
       </div>
 

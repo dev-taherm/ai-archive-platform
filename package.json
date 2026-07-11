@@ -2,11 +2,16 @@
   "name": "ai-archive-platform",
   "private": true,
   "scripts": {
-    "dev": "turbo run dev",
+    "dev": "concurrently -n backend,frontend,desktop -c blue,green,magenta \"pnpm dev:backend\" \"pnpm dev:frontend\" \"pnpm dev:desktop\"",
+    "dev:backend": "cd backend && python3 manage.py runserver 0.0.0.0:8000",
+    "dev:frontend": "cd frontend && pnpm dev",
+    "dev:desktop": "cd desktop && pnpm tauri dev",
+    "dev:web": "concurrently -n backend,frontend -c blue,green \"pnpm dev:backend\" \"pnpm dev:frontend\"",
     "build": "turbo run build",
     "lint": "turbo run lint"
   },
   "devDependencies": {
+    "concurrently": "^10.0.3",
     "turbo": "^2.0"
   }
 }

@@ -3,6 +3,7 @@
 import { use, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import api from "@/lib/api";
 import { formatDate, formatBytes } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -57,7 +58,7 @@ const ALL_COMMAND_TYPES = [
   { value: "restart", label: "Restart", destructive: true },
   { value: "shutdown", label: "Shutdown", destructive: true },
   { value: "config_update", label: "Config Update" },
-  { value: "update", label: "Update Agent" },
+  { value: "update", label: "Update Device" },
   { value: "start_scan", label: "Start Continuous Scan" },
   { value: "stop_scan", label: "Stop Continuous Scan" },
 ];
@@ -67,6 +68,8 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
   const router = useRouter();
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const t = useTranslations("agents");
+  const tc = useTranslations("common");
 
   // Command state
   const [commandType, setCommandType] = useState("scan");
@@ -121,10 +124,10 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["agents", id, "commands"] });
-      toast({ title: "Command sent", description: "Command has been queued for the agent." });
+      toast({ title: t("commands"), description: t("commandQueued") });
     },
     onError: () => {
-      toast({ title: "Failed to send command", variant: "destructive" });
+      toast({ title: t("failedToSendCommand"), variant: "destructive" });
     },
   });
 
@@ -132,11 +135,11 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
     mutationFn: async () => api.delete(`/agents/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["agents"] });
-      toast({ title: "Agent deleted" });
+      toast({ title: t("deleteDevice") });
       router.push("/agents");
     },
     onError: () => {
-      toast({ title: "Failed to delete agent", variant: "destructive" });
+      toast({ title: t("failedToDeleteDevice"), variant: "destructive" });
     },
   });
 
@@ -198,12 +201,12 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["agents", id] });
-      toast({ title: "Agent settings updated" });
+      toast({ title: "Device settings updated" });
       setEditingSettings(false);
     },
     onError: (err: any) => {
       toast({
-        title: "Failed to update agent",
+        title: "Failed to update device",
         description: err?.response?.data?.detail || "Unknown error",
         variant: "destructive",
       });
@@ -279,10 +282,10 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
     return (
       <div className="flex flex-col items-center justify-center py-12 gap-4">
         <AlertCircle className="h-12 w-12 text-muted-foreground" />
-        <p className="text-lg font-medium">Agent not found</p>
+        <p className="text-lg font-medium">{t('notFound')}</p>
         <Button variant="outline" onClick={() => router.push("/agents")}>
           <ArrowLeft className="h-4 w-4 mr-2" />
-          Back to Agents
+          {t('backToDevices')}
         </Button>
       </div>
     );
@@ -301,7 +304,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
               <Bot className="h-5 w-5" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold">{agent.name}</h1>
+              <h1 className="text-2xl font-bold bg-gradient-to-r from-brand-teal to-brand-cyan bg-clip-text text-transparent">{agent.name}</h1>
               <p className="text-sm text-muted-foreground">{agent.agent_id}</p>
             </div>
           </div>
@@ -316,7 +319,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
             onClick={() => queryClient.invalidateQueries({ queryKey: ["agents", id] })}
           >
             <RefreshCw className="h-4 w-4 mr-2" />
-            Refresh
+            {tc('refresh')}
           </Button>
           <Button
             variant="destructive"
@@ -324,7 +327,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
             onClick={() => setShowDeleteDialog(true)}
           >
             <Trash2 className="h-4 w-4 mr-2" />
-            Delete
+            {tc('delete')}
           </Button>
         </div>
       </div>
@@ -334,11 +337,11 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
-              <div className="rounded-md bg-muted p-2">
-                <Globe className="h-4 w-4" />
+              <div className="rounded-md bg-brand-teal/10 p-2">
+                <Globe className="h-4 w-4 text-brand-teal" />
               </div>
               <div>
-                <p className="text-xs text-muted-foreground">Platform</p>
+                <p className="text-xs text-muted-foreground">{t('platform')}</p>
                 <p className="text-sm font-medium">
                   {agent.platform} &middot; {agent.hostname}
                 </p>
@@ -349,11 +352,11 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
-              <div className="rounded-md bg-muted p-2">
-                <Cpu className="h-4 w-4" />
+              <div className="rounded-md bg-brand-cyan/10 p-2">
+                <Cpu className="h-4 w-4 text-brand-cyan" />
               </div>
               <div>
-                <p className="text-xs text-muted-foreground">Version</p>
+                <p className="text-xs text-muted-foreground">{t('version')}</p>
                 <p className="text-sm font-medium">v{agent.agent_version}</p>
               </div>
             </div>
@@ -362,11 +365,11 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
-              <div className="rounded-md bg-muted p-2">
-                <HardDrive className="h-4 w-4" />
+              <div className="rounded-md bg-brand-teal/10 p-2">
+                <HardDrive className="h-4 w-4 text-brand-teal" />
               </div>
               <div>
-                <p className="text-xs text-muted-foreground">Files</p>
+                <p className="text-xs text-muted-foreground">{t('files')}</p>
                 <p className="text-sm font-medium">{agent.files_count}</p>
                 <p className="text-xs text-muted-foreground">
                   {formatBytes(agent.total_size_bytes)}
@@ -378,13 +381,13 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
-              <div className="rounded-md bg-muted p-2">
-                <Clock className="h-4 w-4" />
+              <div className="rounded-md bg-brand-cyan/10 p-2">
+                <Clock className="h-4 w-4 text-brand-cyan" />
               </div>
               <div>
-                <p className="text-xs text-muted-foreground">Last Seen</p>
+                <p className="text-xs text-muted-foreground">{t('lastSeen')}</p>
                 <p className="text-sm font-medium">
-                  {agent.last_seen ? formatDate(agent.last_seen) : "Never"}
+                  {agent.last_seen ? formatDate(agent.last_seen) : t('neverSeen')}
                 </p>
               </div>
             </div>
@@ -393,13 +396,13 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
-              <div className="rounded-md bg-muted p-2">
-                <ArrowRightLeft className="h-4 w-4" />
+              <div className="rounded-md bg-brand-teal/10 p-2">
+                <ArrowRightLeft className="h-4 w-4 text-brand-teal" />
               </div>
               <div>
-                <p className="text-xs text-muted-foreground">Last Sync</p>
+                <p className="text-xs text-muted-foreground">{t('lastSync')}</p>
                 <p className="text-sm font-medium">
-                  {agent.last_sync_at ? formatDate(agent.last_sync_at) : "Never"}
+                  {agent.last_sync_at ? formatDate(agent.last_sync_at) : t('neverSeen')}
                 </p>
               </div>
             </div>
@@ -413,7 +416,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
           <div className="flex items-center justify-between">
             <CardTitle className="text-base flex items-center gap-2">
               <Send className="h-4 w-4" />
-              Commands
+              {t('commands')}
             </CardTitle>
             <div className="flex items-center gap-2">
               <select
@@ -433,11 +436,11 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
                 disabled={sendCommand.isPending}
               >
                 {sendCommand.isPending ? (
-                  <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                  <Loader2 className="h-4 w-4 animate-spin mr-1 text-brand-teal" />
                 ) : (
                   <Send className="h-4 w-4 mr-1" />
                 )}
-                Send
+                {t('send')}
               </Button>
             </div>
           </div>
@@ -445,7 +448,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
         <CardContent>
           {commands.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-4">
-              No commands sent yet
+              {t('noCommands')}
             </p>
           ) : (
             <div className="space-y-2">
@@ -486,7 +489,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
           <div className="flex items-center justify-between">
             <CardTitle className="text-base flex items-center gap-2">
               <FolderOpen className="h-4 w-4" />
-              Monitored Folders ({agent.folders?.length || 0})
+              {t('monitoredFolders', { count: agent.folders?.length || 0 })}
             </CardTitle>
             <Button
               size="sm"
@@ -494,7 +497,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
               onClick={() => setShowAddFolder(!showAddFolder)}
             >
               <Plus className="h-4 w-4 mr-1" />
-              Add Folder
+              {t('addFolder')}
             </Button>
           </div>
         </CardHeader>
@@ -502,12 +505,12 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
           {showAddFolder && (
             <div className="mb-4 p-4 rounded-lg border bg-muted/50 space-y-2">
               <Input
-                placeholder="/path/to/folder"
+                placeholder={t('folderPathPlaceholder')}
                 value={newFolderPath}
                 onChange={(e) => setNewFolderPath(e.target.value)}
               />
               <Input
-                placeholder="Label (optional)"
+                placeholder={t('folderLabelPlaceholder')}
                 value={newFolderLabel}
                 onChange={(e) => setNewFolderLabel(e.target.value)}
               />
@@ -518,21 +521,21 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
                   disabled={!newFolderPath.trim() || addFolder.isPending}
                 >
                   {addFolder.isPending ? (
-                    <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                    <Loader2 className="h-4 w-4 animate-spin mr-1 text-brand-teal" />
                   ) : (
                     <Plus className="h-4 w-4 mr-1" />
                   )}
-                  Add
+                  {t('addFolder')}
                 </Button>
                 <Button size="sm" variant="outline" onClick={() => setShowAddFolder(false)}>
-                  Cancel
+                  {tc('cancel')}
                 </Button>
               </div>
             </div>
           )}
           {!agent.folders || agent.folders.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-4">
-              No folders configured
+              {t('noFolders')}
             </p>
           ) : (
             <div className="space-y-2">
@@ -548,13 +551,13 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
                         value={editingFolderPath}
                         onChange={(e) => setEditingFolderPath(e.target.value)}
                         className="flex-1"
-                        placeholder="/path/to/folder"
+                        placeholder={t('folderPathPlaceholder')}
                       />
                       <Input
                         value={editingFolderLabel}
                         onChange={(e) => setEditingFolderLabel(e.target.value)}
                         className="w-40"
-                        placeholder="Label"
+                        placeholder={t('folderLabelPlaceholder')}
                       />
                       <Button
                         size="sm"
@@ -576,7 +579,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
                     /* Display mode */
                     <>
                       <div className="flex items-center gap-3">
-                        <FolderOpen className="h-4 w-4 text-muted-foreground" />
+                        <FolderOpen className="h-4 w-4 text-brand-teal" />
                         <div>
                           <p className="text-sm font-medium">{folder.local_path}</p>
                           {folder.label && (
@@ -585,18 +588,18 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
                         </div>
                       </div>
                       <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <span>{folder.file_count} files</span>
+                        <span>{t('countFiles', { count: folder.file_count })}</span>
                         <Badge variant={folder.is_active ? "success" : "secondary"}>
-                          {folder.is_active ? "Active" : "Inactive"}
+                          {folder.is_active ? t('active') : t('inactive')}
                         </Badge>
                         {folder.last_scanned_at && (
-                          <span>Scanned: {formatDate(folder.last_scanned_at)}</span>
+                          <span>{t('scanned', { date: formatDate(folder.last_scanned_at) })}</span>
                         )}
                         <Button
                           size="sm"
                           variant="ghost"
                           onClick={() => startEditFolder(folder)}
-                          title="Edit folder"
+                          title={tc('edit')}
                         >
                           <Pencil className="h-3 w-3" />
                         </Button>
@@ -604,7 +607,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
                           size="sm"
                           variant="ghost"
                           onClick={() => setShowDeleteFolder(folder.id)}
-                          title="Remove folder"
+                          title={t('removeFolder')}
                         >
                           <Trash2 className="h-3 w-3 text-destructive" />
                         </Button>
@@ -624,12 +627,12 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
           <div className="flex items-center justify-between">
             <CardTitle className="text-base flex items-center gap-2">
               <Settings className="h-4 w-4" />
-              Agent Configuration
+              {t('deviceConfiguration')}
             </CardTitle>
             {!editingSettings && (
               <Button size="sm" variant="outline" onClick={startEditSettings}>
                 <Pencil className="h-4 w-4 mr-1" />
-                Edit
+                {tc('edit')}
               </Button>
             )}
           </div>
@@ -639,14 +642,14 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
             <div className="space-y-4">
               <div className="grid gap-4 md:grid-cols-3">
                 <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">Agent Name</p>
+                  <p className="text-xs text-muted-foreground">{t('deviceName')}</p>
                   <Input
                     value={editName}
                     onChange={(e) => setEditName(e.target.value)}
                   />
                 </div>
                 <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">Sync Interval (minutes)</p>
+                  <p className="text-xs text-muted-foreground">{t('syncInterval')}</p>
                   <Input
                     type="number"
                     value={editSyncInterval}
@@ -655,7 +658,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
                   />
                 </div>
                 <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">Max File Size (MB)</p>
+                  <p className="text-xs text-muted-foreground">{t('maxFileSize')}</p>
                   <Input
                     type="number"
                     value={editMaxFileSize}
@@ -671,40 +674,40 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
                   disabled={updateAgent.isPending}
                 >
                   {updateAgent.isPending ? (
-                    <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                    <Loader2 className="h-4 w-4 animate-spin mr-1 text-brand-teal" />
                   ) : (
                     <Check className="h-4 w-4 mr-1" />
                   )}
-                  Save
+                  {tc('save')}
                 </Button>
                 <Button size="sm" variant="outline" onClick={() => setEditingSettings(false)}>
-                  Cancel
+                  {tc('cancel')}
                 </Button>
               </div>
             </div>
           ) : (
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-1">
-                <p className="text-xs text-muted-foreground">Sync Interval</p>
-                <p className="text-sm">{agent.sync_interval_minutes} minutes</p>
+                <p className="text-xs text-muted-foreground">{t('syncInterval')}</p>
+                <p className="text-sm">{t('syncIntervalValue', { n: agent.sync_interval_minutes })}</p>
               </div>
               <div className="space-y-1">
-                <p className="text-xs text-muted-foreground">Max File Size</p>
-                <p className="text-sm">{agent.max_file_size_mb} MB</p>
+                <p className="text-xs text-muted-foreground">{t('maxFileSize')}</p>
+                <p className="text-sm">{t('maxFileSizeValue', { n: agent.max_file_size_mb })}</p>
               </div>
               <div className="space-y-1">
-                <p className="text-xs text-muted-foreground">Pending Commands</p>
+                <p className="text-xs text-muted-foreground">{t('pendingCommands')}</p>
                 <p className="text-sm">{agent.pending_commands_count}</p>
               </div>
               <div className="space-y-1">
-                <p className="text-xs text-muted-foreground">IP Address</p>
+                <p className="text-xs text-muted-foreground">{t('ipAddress')}</p>
                 <p className="text-sm">{agent.ip_address || "N/A"}</p>
               </div>
             </div>
           )}
           {agent.capabilities && agent.capabilities.length > 0 && (
             <div className="mt-4">
-              <p className="text-xs text-muted-foreground mb-2">Capabilities</p>
+              <p className="text-xs text-muted-foreground mb-2">{t('capabilities')}</p>
               <div className="flex flex-wrap gap-1">
                 {agent.capabilities.map((cap) => (
                   <Badge key={cap} variant="outline" className="text-xs">
@@ -721,19 +724,18 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Agent</AlertDialogTitle>
+            <AlertDialogTitle>{t('deleteDevice')}</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete this agent? This action cannot be undone.
-              The agent will be disconnected and all its data will be removed.
+              {t('deleteDeviceConfirm')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{tc('cancel')}</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => deleteAgent.mutate()}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Delete
+              {tc('delete')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -743,19 +745,18 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
       <AlertDialog open={showDestructiveConfirm} onOpenChange={setShowDestructiveConfirm}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Confirm {commandType}</AlertDialogTitle>
+            <AlertDialogTitle>{t('confirmCommand', { commandType })}</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to send the &quot;{commandType}&quot; command?
-              This is a destructive operation that will affect the agent.
+              {t('confirmCommandDesc', { commandType })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{tc('cancel')}</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleConfirmDestructive}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Send Command
+              {t('sendCommand')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -765,19 +766,18 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
       <AlertDialog open={!!showDeleteFolder} onOpenChange={() => setShowDeleteFolder(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Remove Folder</AlertDialogTitle>
+            <AlertDialogTitle>{t('removeFolder')}</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to remove this monitored folder? Files already processed
-              will remain, but the agent will stop monitoring this folder.
+              {t('removeFolderConfirm')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{tc('cancel')}</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => showDeleteFolder && deleteFolder.mutate(showDeleteFolder)}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Remove
+              {t('remove')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

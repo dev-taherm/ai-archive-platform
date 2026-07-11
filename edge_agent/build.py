@@ -6,7 +6,7 @@ Usage:
 
 Output:
     backend/media/agents/binaries/edge-agent-{platform}-{arch}
-    desktop/src-tauri/binaries/{triple}-edge-agent
+    desktop/src-tauri/binaries/edge-agent-{triple}
     Both directories get manifest.json
 """
 
@@ -27,6 +27,8 @@ SPEC_FILE = REPO_ROOT / "edge-agent.spec"
 DIST_DIR = REPO_ROOT / "edge_agent" / "dist"
 BINARIES_DIR = REPO_ROOT / "backend" / "media" / "agents" / "binaries"
 TAURI_BINARIES_DIR = REPO_ROOT / "desktop" / "src-tauri" / "binaries"
+TAURI_BUNDLE_DIR = REPO_ROOT / "desktop" / "src-tauri" / "target" / "release" / "bundle"
+DESKTOP_DIR = REPO_ROOT / "backend" / "media" / "desktop"
 
 
 def get_platform_key() -> str:
@@ -139,7 +141,7 @@ def copy_to_tauri(binary_path: Path) -> Path:
 
     triple = get_target_triple()
     suffix = ".exe" if platform.system() == "Windows" else ""
-    dest_name = f"{triple}-edge-agent{suffix}"
+    dest_name = f"edge-agent-{triple}{suffix}"
     dest = TAURI_BINARIES_DIR / dest_name
     shutil.copy2(binary_path, dest)
     dest.chmod(0o755)
@@ -175,6 +177,73 @@ def update_manifest(binary_path: Path, dest_dir: Path) -> None:
     print(f"Manifest updated: {manifest_path}")
 
 
+def copy_desktop_artifacts() -> list[Path]:
+    """Copy Tauri build artifacts (.deb, .rpm, .AppImage, .dmg, .msi) to backend/media/desktop/."""
+    DESKTOP_DIR.mkdir(parents=True, exist_ok=True)
+
+    copied = []
+    extensions = {
+        "deb": TAURI_BUNDLE_DIR / "deb",
+        "rpm": TAURI_BUNDLE_DIR / "rpm",
+        "appimage": TAURI_BUNDLE_DIR / "appimage",
+        "dmg": TAURI_BUNDLE_DIR / "dmg",
+        "msi": TAURI_BUNDLE_DIR / "nsis",
+    }
+
+    for ext, bundle_dir in extensions.items():
+        if not bundle_dir.exists():
+            continue
+        for artifact in bundle_dir.iterdir():
+            if artifact.is_file() and artifact.suffix == f".{ext}":
+                dest = DESKTOP_DIR / artifact.name
+                shutil.copy2(artifact, dest)
+                print(f"Copied desktop: {dest}")
+                copied.append(dest)
+
+    return copied
+
+
+def update_desktop_manifest(artifacts: list[Path]) -> None:
+    """Update or create desktop-manifest.json in backend/media/desktop/."""
+    DESKTOP_DIR.mkdir(parents=True, exist_ok=True)
+    manifest_path = DESKTOP_DIR / "desktop-manifest.json"
+
+    manifest = {"version": "0.1.0", "builds": {}}
+    if manifest_path.exists():
+        with open(manifest_path) as f:
+            manifest = json.load(f)
+
+    platform_key = get_platform_key()
+
+    for artifact in artifacts:
+        suffix = artifact.suffix
+        if suffix == ".deb":
+            build_key = platform_key
+        elif suffix == ".rpm":
+            build_key = f"{platform_key}-rpm"
+        elif suffix == ".AppImage":
+            build_key = f"{platform_key}-appimage"
+        elif suffix == ".dmg":
+            build_key = f"{platform_key}-dmg"
+        elif suffix == ".msi":
+            build_key = f"{platform_key}-msi"
+        else:
+            continue
+
+        stat = artifact.stat()
+        manifest["builds"][build_key] = {
+            "filename": artifact.name,
+            "size_bytes": stat.st_size,
+            "sha256": sha256_file(artifact),
+            "built_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+    with open(manifest_path, "w") as f:
+        json.dump(manifest, f, indent=2)
+
+    print(f"Desktop manifest updated: {manifest_path}")
+
+
 def main() -> None:
     if not SPEC_FILE.exists():
         print(f"ERROR: PyInstaller spec file not found at {SPEC_FILE}")
@@ -188,10 +257,17 @@ def main() -> None:
     update_manifest(binary_path, BINARIES_DIR)
     update_manifest(binary_path, TAURI_BINARIES_DIR)
 
+    # Copy desktop app artifacts
+    desktop_artifacts = copy_desktop_artifacts()
+    if desktop_artifacts:
+        update_desktop_manifest(desktop_artifacts)
+
     triple = get_target_triple()
     print(f"\nDone! Built for {get_platform_key()} ({triple})")
     print(f"  Legacy: {BINARIES_DIR / get_binary_name()}")
     print(f"  Tauri:  {tauri_dest}")
+    if desktop_artifacts:
+        print(f"  Desktop: {DESKTOP_DIR}")
 
 
 if __name__ == "__main__":

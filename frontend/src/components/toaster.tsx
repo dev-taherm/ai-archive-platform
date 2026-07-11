@@ -16,7 +16,7 @@ export function Toaster() {
           className={`rounded-lg border p-4 shadow-lg min-w-[300px] max-w-[400px] ${
             t.variant === "destructive"
               ? "border-destructive bg-destructive text-destructive-foreground"
-              : "border-border bg-background"
+              : "border-brand-teal/20 bg-background"
           }`}
         >
           <div className="flex items-start justify-between gap-2">

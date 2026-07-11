@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   BarChart,
@@ -22,11 +23,12 @@ interface ChartData {
 }
 
 export function FileTypeChart({ data }: { data: ChartData[] }) {
+  const t = useTranslations("dashboard");
   if (!data.length) return null;
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Documents by Type</CardTitle>
+        <CardTitle>{t("documentsByType")}</CardTitle>
       </CardHeader>
       <CardContent>
         <ResponsiveContainer width="100%" height={300}>
@@ -54,11 +56,12 @@ export function FileTypeChart({ data }: { data: ChartData[] }) {
 }
 
 export function FileStatusChart({ data }: { data: ChartData[] }) {
+  const t = useTranslations("dashboard");
   if (!data.length) return null;
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Files by Status</CardTitle>
+        <CardTitle>{t("filesByStatus")}</CardTitle>
       </CardHeader>
       <CardContent>
         <ResponsiveContainer width="100%" height={300}>

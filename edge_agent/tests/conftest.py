@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from edge_agent.config import EdgeAgentConfig, LLMConfig, SyncConfig, ScannerConfig
+from edge_agent.config import EdgeAgentConfig, LLMConfig
 
 
 @pytest.fixture
@@ -39,9 +39,6 @@ server:
 llm:
   provider: openai
   model: gpt-4o
-sync:
-  interval_minutes: 15
-  batch_size: 25
 folders:
   - /tmp/docs
 """)

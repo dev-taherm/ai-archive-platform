@@ -50,6 +50,12 @@ const config: Config = {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        brand: {
+          teal: "hsl(var(--brand-teal))",
+          cyan: "hsl(var(--brand-cyan))",
+          midnight: "hsl(var(--brand-midnight))",
+          silver: "hsl(var(--brand-silver))",
+        },
       },
       borderRadius: {
         lg: "var(--radius)",

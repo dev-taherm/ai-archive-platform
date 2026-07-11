@@ -1,96 +1,67 @@
 import { useEffect } from "react";
-import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { useAuthStore } from "../stores/auth-store";
 import { useAgentStore } from "../stores/agent-store";
-import { Button } from "../components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
-import { LanguageSwitcher } from "../components/LanguageSwitcher";
 import { StatsCards } from "../components/StatsCards";
 import { FileTable } from "../components/FileTable";
-import { LogsViewer } from "../components/LogsViewer";
-import { ScanButton } from "../components/ScanButton";
-import {
-  Play,
-  Square,
-  FolderOpen,
-  RefreshCw,
-  Settings,
-} from "lucide-react";
+import { Button } from "../components/ui/button";
+import { Play, Square, Pause, RefreshCw, AlertCircle } from "lucide-react";
 
 export default function DashboardPage() {
   const { t } = useTranslation();
-  const navigate = useNavigate();
-  const logout = useAuthStore((s) => s.logout);
   const {
-    connected,
-    status,
-    files,
-    logs,
-    loading,
-    fetchStatus,
-    fetchFiles,
-    fetchLogs,
-    startWatcher,
-    stopWatcher,
-    syncNow,
+    connected, files, loading, error, paused, metrics, startError,
+    selectedFiles, processingFiles,
+    fetchStatus, fetchFiles, fetchFolders, fetchMetrics, fetchStartError,
+    syncNow, startAgent, stopAgent,
+    pauseAgent, resumeAgent,
+    scanFile, scanSelected,
+    toggleFileSelection, selectAllFiles, clearSelection,
   } = useAgentStore();
 
   useEffect(() => {
     fetchStatus();
+    fetchStartError();
     fetchFiles();
-    fetchLogs(50);
+    fetchFolders();
+    fetchMetrics();
     const interval = setInterval(() => {
       fetchStatus();
       fetchFiles();
+      fetchMetrics();
     }, 5000);
     return () => clearInterval(interval);
   }, []);
 
-  const handleLogout = () => {
-    logout();
-    navigate("/login");
-  };
-
-  const stats = status?.stats || {
-    total: 0,
-    synced: 0,
-    pending: 0,
-    processing: 0,
-    completed: 0,
-    failed: 0,
+  const stats = {
+    total: files.length,
+    pending: files.filter(f => f.processing_status === "pending").length,
+    completed: files.filter(f => f.processing_status === "completed").length,
+    failed: files.filter(f => f.processing_status === "failed").length,
+    synced: files.filter(f => f.synced).length,
   };
 
   return (
-    <div className="min-h-screen bg-muted/40">
-      <header className="border-b bg-background px-6 py-3 flex items-center justify-between">
+    <div className="min-h-full bg-muted/40">
+      <div className="border-b bg-background px-6 py-3">
         <h1 className="text-lg font-semibold">{t("dashboard.title")}</h1>
-        <div className="flex items-center gap-2">
-          <LanguageSwitcher />
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => navigate("/folders")}
-          >
-            <FolderOpen className="h-4 w-4 mr-1" />
-            {t("nav.folders")}
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => navigate("/settings")}
-          >
-            <Settings className="h-4 w-4 mr-1" />
-            {t("dashboard.viewSettings")}
-          </Button>
-          <Button variant="ghost" size="sm" onClick={handleLogout}>
-            {t("common.logout")}
-          </Button>
-        </div>
-      </header>
+      </div>
 
       <main className="mx-auto max-w-6xl p-6 space-y-6">
+        {startError && !connected && (
+          <div className="flex items-center gap-2 rounded-lg border border-amber-500/50 bg-amber-500/10 px-4 py-3 text-sm text-amber-600">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            <span>Agent start failed: {startError}. Make sure to run: <code className="font-mono text-xs bg-amber-500/20 px-1 py-0.5 rounded">python3 -m uvicorn edge_agent.api.server:create_app --port 8420 --factory</code></span>
+          </div>
+        )}
+        {error && (
+          <div className="flex items-center gap-2 rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            <span>{error}</span>
+          </div>
+        )}
+
         {/* Agent Status */}
         <Card>
           <CardHeader>
@@ -98,48 +69,47 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="flex items-center gap-4 flex-wrap">
-              <Badge variant={connected ? "success" : "destructive"}>
-                {connected ? t("dashboard.running") : t("dashboard.stopped")}
+              <Badge variant={connected ? (paused ? "secondary" : "success") : "destructive"}>
+                {connected ? (paused ? "Paused" : t("dashboard.running")) : t("dashboard.stopped")}
               </Badge>
-              {status && (
-                <span className="text-sm text-muted-foreground">
-                  v{status.version} — uptime {Math.floor(status.uptime_seconds / 60)}m
-                </span>
-              )}
               <div className="flex-1" />
               {connected ? (
                 <>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={stopWatcher}
-                    disabled={loading}
-                  >
+                  {paused ? (
+                    <Button variant="outline" size="sm" onClick={resumeAgent} disabled={loading}>
+                      <Play className="h-4 w-4 mr-1" />
+                      Resume
+                    </Button>
+                  ) : (
+                    <Button variant="outline" size="sm" onClick={pauseAgent} disabled={loading}>
+                      <Pause className="h-4 w-4 mr-1" />
+                      Pause
+                    </Button>
+                  )}
+                  <Button variant="outline" size="sm" onClick={stopAgent} disabled={loading}>
                     <Square className="h-4 w-4 mr-1" />
-                    {t("dashboard.stop")}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => startWatcher()}
-                    disabled={loading}
-                  >
-                    <Play className="h-4 w-4 mr-1" />
-                    {t("dashboard.start")}
+                    Stop Agent
                   </Button>
                 </>
-              ) : null}
-              <ScanButton />
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => syncNow()}
-                disabled={loading || !connected}
-              >
+              ) : (
+                <Button variant="default" size="sm" onClick={startAgent} disabled={loading}>
+                  <Play className="h-4 w-4 mr-1" />
+                  Start Agent
+                </Button>
+              )}
+              <Button variant="outline" size="sm" onClick={() => syncNow()} disabled={loading || !connected}>
                 <RefreshCw className="h-4 w-4 mr-1" />
                 {t("dashboard.syncNow")}
               </Button>
             </div>
+
+            {metrics && connected && (
+              <div className="mt-3 grid grid-cols-3 gap-4 text-xs text-muted-foreground pt-3 border-t">
+                <div>Scanned: {metrics.files_scanned}</div>
+                <div>Errors: {metrics.parse_errors}</div>
+                <div>Memory: {metrics.memory_mb?.toFixed(0) || "?"} MB</div>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -152,11 +122,17 @@ export default function DashboardPage() {
           failed={stats.failed}
         />
 
-        {/* Recent Files */}
-        <FileTable files={files.slice(0, 10)} />
-
-        {/* Logs */}
-        <LogsViewer logs={logs.slice(-30)} />
+        {/* Files */}
+        <FileTable
+          files={files}
+          selectedFiles={selectedFiles}
+          processingFiles={processingFiles}
+          onToggleSelect={toggleFileSelection}
+          onSelectAll={selectAllFiles}
+          onClearSelection={clearSelection}
+          onScanFile={scanFile}
+          onScanSelected={scanSelected}
+        />
       </main>
     </div>
   );

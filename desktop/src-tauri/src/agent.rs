@@ -1,30 +1,27 @@
-use std::process::{Child, Command};
 use tauri::AppHandle;
 use tauri_plugin_shell::ShellExt;
 
 pub struct AgentManager {
-    process: Option<Child>,
+    child: Option<tauri_plugin_shell::process::CommandChild>,
+    running: bool,
     port: u16,
 }
 
 impl AgentManager {
     pub fn new() -> Self {
         Self {
-            process: None,
+            child: None,
+            running: false,
             port: 8420,
         }
     }
 
     pub fn is_running(&mut self) -> bool {
-        if let Some(ref mut child) = self.process {
-            matches!(child.try_wait(), Ok(None))
-        } else {
-            false
-        }
+        self.running
     }
 
     pub fn start(&mut self, app: &AppHandle) -> Result<String, String> {
-        if self.is_running() {
+        if self.running {
             return Ok("Agent is already running".to_string());
         }
 
@@ -38,15 +35,17 @@ impl AgentManager {
             .spawn()
             .map_err(|e| format!("Failed to start agent: {e}"))?;
 
-        self.process = Some(child);
+        self.child = Some(child);
+        self.running = true;
         Ok(format!("Agent started on port {}", self.port))
     }
 
     pub fn stop(&mut self) -> Result<String, String> {
-        if let Some(mut child) = self.process.take() {
+        if let Some(child) = self.child.take() {
             child
                 .kill()
                 .map_err(|e| format!("Failed to stop agent: {e}"))?;
+            self.running = false;
             Ok("Agent stopped".to_string())
         } else {
             Ok("Agent is not running".to_string())
