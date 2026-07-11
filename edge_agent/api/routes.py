@@ -20,6 +20,7 @@ from .server import (
     _start_time,
 )
 from edge_agent.core.capabilities import detect_capabilities
+from edge_agent.core.job_queue import JobQueue
 
 
 def _validate_path_safe(path: str) -> str:
@@ -27,7 +28,6 @@ def _validate_path_safe(path: str) -> str:
     if ".." in path.split("/") or ".." in path.split("\\"):
         raise HTTPException(status_code=400, detail="Path traversal not allowed")
     return resolved
-from edge_agent.core.job_queue import JobQueue
 
 logger = logging.getLogger(__name__)
 
@@ -111,10 +111,7 @@ async def status():
     metrics = get_metrics()
 
     files = db.get_stats()
-    pending_jobs = db.conn.execute(
-        "SELECT COUNT(*) FROM jobs WHERE status='pending'"
-    ).fetchone()[0]
-    total_jobs = db.conn.execute("SELECT COUNT(*) FROM jobs").fetchone()[0]
+    job_stats = db.get_job_stats()
 
     return {
         "agent_name": cfg.agent_name,
@@ -131,10 +128,7 @@ async def status():
             "folder_count": watcher.folder_count,
         },
         "files": files,
-        "queue": {
-            "pending_jobs": pending_jobs,
-            "total_jobs": total_jobs,
-        },
+        "queue": job_stats,
         "memory_mb": metrics.snapshot().get("memory_mb", 0.0),
     }
 
@@ -238,9 +232,7 @@ async def rescan_folder(body: RescanRequest):
 
     removed_paths = [p for p in existing_by_path if not Path(p).exists()]
     for p in removed_paths:
-        db.conn.execute("DELETE FROM files WHERE local_path=?", (p,))
-    if removed_paths:
-        db.conn.commit()
+        db.delete_files_by_path(p)
 
     return {
         "status": "ok",
@@ -643,29 +635,77 @@ async def list_trash():
     return result
 
 
-# ── WebSocket ────────────────────────────────────────────────────────────────
+# ── WebSocket (true push model) ──────────────────────────────────────────────
 
 
 @router.websocket("/ws")
 async def ws_endpoint(ws: WebSocket):
+    """Push-based WebSocket — events auto-push to all connected clients.
+
+    Protocol:
+      Server → Client: {"type":"event","event":{...}}   (real-time event)
+      Server → Client: {"type":"events","events":[...]}  (buffered batch on connect)
+      Server → Client: {"type":"ping"}                   (keepalive, 30s)
+      Client → Server: {"type":"pong"}                   (keepalive response)
+    """
+    import asyncio
+
     await ws.accept()
     bus = get_event_bus()
-    last_ts: float = 0.0
+    queue: asyncio.Queue[dict | None] = asyncio.Queue()
+    loop = asyncio.get_running_loop()
+
+    def _on_event(event: dict[str, Any]) -> None:
+        """Observer callback — called from worker/watcher threads."""
+        try:
+            loop.call_soon_threadsafe(queue.put_nowait, event)
+        except RuntimeError:
+            pass  # event loop closed
+
+    bus.subscribe(_on_event)
+
     try:
-        while True:
-            data = await ws.receive_text()
-            if data == "ping":
-                await ws.send_json({"type": "pong"})
-            continue_polling = data == "subscribe"
-            if data in ("ping", "subscribe", "poll"):
-                events = bus.drain(since=last_ts, max_events=50)
-                if events:
-                    last_ts = events[-1]["_timestamp"]
-                    await ws.send_json({"type": "events", "events": events})
-                if not continue_polling:
+        # Send buffered events immediately on connect
+        buffered = bus.snapshot(max_events=100)
+        if buffered:
+            await ws.send_json({"type": "events", "events": buffered})
+
+        async def _sender() -> None:
+            """Push events from EventBus observer to the WS client."""
+            while True:
+                event = await queue.get()
+                try:
+                    await ws.send_json({"type": "event", "event": event})
+                except Exception:
                     break
-    except WebSocketDisconnect:
-        pass
+
+        async def _keepalive() -> None:
+            """Server-side ping every 30s to detect stale connections."""
+            while True:
+                await asyncio.sleep(30)
+                try:
+                    await ws.send_json({"type": "ping"})
+                except Exception:
+                    break
+
+        sender_task = asyncio.create_task(_sender())
+        keepalive_task = asyncio.create_task(_keepalive())
+
+        try:
+            # Read client messages (pong responses, manual pings)
+            while True:
+                data = await ws.receive_text()
+                if data == "pong":
+                    continue
+                if data == "ping":
+                    await ws.send_json({"type": "pong"})
+        except WebSocketDisconnect:
+            pass
+        finally:
+            sender_task.cancel()
+            keepalive_task.cancel()
+    finally:
+        bus.unsubscribe(_on_event)
 
 
 # ── API Key Auth (optional) ──────────────────────────────────────────────────

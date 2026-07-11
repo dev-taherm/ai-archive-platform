@@ -1,6 +1,7 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useAuthStore } from "../stores/auth-store";
+import { useAgentWebSocket } from "../hooks/use-agent-ws";
 import { Button } from "./ui/button";
 import {
   LayoutDashboard,
@@ -25,6 +26,9 @@ export default function AppLayout() {
   const logout = useAuthStore((s) => s.logout);
   const user = useAuthStore((s) => s.user);
   const isRtl = i18n.language === "ar";
+
+  // Real-time WebSocket connection to edge agent — mounts once
+  useAgentWebSocket();
 
   const handleLogout = () => {
     logout();

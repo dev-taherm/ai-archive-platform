@@ -52,6 +52,7 @@ interface AgentMetrics {
 
 interface AgentState {
   connected: boolean;
+  wsConnected: boolean;
   files: FileRecord[];
   folders: FolderInfo[];
   loading: boolean;
@@ -96,6 +97,7 @@ interface AgentState {
 
 export const useAgentStore = create<AgentState>((set, get) => ({
   connected: false,
+  wsConnected: false,
   files: [],
   logs: [],
   folders: [],
@@ -225,13 +227,17 @@ export const useAgentStore = create<AgentState>((set, get) => ({
     set({ processingFiles: processing, error: null });
     try {
       const result = await invoke<{ status: string; file_id?: string; job_id?: string }>("scan_file", { fileId });
-      if (result.status === "processing" && result.job_id) {
+      // If WS is connected, the scan_completed/scan_failed event will trigger fetchFiles()
+      // and clean up processingFiles via the WS hook. Only poll via HTTP as fallback.
+      if (result.status === "processing" && result.job_id && !get().wsConnected) {
         await _pollJob(result.job_id);
+        await get().fetchFiles();
+        const updated = new Set(get().processingFiles);
+        updated.delete(fileId);
+        set({ processingFiles: updated });
       }
-      await get().fetchFiles();
     } catch (e) {
       get()._setError(String(e));
-    } finally {
       const updated = new Set(get().processingFiles);
       updated.delete(fileId);
       set({ processingFiles: updated });
@@ -288,14 +294,6 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       await get().fetchFiles();
     } catch (e) {
       get()._setError(String(e));
-    }
-  },
-
-  getTrash: async () => {
-    try {
-      return await invoke<{ id: string; original_path: string; filename: string; deleted_at: string }[]>("get_trash");
-    } catch {
-      return [];
     }
   },
 

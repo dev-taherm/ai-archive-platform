@@ -21,17 +21,12 @@ export default function DashboardPage() {
   } = useAgentStore();
 
   useEffect(() => {
+    // Initial data load — WebSocket handles incremental updates
     fetchStatus();
     fetchStartError();
     fetchFiles();
     fetchFolders();
     fetchMetrics();
-    const interval = setInterval(() => {
-      fetchStatus();
-      fetchFiles();
-      fetchMetrics();
-    }, 10000);
-    return () => clearInterval(interval);
   }, []);
 
   const stats = {
