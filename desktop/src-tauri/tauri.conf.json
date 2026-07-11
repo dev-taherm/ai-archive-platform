@@ -27,6 +27,16 @@
       "csp": null
     }
   },
+  "plugins": {
+    "shell": {
+      "open": true,
+      "scope": [
+        { "url": "http://localhost:*" },
+        { "url": "https://*" },
+        { "url": "http://*" }
+      ]
+    }
+  },
   "bundle": {
     "active": true,
     "targets": "all",

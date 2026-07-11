@@ -25,7 +25,7 @@ export default function LoginPage() {
 
   const [step, setStep] = useState<LoginStep>("checking-agent");
   const [error, setError] = useState("");
-  const [manualUrl, setManualUrl] = useState("");
+  const [manualUrl, setManualUrl] = useState("http://localhost:8000");
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -75,8 +75,9 @@ export default function LoginPage() {
   const effectiveUrl = serverUrl || manualUrl;
 
   const handleLogin = async () => {
-    const url = effectiveUrl;
+    let url = effectiveUrl;
     if (!url) return;
+    if (!url.match(/^https?:\/\//)) url = `http://${url}`;
 
     setStep("waiting");
     setError("");
