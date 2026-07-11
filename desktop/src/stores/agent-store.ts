@@ -62,9 +62,11 @@ interface AgentState {
   metrics: AgentMetrics | null;
   trash: TrashEntry[];
   paused: boolean;
+  startError: string | null;
 
   fetchLogs: (lines?: number) => Promise<void>;
   fetchStatus: () => Promise<void>;
+  fetchStartError: () => Promise<void>;
   fetchFiles: () => Promise<void>;
   fetchFolders: () => Promise<void>;
   fetchMetrics: () => Promise<void>;
@@ -102,6 +104,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
   metrics: null,
   trash: [],
   paused: false,
+  startError: null,
   selectedFiles: new Set(),
   processingFiles: new Set(),
 
@@ -112,6 +115,15 @@ export const useAgentStore = create<AgentState>((set, get) => ({
     setTimeout(() => set({ error: null }), 5000);
   },
 
+  fetchStartError: async () => {
+    try {
+      const err = await invoke<string | null>("get_agent_start_error");
+      set({ startError: err });
+    } catch {
+      // ignore
+    }
+  },
+
   fetchStatus: async () => {
     try {
       const running = await invoke<boolean>("agent_health");
@@ -119,7 +131,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
         const status = await invoke<{ worker?: { paused?: boolean } }>("call_agent_api", {
           method: "GET", path: "/api/status", body: null,
         });
-        set({ connected: true, paused: status.worker?.paused ?? false, error: null });
+        set({ connected: true, paused: status.worker?.paused ?? false, error: null, startError: null });
       } else {
         set({ connected: false });
       }
@@ -215,7 +227,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
   scanFile: async (fileId: string) => {
     const processing = new Set(get().processingFiles);
     processing.add(fileId);
-    set({ processingFiles: processing });
+    set({ processingFiles: processing, error: null });
     try {
       const result = await invoke<{ status: string; file_id?: string; job_id?: string }>("scan_file", { fileId });
       if (result.status === "processing" && result.job_id) {
@@ -378,14 +390,18 @@ export const useAgentStore = create<AgentState>((set, get) => ({
   },
 }));
 
-async function _pollJob(jobId: string, maxAttempts = 150): Promise<void> {
+async function _pollJob(jobId: string, maxAttempts = 60): Promise<void> {
   for (let i = 0; i < maxAttempts; i++) {
-    const job = await invoke<{ status: string }>("call_agent_api", {
-      method: "GET",
-      path: `/api/jobs/${jobId}`,
-      body: null,
-    });
-    if (job.status === "completed" || job.status === "failed") return;
+    try {
+      const job = await invoke<{ status: string }>("call_agent_api", {
+        method: "GET",
+        path: `/api/jobs/${jobId}`,
+        body: null,
+      });
+      if (job.status === "completed" || job.status === "failed") return;
+    } catch {
+      return;
+    }
     await new Promise((r) => setTimeout(r, 2000));
   }
 }

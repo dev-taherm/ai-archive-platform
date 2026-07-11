@@ -11,9 +11,9 @@ import { Play, Square, Pause, RefreshCw, AlertCircle } from "lucide-react";
 export default function DashboardPage() {
   const { t } = useTranslation();
   const {
-    connected, files, loading, error, paused, metrics,
+    connected, files, loading, error, paused, metrics, startError,
     selectedFiles, processingFiles,
-    fetchStatus, fetchFiles, fetchFolders, fetchMetrics,
+    fetchStatus, fetchFiles, fetchFolders, fetchMetrics, fetchStartError,
     syncNow, startAgent, stopAgent,
     pauseAgent, resumeAgent,
     scanFile, scanSelected,
@@ -22,6 +22,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     fetchStatus();
+    fetchStartError();
     fetchFiles();
     fetchFolders();
     fetchMetrics();
@@ -48,6 +49,12 @@ export default function DashboardPage() {
       </div>
 
       <main className="mx-auto max-w-6xl p-6 space-y-6">
+        {startError && !connected && (
+          <div className="flex items-center gap-2 rounded-lg border border-amber-500/50 bg-amber-500/10 px-4 py-3 text-sm text-amber-600">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            <span>Agent start failed: {startError}. Make sure to run: <code className="font-mono text-xs bg-amber-500/20 px-1 py-0.5 rounded">python3 -m uvicorn edge_agent.api.server:create_app --port 8420 --factory</code></span>
+          </div>
+        )}
         {error && (
           <div className="flex items-center gap-2 rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
             <AlertCircle className="h-4 w-4 shrink-0" />

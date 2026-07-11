@@ -36,9 +36,50 @@ pub fn get_agent_status(state: State<'_, AppState>) -> Result<AgentStatus, Strin
 #[tauri::command]
 pub async fn agent_health(state: State<'_, AppState>) -> Result<bool, String> {
     let port = state.agent_manager.lock().map_err(|e| e.to_string())?.port();
-    let resp = reqwest::get(format!("http://localhost:{port}/api/health"))
-        .await.map_err(|e| e.to_string())?;
-    Ok(resp.status().is_success())
+    match reqwest::get(format!("http://localhost:{port}/api/health")).await {
+        Ok(resp) => Ok(resp.status().is_success()),
+        Err(_) => Ok(false),
+    }
+}
+
+// ── Generic API proxy ──────────────────────────────────────────────────────
+
+#[tauri::command]
+pub async fn call_agent_api(
+    state: State<'_, AppState>,
+    method: String,
+    path: String,
+    body: Option<serde_json::Value>,
+) -> Result<serde_json::Value, String> {
+    let port = get_port(&state)?;
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let url = format!("http://localhost:{port}{path}");
+    let req = match method.to_uppercase().as_str() {
+        "GET" => client.get(&url),
+        "POST" => {
+            let mut r = client.post(&url);
+            if let Some(b) = body { r = r.json(&b); }
+            r
+        }
+        "PUT" => {
+            let mut r = client.put(&url);
+            if let Some(b) = body { r = r.json(&b); }
+            r
+        }
+        "DELETE" => client.delete(&url),
+        _ => return Err(format!("Unsupported method: {method}")),
+    };
+    let resp = req.send().await.map_err(|e| format!("API request failed: {e}"))?;
+    let status = resp.status();
+    if status.is_success() {
+        resp.json::<serde_json::Value>().await.map_err(|e| e.to_string())
+    } else {
+        let text = resp.text().await.unwrap_or_default();
+        Err(format!("API error ({}): {text}", status.as_u16()))
+    }
 }
 
 #[tauri::command]
@@ -165,11 +206,11 @@ pub async fn scan_file(
     let url = format!("http://localhost:{port}/api/scan");
     let resp = client.post(&url).json(&serde_json::json!({"file_id": file_id}))
         .send().await.map_err(|e| e.to_string())?;
-    if resp.status().is_success() {
+    let status = resp.status();
+    if status.is_success() {
         resp.json::<serde_json::Value>().await.map_err(|e| e.to_string())
     } else {
-        let body = resp.text().await.unwrap_or_default();
-        Err(format!("Scan failed: {body}"))
+        Err(resp.text().await.unwrap_or_default())
     }
 }
 

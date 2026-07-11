@@ -33,6 +33,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::get_agent_status,
             commands::agent_health,
+            commands::call_agent_api,
             commands::get_agent_start_error,
             commands::start_agent,
             commands::stop_agent,
