@@ -5,13 +5,36 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import sys
 import time
 import urllib.error
 import urllib.request
+from datetime import datetime, timezone
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+
+def _to_epoch(value: Any) -> float:
+    """Convert a value to Unix epoch float. Backend expects FloatField."""
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str) and value:
+        try:
+            dt = datetime.fromisoformat(value)
+            return dt.timestamp()
+        except (ValueError, TypeError):
+            pass
+    return 0.0
+
+
+_CONTROL_CHARS_RE = re.compile(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]')
+
+
+def _sanitize_text(value: str) -> str:
+    """Strip control characters that PostgreSQL rejects in text/jsonb columns."""
+    return _CONTROL_CHARS_RE.sub('', value)
 
 
 class SyncEngine:
@@ -133,9 +156,9 @@ class SyncEngine:
                 "file_hash": f["file_hash"],
                 "file_size": f["size_bytes"],
                 "mime_type": f["mime_type"],
-                "modified_at": f["modified_at"],
-                "extracted_text": f["extracted_text"],
-                "markdown": f["markdown"],
+                "modified_at": _to_epoch(f["modified_at"]),
+                "extracted_text": _sanitize_text(f["extracted_text"]),
+                "markdown": _sanitize_text(f["markdown"]),
                 "language": f["language"],
                 "word_count": f["word_count"],
                 "char_count": f["char_count"],

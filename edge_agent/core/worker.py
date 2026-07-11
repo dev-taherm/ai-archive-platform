@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import threading
 import time
 from pathlib import Path
@@ -201,7 +202,7 @@ class Worker:
         t0 = time.time()
         parsed = parser.parse(file_path)
         parse_time_ms = (time.time() - t0) * 1000
-        text = (parsed.markdown or "").replace("\0", "")
+        text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', parsed.markdown or "")
 
         if self._metrics:
             self._metrics.files_scanned += 1
