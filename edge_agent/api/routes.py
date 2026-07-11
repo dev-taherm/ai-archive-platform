@@ -301,11 +301,7 @@ async def scan_file(body: ScanRequest):
 
     job_id = queue.create_job("scan_file", {"file_id": body.file_id})
 
-    result = worker.wait_for_job(job_id, timeout=300.0)
-    if result and result.get("status") == "completed":
-        return {"status": "completed", "file_id": body.file_id}
-    else:
-        return {"status": "processing", "job_id": job_id}
+    return {"status": "processing", "job_id": job_id}
 
 
 @router.get("/logs")

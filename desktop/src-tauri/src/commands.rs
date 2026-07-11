@@ -36,7 +36,8 @@ pub fn get_agent_status(state: State<'_, AppState>) -> Result<AgentStatus, Strin
 #[tauri::command]
 pub async fn agent_health(state: State<'_, AppState>) -> Result<bool, String> {
     let port = state.agent_manager.lock().map_err(|e| e.to_string())?.port();
-    match reqwest::get(format!("http://localhost:{port}/api/health")).await {
+    let url = format!("http://localhost:{port}/api/health");
+    match state.http_client.get(&url).send().await {
         Ok(resp) => Ok(resp.status().is_success()),
         Err(_) => Ok(false),
     }
@@ -52,10 +53,7 @@ pub async fn call_agent_api(
     body: Option<serde_json::Value>,
 ) -> Result<serde_json::Value, String> {
     let port = get_port(&state)?;
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .build()
-        .map_err(|e| e.to_string())?;
+    let client = state.http_client.clone();
     let url = format!("http://localhost:{port}{path}");
     let req = match method.to_uppercase().as_str() {
         "GET" => client.get(&url),

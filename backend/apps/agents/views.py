@@ -158,6 +158,7 @@ class AgentViewSet(viewsets.ModelViewSet):
                 "agent_id": existing.agent_id,
                 "api_key": raw_key,
                 "is_new": False,
+                "frontend_url": getattr(settings, "FRONTEND_URL", "http://localhost:3000"),
             }, status=status.HTTP_200_OK)
 
         # New agent
@@ -188,6 +189,7 @@ class AgentViewSet(viewsets.ModelViewSet):
             "agent_id": agent_id,
             "api_key": raw_key,
             "is_new": True,
+            "frontend_url": getattr(settings, "FRONTEND_URL", "http://localhost:3000"),
         }, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=["get"], url_path="download")
@@ -229,6 +231,7 @@ class AgentViewSet(viewsets.ModelViewSet):
             agent_id=agent.agent_id,
             api_key=api_key_param,
             server_url=request.build_absolute_uri("/").rstrip("/"),
+            frontend_url=getattr(settings, "FRONTEND_URL", "http://localhost:3000"),
         )
 
         # Generate install script
@@ -412,6 +415,7 @@ class AgentViewSet(viewsets.ModelViewSet):
             api_key="",
             server_url=server_url,
             jwt_token=jwt_token,
+            frontend_url=getattr(settings, "FRONTEND_URL", "http://localhost:3000"),
         )
 
         if os_param == "windows":
@@ -780,7 +784,7 @@ class AgentViewSet(viewsets.ModelViewSet):
 # ---------------------------------------------------------------------------
 
 
-def _generate_config_yaml(agent_id: str, api_key: str, server_url: str, jwt_token: str = "") -> str:
+def _generate_config_yaml(agent_id: str, api_key: str, server_url: str, jwt_token: str = "", frontend_url: str = "") -> str:
     """Generate a config.yaml with pre-configured credentials and server URL.
 
     If jwt_token is provided, agent_id and api_key are left empty (binary auto-registers).
@@ -793,6 +797,7 @@ data_dir: ~/.edge-agent
 log_level: INFO
 server:
   url: {server_url}
+  web_url: {frontend_url}
   api_key: {api_key}
   jwt_token: {jwt_token}
 folders: []

@@ -21,6 +21,7 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const login = useAuthStore((s) => s.login);
   const serverUrl = useAuthStore((s) => s.serverUrl);
+  const webUrl = useAuthStore((s) => s.webUrl);
   const loadServerConfig = useAuthStore((s) => s.loadServerConfig);
 
   const [step, setStep] = useState<LoginStep>("checking-agent");
@@ -75,9 +76,13 @@ export default function LoginPage() {
   const effectiveUrl = serverUrl || manualUrl;
 
   const handleLogin = async () => {
-    let url = effectiveUrl;
-    if (!url) return;
-    if (!url.match(/^https?:\/\//)) url = `http://${url}`;
+    let apiUrl = effectiveUrl;
+    if (!apiUrl) return;
+    if (!apiUrl.match(/^https?:\/\//)) apiUrl = `http://${apiUrl}`;
+
+    const frontendBase = webUrl || apiUrl;
+    let frontendUrl = frontendBase;
+    if (!frontendUrl.match(/^https?:\/\//)) frontendUrl = `http://${frontendUrl}`;
 
     setStep("waiting");
     setError("");
@@ -85,7 +90,7 @@ export default function LoginPage() {
     try {
       const port: number = await invoke("start_auth_server");
       const callbackUrl = `http://localhost:${port}/callback`;
-      const loginUrl = `${url.replace(/\/+$/, "")}/login?desktop_callback=${encodeURIComponent(callbackUrl)}`;
+      const loginUrl = `${frontendUrl.replace(/\/+$/, "")}/login?desktop_callback=${encodeURIComponent(callbackUrl)}`;
 
       await open(loginUrl);
 
@@ -100,7 +105,7 @@ export default function LoginPage() {
             try {
               const result = await invoke<{ agent_id: string; api_key: string }>(
                 "register_agent",
-                { serverUrl: url, accessToken: tokens.access_token },
+                { serverUrl: apiUrl, accessToken: tokens.access_token },
               );
               useAuthStore.getState().setAgent(result);
             } catch (regErr) {
@@ -109,7 +114,7 @@ export default function LoginPage() {
               return;
             }
 
-            login(url, tokens.access_token, tokens.refresh_token);
+            login(apiUrl, tokens.access_token, tokens.refresh_token);
             navigate("/dashboard");
           }
         } catch {

@@ -97,6 +97,12 @@ async def lifespan(app: FastAPI):
     run_migration(_config.db_path)
     _start_time = time.time()
 
+    # Seed frontend_url into SQLite so the desktop app can read it before registration
+    if _config.server.web_url:
+        existing_cfg = _db.get_config()
+        if not existing_cfg.get("frontend_url"):
+            _db.set_config("frontend_url", _config.server.web_url)
+
     _registry = PluginRegistry()
     _registry.discover_plugins(_config.plugin_dir)
     if _registry.list_capabilities():

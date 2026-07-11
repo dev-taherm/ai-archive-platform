@@ -17,6 +17,7 @@ _DEFAULT_CONFIG_PATH = Path(__file__).parent / "config.yaml"
 @dataclass
 class ServerConfig:
     url: str = "http://localhost:8000"
+    web_url: str = ""
     api_key: str = ""
     jwt_token: str = ""
 
@@ -95,6 +96,7 @@ def load_config(config_path: str | Path | None = None) -> EdgeAgentConfig:
     server_raw = raw.get("server", {})
     cfg.server = ServerConfig(
         url=server_raw.get("url", os.getenv("EDGE_SERVER_URL", "http://localhost:8000")),
+        web_url=server_raw.get("web_url", os.getenv("EDGE_WEB_URL", "")),
         api_key=server_raw.get("api_key", os.getenv("EDGE_API_KEY", "")),
         jwt_token=server_raw.get("jwt_token", os.getenv("EDGE_JWT_TOKEN", "")),
     )

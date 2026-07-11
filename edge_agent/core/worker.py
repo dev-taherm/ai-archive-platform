@@ -50,6 +50,7 @@ class Worker:
             return
         self._running = True
         self._paused = False
+        self._recover_stale_jobs()
         self._thread = threading.Thread(target=self._loop, daemon=True, name="worker")
         self._thread.start()
         logger.info("Worker started")
@@ -74,6 +75,17 @@ class Worker:
         logger.info("Worker restarting")
         self.stop()
         self.start()
+
+    def _recover_stale_jobs(self) -> None:
+        try:
+            stale = self.queue.list_jobs(status="running", limit=50)
+            for job in stale:
+                self.queue.fail_job(job["id"], "Worker restarted — job interrupted")
+                logger.warning("Recovered stale job %s (%s)", job["id"], job.get("type"))
+            if stale:
+                logger.info("Recovered %d stale jobs", len(stale))
+        except Exception:
+            logger.exception("Failed to recover stale jobs")
 
     def wait_for_job(self, job_id: str, timeout: float = 300.0) -> dict[str, Any] | None:
         ev = threading.Event()
@@ -121,17 +133,17 @@ class Worker:
         job_id = job["id"]
         job_type = job["type"]
         payload = job.get("payload", {})
-        self.queue.start_job(job_id)
-        logger.info("Processing job %s (%s)", job_id, job_type)
-
-        if self._event_bus:
-            self._event_bus.publish({
-                "type": "scan_started",
-                "job_id": job_id,
-                "file_id": payload.get("file_id"),
-            })
-
         try:
+            self.queue.start_job(job_id)
+            logger.info("Processing job %s (%s)", job_id, job_type)
+
+            if self._event_bus:
+                self._event_bus.publish({
+                    "type": "scan_started",
+                    "job_id": job_id,
+                    "file_id": payload.get("file_id"),
+                })
+
             if job_type == "scan_file":
                 self._execute_scan(job_id, payload)
                 if self._event_bus:
@@ -144,17 +156,23 @@ class Worker:
                 self.queue.fail_job(job_id, f"Unknown job type: {job_type}")
         except Exception as e:
             logger.exception("Job %s failed", job_id)
-            self.db.mark_file_failed(payload.get("file_id", ""))
-            self.queue.fail_job(job_id, str(e))
+            try:
+                self.db.mark_file_failed(payload.get("file_id", ""))
+                self.queue.fail_job(job_id, str(e))
+            except Exception:
+                logger.exception("Failed to mark job %s as failed", job_id)
             if self._metrics:
                 self._metrics.parse_errors += 1
             if self._event_bus:
-                self._event_bus.publish({
-                    "type": "scan_failed",
-                    "job_id": job_id,
-                    "file_id": payload.get("file_id"),
-                    "error": str(e),
-                })
+                try:
+                    self._event_bus.publish({
+                        "type": "scan_failed",
+                        "job_id": job_id,
+                        "file_id": payload.get("file_id"),
+                        "error": str(e),
+                    })
+                except Exception:
+                    logger.exception("Failed to publish scan_failed event")
         finally:
             ev = self._events.pop(job_id, None)
             if ev:

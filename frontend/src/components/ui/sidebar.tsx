@@ -42,7 +42,7 @@ export function Sidebar() {
   return (
     <aside
       className={cn(
-        "fixed left-0 top-0 z-40 h-screen border-r bg-card transition-all duration-300",
+        "fixed top-0 start-0 z-40 h-screen border-e bg-card transition-all duration-300",
         sidebarOpen ? "w-64" : "w-16"
       )}
     >
@@ -65,7 +65,7 @@ export function Sidebar() {
           >
             <ChevronLeft
               className={cn(
-                "h-4 w-4 transition-transform",
+                "sidebar-chevron h-4 w-4 transition-transform",
                 !sidebarOpen && "rotate-180"
               )}
             />
@@ -90,7 +90,7 @@ export function Sidebar() {
                   isActive
                     ? "bg-brand-teal/10 text-brand-teal"
                     : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                  isActive && "border-l-2 border-brand-teal"
+                  isActive && "border-s-2 border-brand-teal"
                 )}
                 title={!sidebarOpen ? item.label : undefined}
               >

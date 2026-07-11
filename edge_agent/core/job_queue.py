@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from edge_agent.db.local_db import LocalDB
@@ -37,7 +38,7 @@ class JobQueue:
         self.db.update_job(
             job_id,
             status="completed",
-            result=result,
+            result=json.dumps(result) if result is not None else None,
             progress=1.0,
             completed_at=datetime.now(timezone.utc).isoformat(),
         )

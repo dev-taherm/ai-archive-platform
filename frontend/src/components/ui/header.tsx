@@ -71,13 +71,13 @@ export function Header() {
       <div className="flex items-center gap-4">
         <form onSubmit={handleSearch} className="hidden md:flex items-center gap-2">
           <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Search className="absolute start-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
             <Input
               type="search"
               placeholder="Quick search..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="h-8 w-48 pl-8 text-sm lg:w-64"
+              className="h-8 w-48 ps-8 text-sm lg:w-64"
             />
           </div>
         </form>

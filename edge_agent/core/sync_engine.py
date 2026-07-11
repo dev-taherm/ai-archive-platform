@@ -66,6 +66,8 @@ class SyncEngine:
         self.db.set_config("server_url", server_url)
         self.db.set_config("agent_id", result["agent_id"])
         self.db.set_config("api_key", result["api_key"])
+        if result.get("frontend_url"):
+            self.db.set_config("frontend_url", result["frontend_url"])
         logger.info("Registered agent %s at %s", result["agent_id"], server_url)
         return result
 
@@ -120,6 +122,12 @@ class SyncEngine:
 
         files_payload = []
         for f in pending:
+            if not (f.get("extracted_text") or f.get("markdown")):
+                logger.warning(
+                    "Skipping sync for %s: extracted_text and markdown are both empty",
+                    f.get("local_path"),
+                )
+                continue
             entry = {
                 "local_path": f["local_path"],
                 "file_hash": f["file_hash"],
@@ -144,6 +152,9 @@ class SyncEngine:
                     entry[key] = val
             files_payload.append(entry)
 
+        if not files_payload:
+            return {"status": "ok", "synced": 0, "message": "All files skipped (empty text)"}
+
         url = f"{creds['server_url'].rstrip('/')}/api/v1/agents/{creds['agent_id']}/sync"
         body = json.dumps({"files": files_payload}).encode()
         req = urllib.request.Request(
@@ -167,17 +178,17 @@ class SyncEngine:
             logger.error("Sync connection failed: %s", e)
             raise RuntimeError(f"Sync failed: {e}") from e
 
-        hashes = [f["file_hash"] for f in pending if f.get("file_hash")]
-        if hashes:
-            self.db.mark_synced(hashes)
+        synced_hashes = [e["file_hash"] for e in files_payload if e.get("file_hash")]
+        if synced_hashes:
+            self.db.mark_synced(synced_hashes)
 
         if self._metrics:
             self._metrics.sync_events += 1
-            self._metrics.sync_files += len(hashes)
+            self._metrics.sync_files += len(synced_hashes)
 
-        logger.info("Synced %d files to %s", len(hashes), creds["server_url"])
+        logger.info("Synced %d files to %s", len(synced_hashes), creds["server_url"])
         return {
             "status": "ok",
-            "synced": len(hashes),
+            "synced": len(synced_hashes),
             "saas_result": sync_result,
         }

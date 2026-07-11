@@ -228,6 +228,9 @@ CORS_ALLOWED_ORIGINS: list[str] = os.environ.get(
     "CORS_ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:5173"
 ).split(",")
 
+# Frontend URL used in edge-agent config generation and invitation emails
+FRONTEND_URL: str = os.environ.get("FRONTEND_URL", "http://localhost:3000")
+
 CORS_ALLOW_CREDENTIALS: bool = True
 CORS_ALLOW_METHODS: list[str] = [
     "DELETE",

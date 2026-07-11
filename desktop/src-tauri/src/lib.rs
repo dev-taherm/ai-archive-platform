@@ -13,6 +13,7 @@ pub struct AppState {
     pub auth_tokens: Arc<Mutex<Option<AuthTokens>>>,
     pub auth_stop: Arc<AtomicBool>,
     pub agent_start_error: Arc<Mutex<Option<String>>>,
+    pub http_client: reqwest::Client,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -29,6 +30,10 @@ pub fn run() {
             auth_tokens: Arc::new(Mutex::new(None)),
             auth_stop: Arc::new(AtomicBool::new(false)),
             agent_start_error: Arc::new(Mutex::new(None)),
+            http_client: reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(30))
+                .build()
+                .expect("Failed to create HTTP client"),
         })
         .invoke_handler(tauri::generate_handler![
             commands::get_agent_status,

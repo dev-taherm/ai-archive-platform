@@ -34,7 +34,7 @@ export default function DashboardLayout({
       <div
         className={cn(
           "transition-all duration-300",
-          sidebarOpen ? "ml-64" : "ml-16"
+          sidebarOpen ? "ms-64" : "ms-16"
         )}
       >
         <Header />

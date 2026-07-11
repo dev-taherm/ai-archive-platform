@@ -30,7 +30,7 @@ export default function DashboardPage() {
       fetchStatus();
       fetchFiles();
       fetchMetrics();
-    }, 5000);
+    }, 10000);
     return () => clearInterval(interval);
   }, []);
 

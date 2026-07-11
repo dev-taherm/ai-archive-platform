@@ -52,7 +52,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     if (get().configLoaded) return;
     try {
       const config = await invoke<Record<string, string>>("get_config");
-      const webUrl = config.web_url || config.server_url;
+      const webUrl = config.frontend_url || config.web_url || "";
       if (config.server_url && !get().serverUrl) {
         set({ serverUrl: config.server_url, webUrl, configLoaded: true });
       } else {

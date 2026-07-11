@@ -126,15 +126,10 @@ export const useAgentStore = create<AgentState>((set, get) => ({
 
   fetchStatus: async () => {
     try {
-      const running = await invoke<boolean>("agent_health");
-      if (running) {
-        const status = await invoke<{ worker?: { paused?: boolean } }>("call_agent_api", {
-          method: "GET", path: "/api/status", body: null,
-        });
-        set({ connected: true, paused: status.worker?.paused ?? false, error: null, startError: null });
-      } else {
-        set({ connected: false });
-      }
+      const status = await invoke<{ worker?: { paused?: boolean } }>("call_agent_api", {
+        method: "GET", path: "/api/status", body: null,
+      });
+      set({ connected: true, paused: status.worker?.paused ?? false, error: null, startError: null });
     } catch {
       set({ connected: false });
     }

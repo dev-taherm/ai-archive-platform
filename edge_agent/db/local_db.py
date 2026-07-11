@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import threading
 import uuid
 from pathlib import Path
 from typing import Any
@@ -99,15 +100,30 @@ CREATE TABLE IF NOT EXISTS trash (
 
 class LocalDB:
     def __init__(self, db_path: str) -> None:
+        self._db_path = db_path
         path = Path(db_path)
         path.parent.mkdir(parents=True, exist_ok=True)
-        self.conn = sqlite3.connect(str(path))
-        self.conn.execute("PRAGMA journal_mode=WAL")
-        self.conn.execute("PRAGMA foreign_keys=ON")
-        self.conn.executescript(_SCHEMA_SQL)
+        self._local = threading.local()
+        conn = self._get_conn()
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA foreign_keys=ON")
+        conn.executescript(_SCHEMA_SQL)
+
+    def _get_conn(self) -> sqlite3.Connection:
+        if not hasattr(self._local, "conn") or self._local.conn is None:
+            conn = sqlite3.connect(self._db_path, timeout=30)
+            conn.execute("PRAGMA busy_timeout=30000")
+            self._local.conn = conn
+        return self._local.conn
+
+    @property
+    def conn(self) -> sqlite3.Connection:
+        return self._get_conn()
 
     def close(self) -> None:
-        self.conn.close()
+        if hasattr(self._local, "conn") and self._local.conn is not None:
+            self._local.conn.close()
+            self._local.conn = None
 
     # ── Config ────────────────────────────────────────────────────────────────
 
@@ -342,7 +358,7 @@ class LocalDB:
             "status": row[2],
             "payload": json.loads(row[3]),
             "progress": row[4],
-            "result": row[5],
+            "result": json.loads(row[5]) if row[5] else None,
             "error": row[6],
             "created_at": row[7],
             "updated_at": row[8],
@@ -369,7 +385,7 @@ class LocalDB:
                 "status": r[2],
                 "payload": json.loads(r[3]),
                 "progress": r[4],
-                "result": r[5],
+                "result": json.loads(r[5]) if r[5] else None,
                 "error": r[6],
                 "created_at": r[7],
                 "updated_at": r[8],
