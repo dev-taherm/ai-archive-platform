@@ -8,6 +8,7 @@ import {
   Settings,
   Trash2,
   LogOut,
+  User,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -22,6 +23,7 @@ export default function AppLayout() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const logout = useAuthStore((s) => s.logout);
+  const user = useAuthStore((s) => s.user);
   const isRtl = i18n.language === "ar";
 
   const handleLogout = () => {
@@ -32,6 +34,10 @@ export default function AppLayout() {
   const handleToggleLanguage = () => {
     i18n.changeLanguage(i18n.language === "ar" ? "en" : "ar");
   };
+
+  const displayName = user
+    ? [user.first_name, user.last_name].filter(Boolean).join(" ") || user.email
+    : null;
 
   return (
     <div className={cn("flex h-screen", isRtl && "flex-row-reverse")}>
@@ -65,6 +71,19 @@ export default function AppLayout() {
 
         {/* Bottom actions */}
         <div className="border-t p-2 space-y-1">
+          {displayName && (
+            <div className="flex items-center gap-2 rounded-md px-3 py-2">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10">
+                <User className="h-3.5 w-3.5 text-primary" />
+              </div>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium leading-tight">{displayName}</p>
+                {user?.email && user.email !== displayName && (
+                  <p className="truncate text-xs text-muted-foreground leading-tight">{user.email}</p>
+                )}
+              </div>
+            </div>
+          )}
           <Button
             variant="ghost"
             size="sm"

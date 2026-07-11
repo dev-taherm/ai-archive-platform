@@ -45,6 +45,7 @@ pub fn run() {
             commands::get_config,
             commands::update_config,
             commands::register_agent,
+            commands::fetch_user_profile,
             commands::run_sync,
             commands::start_auth_server,
             commands::poll_auth_result,

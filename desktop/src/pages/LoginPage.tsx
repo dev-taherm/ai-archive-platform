@@ -115,6 +115,7 @@ export default function LoginPage() {
             }
 
             login(apiUrl, tokens.access_token, tokens.refresh_token);
+            await useAuthStore.getState().fetchUser();
             navigate("/dashboard");
           }
         } catch {

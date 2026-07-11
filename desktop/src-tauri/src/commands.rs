@@ -254,6 +254,29 @@ pub async fn register_agent(
 }
 
 #[tauri::command]
+pub async fn fetch_user_profile(
+    state: State<'_, AppState>,
+    server_url: String,
+    access_token: String,
+) -> Result<serde_json::Value, String> {
+    let client = state.http_client.clone();
+    let url = format!("{}/api/v1/users/me", server_url.trim_end_matches('/'));
+    let resp = client
+        .get(&url)
+        .bearer_auth(&access_token)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    if resp.status().is_success() {
+        resp.json::<serde_json::Value>()
+            .await
+            .map_err(|e| e.to_string())
+    } else {
+        Err(format!("HTTP {}: {}", resp.status(), resp.text().await.unwrap_or_default()))
+    }
+}
+
+#[tauri::command]
 pub async fn run_sync(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
     let port = get_port(&state)?;
     let client = reqwest::Client::new();

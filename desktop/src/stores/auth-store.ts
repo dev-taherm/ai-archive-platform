@@ -6,6 +6,15 @@ interface AgentInfo {
   api_key: string;
 }
 
+export interface UserInfo {
+  id: string;
+  email: string;
+  username: string;
+  first_name: string;
+  last_name: string;
+  organization_name: string;
+}
+
 interface AuthState {
   isAuthenticated: boolean;
   token: string | null;
@@ -14,9 +23,11 @@ interface AuthState {
   webUrl: string;
   configLoaded: boolean;
   agent: AgentInfo | null;
+  user: UserInfo | null;
   login: (serverUrl: string, token: string, refreshToken?: string) => void;
   logout: () => void;
   setAgent: (agent: AgentInfo) => void;
+  fetchUser: () => Promise<void>;
   loadServerConfig: () => Promise<void>;
   tryRegisterAgent: () => Promise<void>;
 }
@@ -31,6 +42,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   agent: (() => {
     try { return JSON.parse(localStorage.getItem("agent") || "null"); } catch { return null; }
   })(),
+  user: (() => {
+    try { return JSON.parse(localStorage.getItem("user") || "null"); } catch { return null; }
+  })(),
   login: (serverUrl, token, refreshToken) => {
     localStorage.setItem("token", token);
     localStorage.setItem("serverUrl", serverUrl);
@@ -42,11 +56,38 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     localStorage.removeItem("refreshToken");
     localStorage.removeItem("serverUrl");
     localStorage.removeItem("agent");
-    set({ isAuthenticated: false, token: null, refreshToken: null, agent: null });
+    localStorage.removeItem("user");
+    set({ isAuthenticated: false, token: null, refreshToken: null, agent: null, user: null });
   },
   setAgent: (agent) => {
     localStorage.setItem("agent", JSON.stringify(agent));
     set({ agent });
+  },
+  fetchUser: async () => {
+    const { serverUrl, token } = get();
+    if (!serverUrl || !token) return;
+    try {
+      const data = await invoke<{
+        id?: string;
+        email?: string;
+        username?: string;
+        first_name?: string;
+        last_name?: string;
+        organization_name?: string;
+      }>("fetch_user_profile", { serverUrl, accessToken: token });
+      const user: UserInfo = {
+        id: data.id || "",
+        email: data.email || "",
+        username: data.username || "",
+        first_name: data.first_name || "",
+        last_name: data.last_name || "",
+        organization_name: data.organization_name || "",
+      };
+      localStorage.setItem("user", JSON.stringify(user));
+      set({ user });
+    } catch (e) {
+      console.warn("Failed to fetch user profile:", e);
+    }
   },
   loadServerConfig: async () => {
     if (get().configLoaded) return;
@@ -83,8 +124,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         localStorage.removeItem("refreshToken");
         localStorage.removeItem("serverUrl");
         localStorage.removeItem("agent");
-        set({ isAuthenticated: false, token: null, refreshToken: null, serverUrl: "", agent: null });
+        localStorage.removeItem("user");
+        set({ isAuthenticated: false, token: null, refreshToken: null, serverUrl: "", agent: null, user: null });
       }
+    }
+    // Fetch user profile if authenticated but not yet loaded
+    if (isAuthenticated && serverUrl && token && !get().user) {
+      get().fetchUser();
     }
   },
 }));
