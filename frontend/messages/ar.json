@@ -19,6 +19,7 @@
     "confirm": "تأكيد",
     "dismiss": "تجاهل",
     "noResults": "لا توجد نتائج",
+    "tryDifferentSearch": "جرب مصطلح بحث مختلف",
     "noDescription": "لا يوجد وصف",
     "never": "أبداً",
     "unknown": "غير معروف",
@@ -254,7 +255,8 @@
     "sources": "المصادر:",
     "document": "مستند",
     "args": "الوسائط:",
-    "result": "النتيجة:"
+    "result": "النتيجة:",
+    "noResponse": "لا توجد استجابة"
   },
   "search": {
     "title": "بحث",
