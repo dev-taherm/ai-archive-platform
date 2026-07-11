@@ -59,7 +59,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         set({ webUrl, configLoaded: true });
       }
     } catch {
-      set({ configLoaded: true });
+      const saved = localStorage.getItem("serverUrl");
+      if (saved) {
+        set({ serverUrl: saved, configLoaded: true });
+      } else {
+        set({ configLoaded: true });
+      }
     }
     get().tryRegisterAgent();
   },

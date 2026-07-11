@@ -5,6 +5,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-shell";
 import { useAuthStore } from "../stores/auth-store";
 import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "../components/ui/card";
 import { LanguageSwitcher } from "../components/LanguageSwitcher";
 
@@ -20,46 +21,50 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const login = useAuthStore((s) => s.login);
   const serverUrl = useAuthStore((s) => s.serverUrl);
-  const webUrl = useAuthStore((s) => s.webUrl);
   const loadServerConfig = useAuthStore((s) => s.loadServerConfig);
 
   const [step, setStep] = useState<LoginStep>("checking-agent");
   const [error, setError] = useState("");
+  const [manualUrl, setManualUrl] = useState("");
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     loadServerConfig();
   }, [loadServerConfig]);
 
-  // Check agent sidecar health on mount
   useEffect(() => {
-    if (!serverUrl) return;
     let cancelled = false;
+    let retries = 0;
+
     const checkHealth = async () => {
       try {
-        const startError: string | null = await invoke("get_agent_start_error");
-        if (startError) {
-          if (!cancelled) {
-            setError("Agent binary not found. Please reinstall Basirah Desktop.");
-            setStep("error");
-          }
-          return;
-        }
         const healthy: boolean = await invoke("agent_health");
-        if (!cancelled) {
-          setStep(healthy ? "idle" : "error");
-          if (!healthy) setError("Agent is not responding. Please restart the application.");
+        if (cancelled) return;
+        if (healthy) {
+          setStep("idle");
+          setError("");
+        } else if (retries < 10) {
+          retries++;
+          setTimeout(checkHealth, 2000);
+        } else {
+          setStep("idle");
+          setError("Agent not responding — offline mode. Enter server URL to connect.");
         }
       } catch {
-        if (!cancelled) {
-          setError("Agent is not running. Please restart the application.");
-          setStep("error");
+        if (cancelled) return;
+        if (retries < 10) {
+          retries++;
+          setTimeout(checkHealth, 2000);
+        } else {
+          setStep("idle");
+          setError("Agent not responding — offline mode. Enter server URL to connect.");
         }
       }
     };
+
     checkHealth();
     return () => { cancelled = true; };
-  }, [serverUrl]);
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -67,8 +72,11 @@ export default function LoginPage() {
     };
   }, []);
 
+  const effectiveUrl = serverUrl || manualUrl;
+
   const handleLogin = async () => {
-    if (!serverUrl || !webUrl) return;
+    const url = effectiveUrl;
+    if (!url) return;
 
     setStep("waiting");
     setError("");
@@ -76,7 +84,7 @@ export default function LoginPage() {
     try {
       const port: number = await invoke("start_auth_server");
       const callbackUrl = `http://localhost:${port}/callback`;
-      const loginUrl = `${webUrl}/login?desktop_callback=${encodeURIComponent(callbackUrl)}`;
+      const loginUrl = `${url.replace(/\/+$/, "")}/login?desktop_callback=${encodeURIComponent(callbackUrl)}`;
 
       await open(loginUrl);
 
@@ -87,12 +95,11 @@ export default function LoginPage() {
             if (pollRef.current) clearInterval(pollRef.current);
             await invoke("stop_auth_server");
 
-            // Register this device with the SaaS backend directly
             setStep("registering");
             try {
               const result = await invoke<{ agent_id: string; api_key: string }>(
                 "register_agent",
-                { serverUrl, accessToken: tokens.access_token },
+                { serverUrl: url, accessToken: tokens.access_token },
               );
               useAuthStore.getState().setAgent(result);
             } catch (regErr) {
@@ -101,8 +108,7 @@ export default function LoginPage() {
               return;
             }
 
-            // Store tokens and proceed (login will start background tasks)
-            login(serverUrl, tokens.access_token, tokens.refresh_token);
+            login(url, tokens.access_token, tokens.refresh_token);
             navigate("/dashboard");
           }
         } catch {
@@ -130,26 +136,34 @@ export default function LoginPage() {
           {error && (
             <p className="text-sm text-destructive text-center">{error}</p>
           )}
+
           {step === "checking-agent" && (
             <div className="flex flex-col items-center gap-2">
               <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
               <p className="text-sm text-muted-foreground">Checking agent...</p>
             </div>
           )}
-          {step === "error" && (
-            <Button className="w-full" onClick={() => { setStep("checking-agent"); setError(""); }}>
-              Retry
-            </Button>
+
+          {step === "idle" && !effectiveUrl && (
+            <div className="space-y-3">
+              <Input
+                placeholder="https://your-server.com"
+                value={manualUrl}
+                onChange={(e) => setManualUrl(e.target.value)}
+              />
+            </div>
           )}
+
           {step === "idle" && (
             <Button
               className="w-full"
               onClick={handleLogin}
-              disabled={!serverUrl || !webUrl}
+              disabled={!effectiveUrl}
             >
               {t("login.browser") || "Login in Browser"}
             </Button>
           )}
+
           {step === "waiting" && (
             <div className="flex flex-col items-center gap-2">
               <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
@@ -158,6 +172,7 @@ export default function LoginPage() {
               </p>
             </div>
           )}
+
           {step === "registering" && (
             <div className="flex flex-col items-center gap-2">
               <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
@@ -166,6 +181,7 @@ export default function LoginPage() {
               </p>
             </div>
           )}
+
           <p className="text-center text-xs text-muted-foreground">
             {t("login.offline")}
           </p>
