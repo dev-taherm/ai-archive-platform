@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import {
@@ -22,7 +23,7 @@ import type { RecommendationList } from "@/types/api";
 
 const typeConfig = {
   action: { icon: Zap, color: "text-blue-600", bg: "bg-blue-50 dark:bg-blue-950" },
-  insight: { icon: Lightbulb, color: "text-emerald-600", bg: "bg-emerald-50 dark:bg-emerald-950" },
+  insight: { icon: Lightbulb, color: "text-brand-teal", bg: "bg-brand-teal/10" },
   warning: { icon: AlertTriangle, color: "text-orange-600", bg: "bg-orange-50 dark:bg-orange-950" },
 };
 
@@ -33,6 +34,7 @@ const priorityVariant: Record<string, "destructive" | "warning" | "secondary"> =
 };
 
 export default function Recommendations() {
+  const t = useTranslations("dashboard");
   const { data, isLoading, refetch, isFetching } = useQuery<RecommendationList>({
     queryKey: ["dashboard-recommendations"],
     queryFn: async () => {
@@ -46,11 +48,11 @@ export default function Recommendations() {
     return (
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-base">Recommendations</CardTitle>
+          <CardTitle className="text-base">{t("recommendations")}</CardTitle>
         </CardHeader>
         <CardContent>
           <p className="text-sm text-muted-foreground py-4 text-center">
-            Loading recommendations...
+            {t("loadingRecommendations")}
           </p>
         </CardContent>
       </Card>
@@ -63,7 +65,7 @@ export default function Recommendations() {
     return (
       <Card>
         <CardHeader className="pb-2 flex flex-row items-center justify-between">
-          <CardTitle className="text-base">Recommendations</CardTitle>
+          <CardTitle className="text-base">{t("recommendations")}</CardTitle>
           <Button
             variant="ghost"
             size="icon"
@@ -76,10 +78,10 @@ export default function Recommendations() {
         </CardHeader>
         <CardContent>
           <div className="flex flex-col items-center justify-center py-6">
-            <Zap className="mb-2 h-8 w-8 text-emerald-600" />
-            <p className="text-sm font-medium">All clear!</p>
+            <Zap className="mb-2 h-8 w-8 text-brand-teal" />
+            <p className="text-sm font-medium">{t("allClear")}</p>
             <p className="text-xs text-muted-foreground">
-              No recommendations at this time
+              {t("noRecommendations")}
             </p>
           </div>
         </CardContent>
@@ -91,7 +93,7 @@ export default function Recommendations() {
     <Card>
       <CardHeader className="pb-2 flex flex-row items-center justify-between">
         <CardTitle className="text-base">
-          Recommendations
+          {t("recommendations")}
           <Badge variant="secondary" className="ml-2 text-xs">
             {recs.length}
           </Badge>

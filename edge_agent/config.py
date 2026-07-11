@@ -1,4 +1,4 @@
-"""Edge Agent configuration — loads from YAML + env overrides."""
+"""Edge Agent configuration — loaded from YAML + env overrides."""
 
 from __future__ import annotations
 
@@ -22,15 +22,6 @@ class ServerConfig:
 
 
 @dataclass
-class ScannerConfig:
-    ignore_patterns: list[str] = field(default_factory=lambda: [
-        ".git", ".svn", ".hg", "__pycache__", "node_modules",
-        ".DS_Store", "Thumbs.db", "*.pyc", "*.pyo", "*.swp",
-    ])
-    max_file_size_mb: int = 100
-
-
-@dataclass
 class OCRConfig:
     engine: str = "paddleocr"
     lang: str = "en"
@@ -48,6 +39,13 @@ class ParserConfig:
 
 
 @dataclass
+class WatcherConfig:
+    enabled: bool = True
+    debounce_seconds: float = 2.0
+    recursive: bool = True
+
+
+@dataclass
 class LLMConfig:
     provider: str = "openai"
     model: str = "gpt-4o-mini"
@@ -58,48 +56,25 @@ class LLMConfig:
 
 
 @dataclass
-class SyncConfig:
-    interval_minutes: int = 30
-    batch_size: int = 50
-    retry_attempts: int = 3
-    retry_delay_seconds: int = 60
-
-
-@dataclass
-class WatcherConfig:
-    enabled: bool = True
-    recursive: bool = True
-    debounce_seconds: float = 2.0
-
-
-@dataclass
 class EdgeAgentConfig:
     agent_name: str = "edge-agent"
     agent_id: str = ""
     agent_version: str = ""
     data_dir: str = str(Path.home() / ".edge-agent")
+    db_path: str = str(Path.home() / ".edge-agent" / "agent.db")
     log_level: str = "INFO"
     server: ServerConfig = field(default_factory=ServerConfig)
-    scanner: ScannerConfig = field(default_factory=ScannerConfig)
     ocr: OCRConfig = field(default_factory=OCRConfig)
     parser: ParserConfig = field(default_factory=ParserConfig)
     llm: LLMConfig = field(default_factory=LLMConfig)
-    sync: SyncConfig = field(default_factory=SyncConfig)
     watcher: WatcherConfig = field(default_factory=WatcherConfig)
+    plugin_dir: str = ""
     folders: list[str] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         if not self.agent_version:
             from edge_agent import __version__
             object.__setattr__(self, "agent_version", __version__)
-
-    @property
-    def db_path(self) -> str:
-        return str(Path(self.data_dir) / "agent.db")
-
-    @property
-    def log_file(self) -> str:
-        return str(Path(self.data_dir) / "agent.log")
 
 
 def load_config(config_path: str | Path | None = None) -> EdgeAgentConfig:
@@ -127,18 +102,18 @@ def load_config(config_path: str | Path | None = None) -> EdgeAgentConfig:
     # Agent
     cfg.agent_name = raw.get("agent_name", os.getenv("EDGE_AGENT_NAME", "edge-agent"))
     cfg.agent_id = raw.get("agent_id", os.getenv("EDGE_AGENT_ID", ""))
-    cfg.data_dir = raw.get("data_dir", os.getenv("EDGE_DATA_DIR", str(Path.home() / ".edge-agent")))
+    raw_data_dir = raw.get("data_dir", os.getenv("EDGE_DATA_DIR", ""))
+    cfg.data_dir = str(Path(raw_data_dir).expanduser()) if raw_data_dir else str(Path.home() / ".edge-agent")
+    raw_db_path = raw.get("db_path", os.getenv("EDGE_DB_PATH", ""))
+    cfg.db_path = str(Path(raw_db_path).expanduser()) if raw_db_path else str(Path(cfg.data_dir) / "agent.db")
     cfg.log_level = raw.get("log_level", os.getenv("EDGE_LOG_LEVEL", "INFO"))
 
-    # Folders
-    cfg.folders = raw.get("folders", [])
+    # Plugin dir
+    raw_plugin_dir = raw.get("plugin_dir", os.getenv("EDGE_PLUGIN_DIR", ""))
+    cfg.plugin_dir = str(Path(raw_plugin_dir).expanduser()) if raw_plugin_dir else str(Path(cfg.data_dir) / "plugins")
 
-    # Scanner
-    scanner_raw = raw.get("scanner", {})
-    cfg.scanner = ScannerConfig(
-        ignore_patterns=scanner_raw.get("ignore_patterns", cfg.scanner.ignore_patterns),
-        max_file_size_mb=scanner_raw.get("max_file_size_mb", cfg.scanner.max_file_size_mb),
-    )
+    # Folders
+    cfg.folders = [str(Path(f).expanduser()) for f in raw.get("folders", [])]
 
     # OCR
     ocr_raw = raw.get("ocr", {})
@@ -159,6 +134,14 @@ def load_config(config_path: str | Path | None = None) -> EdgeAgentConfig:
         table_enable=parser_raw.get("table_enable", cfg.parser.table_enable),
     )
 
+    # Watcher
+    watcher_raw = raw.get("watcher", {})
+    cfg.watcher = WatcherConfig(
+        enabled=watcher_raw.get("enabled", cfg.watcher.enabled),
+        debounce_seconds=watcher_raw.get("debounce_seconds", cfg.watcher.debounce_seconds),
+        recursive=watcher_raw.get("recursive", cfg.watcher.recursive),
+    )
+
     # LLM
     llm_raw = raw.get("llm", {})
     cfg.llm = LLMConfig(
@@ -168,23 +151,6 @@ def load_config(config_path: str | Path | None = None) -> EdgeAgentConfig:
         base_url=llm_raw.get("base_url", os.getenv("EDGE_LLM_BASE_URL", cfg.llm.base_url)),
         temperature=llm_raw.get("temperature", cfg.llm.temperature),
         max_tokens=llm_raw.get("max_tokens", cfg.llm.max_tokens),
-    )
-
-    # Sync
-    sync_raw = raw.get("sync", {})
-    cfg.sync = SyncConfig(
-        interval_minutes=sync_raw.get("interval_minutes", cfg.sync.interval_minutes),
-        batch_size=sync_raw.get("batch_size", cfg.sync.batch_size),
-        retry_attempts=sync_raw.get("retry_attempts", cfg.sync.retry_attempts),
-        retry_delay_seconds=sync_raw.get("retry_delay_seconds", cfg.sync.retry_delay_seconds),
-    )
-
-    # Watcher
-    watcher_raw = raw.get("watcher", {})
-    cfg.watcher = WatcherConfig(
-        enabled=watcher_raw.get("enabled", cfg.watcher.enabled),
-        recursive=watcher_raw.get("recursive", cfg.watcher.recursive),
-        debounce_seconds=watcher_raw.get("debounce_seconds", cfg.watcher.debounce_seconds),
     )
 
     return cfg

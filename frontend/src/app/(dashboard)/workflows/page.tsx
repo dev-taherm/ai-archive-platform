@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   GitBranch,
@@ -67,24 +68,6 @@ const stepStatusIcon: Record<string, typeof Clock> = {
   skipped: Clock,
 };
 
-const STEP_TYPES = [
-  { value: "scan", label: "Scan Folder" },
-  { value: "ocr", label: "OCR" },
-  { value: "classify", label: "Classify" },
-  { value: "summarize", label: "Summarize" },
-  { value: "extract_metadata", label: "Extract Metadata" },
-  { value: "embed", label: "Generate Embeddings" },
-  { value: "index", label: "Index to Vector Store" },
-  { value: "notify", label: "Notify" },
-  { value: "store", label: "Store Result" },
-];
-
-const TRIGGER_TYPES = [
-  { value: "manual", label: "Manual" },
-  { value: "on_upload", label: "On Upload" },
-  { value: "scheduled", label: "Scheduled" },
-];
-
 interface CreateFormState {
   name: string;
   description: string;
@@ -100,7 +83,28 @@ const emptyCreateForm: CreateFormState = {
 };
 
 export default function WorkflowsPage() {
+  const t = useTranslations("workflows");
+  const tc = useTranslations("common");
   const queryClient = useQueryClient();
+
+  const STEP_TYPES = [
+    { value: "scan", label: t("scanFolder") },
+    { value: "ocr", label: t("ocr") },
+    { value: "classify", label: t("classify") },
+    { value: "summarize", label: t("summarize") },
+    { value: "extract_metadata", label: t("extractMetadata") },
+    { value: "embed", label: t("generateEmbeddings") },
+    { value: "index", label: t("indexToVectorStore") },
+    { value: "notify", label: t("notify") },
+    { value: "store", label: t("storeResult") },
+  ];
+
+  const TRIGGER_TYPES = [
+    { value: "manual", label: t("manual") },
+    { value: "on_upload", label: t("onUpload") },
+    { value: "scheduled", label: t("scheduled") },
+  ];
+
   const [search, setSearch] = useState("");
   const [expandedWorkflow, setExpandedWorkflow] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
@@ -207,9 +211,9 @@ export default function WorkflowsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Workflows</h1>
+          <h1 className="text-2xl font-bold bg-gradient-to-r from-brand-teal to-brand-cyan bg-clip-text text-transparent">{t("title")}</h1>
           <p className="text-muted-foreground">
-            Automate document processing pipelines
+            {t("subtitle")}
           </p>
         </div>
         <div className="flex gap-2">
@@ -218,11 +222,11 @@ export default function WorkflowsPage() {
             onClick={() => queryClient.invalidateQueries({ queryKey: ["workflows"] })}
           >
             <RefreshCw className="mr-2 h-4 w-4" />
-            Refresh
+            {t("refresh")}
           </Button>
           <Button onClick={() => setShowCreate(!showCreate)}>
             <Plus className="mr-2 h-4 w-4" />
-            New Workflow
+            {t("newWorkflow")}
           </Button>
         </div>
       </div>
@@ -232,8 +236,8 @@ export default function WorkflowsPage() {
           <CardHeader>
             <div className="flex items-center justify-between">
               <div>
-                <CardTitle>Create Workflow</CardTitle>
-                <CardDescription>Define a new automation pipeline</CardDescription>
+                <CardTitle>{t("createWorkflow")}</CardTitle>
+                <CardDescription>{t("createDescription")}</CardDescription>
               </div>
               <Button
                 variant="ghost"
@@ -250,17 +254,17 @@ export default function WorkflowsPage() {
           <CardContent className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <label className="text-sm font-medium">Name *</label>
+                <label className="text-sm font-medium">{t("name")}</label>
                 <Input
-                  placeholder="e.g., Document Processing Pipeline"
+                  placeholder={t("namePlaceholder")}
                   value={form.name}
                   onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium">Description</label>
+                <label className="text-sm font-medium">{t("description")}</label>
                 <Input
-                  placeholder="What this workflow does"
+                  placeholder={t("descriptionPlaceholder")}
                   value={form.description}
                   onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))}
                 />
@@ -268,7 +272,7 @@ export default function WorkflowsPage() {
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">Trigger</label>
+              <label className="text-sm font-medium">{t("trigger")}</label>
               <div className="flex gap-2">
                 {TRIGGER_TYPES.map((t) => (
                   <Button
@@ -285,14 +289,14 @@ export default function WorkflowsPage() {
 
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <label className="text-sm font-medium">Steps</label>
+                <label className="text-sm font-medium">{t("steps")}</label>
                 <Button variant="outline" size="sm" onClick={addStep}>
                   <Plus className="mr-1 h-3 w-3" />
-                  Add Step
+                  {t("addStep")}
                 </Button>
               </div>
               {form.steps.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-2">No steps added yet. Click "Add Step" to begin.</p>
+                <p className="text-sm text-muted-foreground py-2">{t("noSteps")}</p>
               ) : (
                 <div className="space-y-2">
                   {form.steps.map((step, i) => (
@@ -337,24 +341,24 @@ export default function WorkflowsPage() {
                   setForm(emptyCreateForm);
                 }}
               >
-                Cancel
+                {tc("cancel")}
               </Button>
               <Button
                 onClick={handleCreate}
                 disabled={!form.name.trim() || createMutation.isPending}
               >
                 {createMutation.isPending ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin text-brand-teal" />
                 ) : (
                   <Plus className="mr-2 h-4 w-4" />
                 )}
-                Create Workflow
+                {t("createWorkflow")}
               </Button>
             </div>
 
             {createMutation.isError && (
               <p className="text-sm text-destructive">
-                Failed to create workflow. Please try again.
+                {t("createFailed")}
               </p>
             )}
           </CardContent>
@@ -364,25 +368,25 @@ export default function WorkflowsPage() {
       <div className="grid gap-4 md:grid-cols-4">
         <Card>
           <CardHeader className="pb-2">
-            <CardDescription>Total Workflows</CardDescription>
+            <CardDescription>{t("totalWorkflows")}</CardDescription>
             <CardTitle className="text-2xl">{stats.total}</CardTitle>
           </CardHeader>
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardDescription>Active</CardDescription>
-            <CardTitle className="text-2xl text-emerald-600">{stats.active}</CardTitle>
+            <CardDescription>{t("active")}</CardDescription>
+            <CardTitle className="text-2xl text-brand-teal">{stats.active}</CardTitle>
           </CardHeader>
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardDescription>Completed</CardDescription>
-            <CardTitle className="text-2xl text-blue-600">{stats.completed}</CardTitle>
+            <CardDescription>{t("completed")}</CardDescription>
+            <CardTitle className="text-2xl text-brand-cyan">{stats.completed}</CardTitle>
           </CardHeader>
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardDescription>Failed</CardDescription>
+            <CardDescription>{t("failed")}</CardDescription>
             <CardTitle className="text-2xl text-red-600">{stats.failed}</CardTitle>
           </CardHeader>
         </Card>
@@ -392,7 +396,7 @@ export default function WorkflowsPage() {
         <CardHeader>
           <div className="flex items-center gap-2">
             <Input
-              placeholder="Search workflows..."
+              placeholder={t("searchPlaceholder")}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="max-w-sm"
@@ -402,14 +406,14 @@ export default function WorkflowsPage() {
         <CardContent>
           {isLoading ? (
             <div className="flex justify-center py-8 text-muted-foreground">
-              Loading workflows...
+              {t("loading")}
             </div>
           ) : filtered.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-              <GitBranch className="mb-4 h-12 w-12 opacity-50" />
-              <p className="text-lg font-medium">No workflows found</p>
+              <GitBranch className="mb-4 h-12 w-12 text-brand-teal opacity-50" />
+              <p className="text-lg font-medium">{t("noWorkflows")}</p>
               <p className="text-sm">
-                {search ? "Try a different search term" : "Create a workflow to automate your document processing"}
+                {search ? tc("tryDifferentSearch") : t("noWorkflowsDesc")}
               </p>
             </div>
           ) : (
@@ -438,7 +442,7 @@ export default function WorkflowsPage() {
                           {workflow.name}
                         </Link>
                         <p className="text-sm text-muted-foreground">
-                          {workflow.description || "No description"}
+                          {workflow.description || tc("noDescription")}
                         </p>
                       </div>
                     </div>
@@ -447,7 +451,7 @@ export default function WorkflowsPage() {
                         {workflow.status}
                       </Badge>
                       <span className="text-xs text-muted-foreground">
-                        {workflow.run_count} runs
+                        {t("runs", { n: workflow.run_count })}
                       </span>
                       <ChevronRight
                         className={`h-4 w-4 transition-transform ${
@@ -461,18 +465,18 @@ export default function WorkflowsPage() {
                     <div className="border-t p-4 space-y-4">
                       <div className="grid grid-cols-2 gap-4 text-sm">
                         <div>
-                          <span className="text-muted-foreground">Trigger: </span>
+                          <span className="text-muted-foreground">{t("trigger")}</span>
                           <Badge variant="outline">{workflow.trigger}</Badge>
                         </div>
                         <div>
-                          <span className="text-muted-foreground">Last run: </span>
-                          {workflow.last_run_at ? formatDateTime(workflow.last_run_at) : "Never"}
+                          <span className="text-muted-foreground">{t("lastRun")}</span>
+                          {workflow.last_run_at ? formatDateTime(workflow.last_run_at) : tc("never")}
                         </div>
                       </div>
 
                       {workflow.steps.length > 0 && (
                         <div>
-                          <p className="text-sm font-medium mb-2">Steps</p>
+                          <p className="text-sm font-medium mb-2">{t("steps")}</p>
                           <div className="flex items-center gap-2 flex-wrap">
                             {workflow.steps.map((step, i) => {
                               const StepIcon = stepStatusIcon[step.status] || Clock;
@@ -499,7 +503,7 @@ export default function WorkflowsPage() {
                             disabled={pauseMutation.isPending}
                           >
                             <Pause className="mr-1 h-3.5 w-3.5" />
-                            Pause
+                            {t("pause")}
                           </Button>
                         ) : (
                           <Button
@@ -508,7 +512,7 @@ export default function WorkflowsPage() {
                             disabled={runMutation.isPending || workflow.status === "completed"}
                           >
                             <Play className="mr-1 h-3.5 w-3.5" />
-                            Run
+                            {t("run")}
                           </Button>
                         )}
                         <Button
@@ -519,7 +523,7 @@ export default function WorkflowsPage() {
                           disabled={deleteMutation.isPending}
                         >
                           <Trash2 className="mr-1 h-3.5 w-3.5" />
-                          Delete
+                          {tc("delete")}
                         </Button>
                       </div>
                     </div>

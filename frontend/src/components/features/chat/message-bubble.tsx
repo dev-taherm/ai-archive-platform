@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,6 +23,8 @@ interface Message {
 }
 
 function SimpleMarkdown({ content }: { content: string }) {
+  const t = useTranslations("chat");
+  const tc = useTranslations("common");
   const [copied, setCopied] = useState(false);
 
   const renderInline = (text: string) => {
@@ -43,7 +46,7 @@ function SimpleMarkdown({ content }: { content: string }) {
       const linkMatch = part.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
       if (linkMatch) {
         return (
-          <a key={i} href={linkMatch[2]} target="_blank" rel="noopener noreferrer" className="text-primary underline">
+          <a key={i} href={linkMatch[2]} target="_blank" rel="noopener noreferrer" className="text-brand-cyan underline">
             {linkMatch[1]}
           </a>
         );
@@ -66,7 +69,7 @@ function SimpleMarkdown({ content }: { content: string }) {
         elements.push(
           <div key={`code-${i}`} className="my-2 rounded-lg overflow-hidden border bg-muted/50">
             <div className="flex items-center justify-between px-3 py-1 text-xs text-muted-foreground border-b">
-              <span>{codeLang || "code"}</span>
+              <span>{codeLang || t("code")}</span>
               <button
                 onClick={() => {
                   navigator.clipboard.writeText(codeContent);
@@ -76,7 +79,7 @@ function SimpleMarkdown({ content }: { content: string }) {
                 className="flex items-center gap-1 hover:text-foreground"
               >
                 {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-                {copied ? "Copied" : "Copy"}
+                {copied ? tc("copied") : tc("copy")}
               </button>
             </div>
             <pre className="p-3 text-xs overflow-x-auto">
@@ -139,7 +142,7 @@ function SimpleMarkdown({ content }: { content: string }) {
         </blockquote>
       );
     } else if (line.startsWith("---")) {
-      elements.push(<hr key={i} className="my-2 border-border" />);
+      elements.push(<hr key={i} className="my-2 border-brand-teal/20" />);
     } else if (line.trim() === "") {
       elements.push(<div key={i} className="h-2" />);
     } else {
@@ -155,10 +158,12 @@ function SimpleMarkdown({ content }: { content: string }) {
 }
 
 function ToolCallCard({ toolCall }: { toolCall: ToolCall }) {
+  const t = useTranslations("chat");
+  const tc = useTranslations("common");
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <div className="mt-2 border border-border/50 rounded-md text-xs">
+    <div className="mt-2 border border-brand-teal/20 rounded-md text-xs">
       <button
         type="button"
         onClick={() => setExpanded(!expanded)}
@@ -173,7 +178,7 @@ function ToolCallCard({ toolCall }: { toolCall: ToolCall }) {
         <span className="font-medium">{toolCall.name}</span>
         {toolCall.result && (
           <Badge variant="outline" className="ml-auto text-[10px]">
-            done
+            {tc("done")}
           </Badge>
         )}
       </button>
@@ -181,7 +186,7 @@ function ToolCallCard({ toolCall }: { toolCall: ToolCall }) {
         <div className="px-2 pb-2 space-y-1">
           {Object.keys(toolCall.arguments).length > 0 && (
             <div>
-              <span className="text-muted-foreground">Args:</span>{" "}
+              <span className="text-muted-foreground">{t("args")}</span>{" "}
               <code className="text-[10px] bg-muted px-1 rounded">
                 {JSON.stringify(toolCall.arguments)}
               </code>
@@ -189,7 +194,7 @@ function ToolCallCard({ toolCall }: { toolCall: ToolCall }) {
           )}
           {toolCall.result && (
             <div>
-              <span className="text-muted-foreground">Result:</span>{" "}
+              <span className="text-muted-foreground">{t("result")}</span>{" "}
               <span className="text-[10px]">{toolCall.result.slice(0, 500)}</span>
             </div>
           )}
@@ -200,6 +205,7 @@ function ToolCallCard({ toolCall }: { toolCall: ToolCall }) {
 }
 
 export default function MessageBubble({ message }: { message: Message }) {
+  const t = useTranslations("chat");
   const isUser = message.role === "user";
 
   return (
@@ -217,10 +223,10 @@ export default function MessageBubble({ message }: { message: Message }) {
           <SimpleMarkdown content={message.content} />
         )}
         {message.tool_calls && message.tool_calls.length > 0 && (
-          <div className="mt-2 pt-2 border-t border-border/50">
+          <div className="mt-2 pt-2 border-t border-brand-teal/20">
             <p className="text-xs font-medium mb-1 flex items-center gap-1">
-              <Wrench className="h-3 w-3" />
-              Tools used:
+              <Wrench className="h-3 w-3 text-brand-teal" />
+              {t("toolsUsed")}
             </p>
             {message.tool_calls.map((tc) => (
               <ToolCallCard key={tc.id} toolCall={tc} />
@@ -228,12 +234,12 @@ export default function MessageBubble({ message }: { message: Message }) {
           </div>
         )}
         {message.sources && message.sources.length > 0 && (
-          <div className="mt-2 pt-2 border-t border-border/50">
-            <p className="text-xs font-medium mb-1">Sources:</p>
+          <div className="mt-2 pt-2 border-t border-brand-teal/20">
+            <p className="text-xs font-medium mb-1">{t("sources")}</p>
             <div className="flex flex-wrap gap-1">
               {message.sources.map((src, i) => (
                 <Badge key={i} variant="outline" className="text-xs">
-                  {src.title || "Document"}
+                  {src.title || t("document")}
                 </Badge>
               ))}
             </div>

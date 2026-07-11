@@ -30,7 +30,7 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
   loadConfig: async () => {
     if (get().configLoaded) return;
     try {
-      const config = await invoke<{ server_url: string }>("read_server_config");
+      const config = await invoke<Record<string, string>>("get_config");
       if (config.server_url && !get().serverUrl) {
         set({ serverUrl: config.server_url, configLoaded: true });
       } else {

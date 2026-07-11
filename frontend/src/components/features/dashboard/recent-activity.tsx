@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { formatDateTime } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -34,15 +35,16 @@ interface RecentActivityProps {
 }
 
 export function RecentActivity({ activities }: RecentActivityProps) {
+  const t = useTranslations("dashboard");
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-lg">Recent Activity</CardTitle>
+        <CardTitle className="text-lg">{t("recentActivity")}</CardTitle>
       </CardHeader>
       <CardContent>
         <div className="space-y-4">
           {activities.length === 0 && (
-            <p className="text-sm text-muted-foreground">No recent activity</p>
+            <p className="text-sm text-muted-foreground">{t("noRecentActivity")}</p>
           )}
           {activities.map((activity) => {
             const Icon = iconMap[activity.action] || FileText;
@@ -51,8 +53,8 @@ export function RecentActivity({ activities }: RecentActivityProps) {
                 key={activity.id}
                 className="flex items-start gap-3 rounded-lg border p-3"
               >
-                <div className="rounded-md bg-muted p-2">
-                  <Icon className="h-4 w-4 text-muted-foreground" />
+                <div className="rounded-md bg-brand-teal/10 p-2">
+                  <Icon className="h-4 w-4 text-brand-teal" />
                 </div>
                 <div className="flex-1 space-y-1">
                   <p className="text-sm font-medium">

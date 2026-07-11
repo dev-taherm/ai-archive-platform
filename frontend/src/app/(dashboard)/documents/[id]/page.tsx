@@ -2,6 +2,7 @@
 
 import { use } from "react";
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -69,6 +70,7 @@ const entityTypeVariant: Record<string, "default" | "secondary" | "outline"> = {
 };
 
 export default function DocumentDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const t = useTranslations("documents");
   const { id } = use(params);
   const router = useRouter();
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -106,10 +108,10 @@ export default function DocumentDetailPage({ params }: { params: Promise<{ id: s
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["document", id] });
       setEditing(false);
-      toast({ title: "Document updated" });
+      toast({ title: t("updatedToast") });
     },
     onError: () => {
-      toast({ title: "Failed to update document", variant: "destructive" });
+      toast({ title: t("updateFailedToast"), variant: "destructive" });
     },
   });
 
@@ -120,11 +122,11 @@ export default function DocumentDetailPage({ params }: { params: Promise<{ id: s
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["documents"] });
       setShowDelete(false);
-      toast({ title: "Document deleted" });
+      toast({ title: t("deletedToast") });
       router.push("/documents");
     },
     onError: () => {
-      toast({ title: "Failed to delete document", variant: "destructive" });
+      toast({ title: t("deleteFailedToast"), variant: "destructive" });
     },
   });
 
@@ -138,7 +140,7 @@ export default function DocumentDetailPage({ params }: { params: Promise<{ id: s
   if (isLoading) {
     return (
       <div className="flex justify-center py-12 text-muted-foreground">
-        Loading document...
+        {t("loading")}
       </div>
     );
   }
@@ -146,10 +148,10 @@ export default function DocumentDetailPage({ params }: { params: Promise<{ id: s
   if (error || !doc) {
     return (
       <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-        <AlertCircle className="mb-4 h-12 w-12 opacity-50" />
-        <p className="text-lg font-medium">Document not found</p>
+                <AlertCircle className="mb-4 h-12 w-12 text-brand-cyan opacity-50" />
+        <p className="text-lg font-medium">{t("notFound")}</p>
         <Link href="/documents">
-          <Button variant="link">Back to documents</Button>
+          <Button variant="link">{t("backToDocuments")}</Button>
         </Link>
       </div>
     );
@@ -165,9 +167,9 @@ export default function DocumentDetailPage({ params }: { params: Promise<{ id: s
           </Button>
         </Link>
         <div className="flex-1">
-          <h1 className="text-2xl font-bold">{doc.title || doc.doc_type}</h1>
+          <h1 className="text-2xl font-bold bg-gradient-to-r from-brand-teal to-brand-cyan bg-clip-text text-transparent">{doc.title || doc.doc_type}</h1>
           <p className="text-muted-foreground">
-            {doc.subject || doc.author || "No description"}
+            {doc.subject || doc.author || t("noDescription")}
           </p>
         </div>
         <Badge variant={statusVariant[doc.processing_status] || "secondary"}>
@@ -175,11 +177,11 @@ export default function DocumentDetailPage({ params }: { params: Promise<{ id: s
         </Badge>
         <Button variant="outline" size="sm" onClick={startEditing} disabled={editing}>
           <Pencil className="mr-1 h-3 w-3" />
-          Edit
+          {t("editButton")}
         </Button>
         <Button variant="outline" size="sm" onClick={() => setShowDelete(true)}>
           <Trash2 className="mr-1 h-3 w-3" />
-          Delete
+          {t("deleteButton")}
         </Button>
       </div>
 
@@ -187,38 +189,38 @@ export default function DocumentDetailPage({ params }: { params: Promise<{ id: s
       {editing && (
         <Card className="border-dashed border-primary/50">
           <CardHeader>
-            <CardTitle className="text-base">Edit Document</CardTitle>
+            <CardTitle className="text-base">{t("editDocument")}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
-                <label className="text-sm font-medium">Title</label>
+                <label className="text-sm font-medium">{t("titleLabel")}</label>
                 <Input
                   value={editTitle}
                   onChange={(e) => setEditTitle(e.target.value)}
-                  placeholder="Document title"
+                  placeholder={t("documentTitle")}
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium">Document Type</label>
+                <label className="text-sm font-medium">{t("documentType")}</label>
                 <Input
                   value={editDocType}
                   onChange={(e) => setEditDocType(e.target.value)}
-                  placeholder="e.g. contract, report"
+                  placeholder={t("documentTypePlaceholder")}
                 />
               </div>
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Tags (comma-separated)</label>
+              <label className="text-sm font-medium">{t("tagsCommaSeparated")}</label>
               <Input
                 value={editTags}
                 onChange={(e) => setEditTags(e.target.value)}
-                placeholder="tag1, tag2, tag3"
+                placeholder={t("tagsPlaceholder")}
               />
             </div>
             <div className="flex justify-end gap-2">
               <Button variant="ghost" size="sm" onClick={() => setEditing(false)}>
-                Cancel
+                {t("cancel")}
               </Button>
               <Button
                 size="sm"
@@ -232,7 +234,7 @@ export default function DocumentDetailPage({ params }: { params: Promise<{ id: s
                 }}
                 disabled={updateMutation.isPending}
               >
-                {updateMutation.isPending ? "Saving..." : "Save Changes"}
+                {updateMutation.isPending ? t("saving") : t("saveChanges")}
               </Button>
             </div>
           </CardContent>
@@ -243,19 +245,18 @@ export default function DocumentDetailPage({ params }: { params: Promise<{ id: s
       <AlertDialog open={showDelete} onOpenChange={setShowDelete}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Document</AlertDialogTitle>
+            <AlertDialogTitle>{t("deleteTitle")}</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete "{doc.title || doc.file_name}"? This action cannot be undone.
-              The document and all its data will be permanently removed.
+              {t("deleteConfirm", { title: doc.title || doc.file_name })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => deleteMutation.mutate()}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {deleteMutation.isPending ? "Deleting..." : "Delete"}
+              {deleteMutation.isPending ? t("deleting") : t("delete")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -267,10 +268,10 @@ export default function DocumentDetailPage({ params }: { params: Promise<{ id: s
           <CardContent className="pt-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <FileText className="h-5 w-5 text-muted-foreground" />
+                <FileText className="h-5 w-5 text-brand-teal" />
                 <div>
                   <p className="text-sm font-medium">{doc.file_name}</p>
-                  <p className="text-xs text-muted-foreground">{doc.file_mime_type || "Unknown type"}</p>
+                  <p className="text-xs text-muted-foreground">{doc.file_mime_type || t("unknownType")}</p>
                 </div>
               </div>
               <div className="flex gap-2">
@@ -285,7 +286,7 @@ export default function DocumentDetailPage({ params }: { params: Promise<{ id: s
                     }}
                   >
                     <Eye className="mr-1 h-3 w-3" />
-                    Preview
+                    {t("preview")}
                   </Button>
                 )}
                 {doc.file_mime_type === "application/pdf" && (
@@ -299,7 +300,7 @@ export default function DocumentDetailPage({ params }: { params: Promise<{ id: s
                     }}
                   >
                     <Eye className="mr-1 h-3 w-3" />
-                    Preview
+                    {t("preview")}
                   </Button>
                 )}
                 <Button
@@ -317,7 +318,7 @@ export default function DocumentDetailPage({ params }: { params: Promise<{ id: s
                   }}
                 >
                   <Download className="mr-1 h-3 w-3" />
-                  Download
+                  {t("download")}
                 </Button>
               </div>
             </div>
@@ -347,7 +348,7 @@ export default function DocumentDetailPage({ params }: { params: Promise<{ id: s
               <iframe src={previewUrl} className="w-full h-[70vh] border rounded" title={doc.file_name} />
             ) : (
               <pre className="text-sm whitespace-pre-wrap bg-muted p-4 rounded max-h-[70vh] overflow-auto">
-                Preview not available
+                {t("previewNotAvailable")}
               </pre>
             )}
           </div>
@@ -358,36 +359,36 @@ export default function DocumentDetailPage({ params }: { params: Promise<{ id: s
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         <Card>
           <CardContent className="pt-4">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <FileText className="h-4 w-4" />
-              Type
+            <div className="flex items-center gap-2 text-sm">
+              <FileText className="h-4 w-4 text-brand-teal" />
+              <span className="text-muted-foreground">{t("type")}</span>
             </div>
             <p className="mt-1 text-lg font-semibold">{doc.doc_type}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-4">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Globe className="h-4 w-4" />
-              Language
+            <div className="flex items-center gap-2 text-sm">
+              <Globe className="h-4 w-4 text-brand-cyan" />
+              <span className="text-muted-foreground">{t("language")}</span>
             </div>
-            <p className="mt-1 text-lg font-semibold">{doc.language || "Unknown"}</p>
+            <p className="mt-1 text-lg font-semibold">{doc.language || t("unknown")}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-4">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Hash className="h-4 w-4" />
-              Words
+            <div className="flex items-center gap-2 text-sm">
+              <Hash className="h-4 w-4 text-brand-teal" />
+              <span className="text-muted-foreground">{t("words")}</span>
             </div>
             <p className="mt-1 text-lg font-semibold">{doc.word_count.toLocaleString()}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-4">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Layers className="h-4 w-4" />
-              Chunks
+            <div className="flex items-center gap-2 text-sm">
+              <Layers className="h-4 w-4 text-brand-cyan" />
+              <span className="text-muted-foreground">{t("chunks")}</span>
             </div>
             <p className="mt-1 text-lg font-semibold">{doc.chunk_count}</p>
           </CardContent>
@@ -399,15 +400,15 @@ export default function DocumentDetailPage({ params }: { params: Promise<{ id: s
         {/* Classification */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Classification</CardTitle>
+            <CardTitle className="text-base">{t("classification")}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
             <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Type</span>
+              <span className="text-muted-foreground">{t("type")}</span>
               <span className="font-medium">{doc.doc_type}</span>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Confidence</span>
+              <span className="text-muted-foreground">{t("confidence")}</span>
               <span className="font-medium">
                 {doc.classification_confidence != null
                   ? `${(doc.classification_confidence * 100).toFixed(1)}%`
@@ -415,7 +416,7 @@ export default function DocumentDetailPage({ params }: { params: Promise<{ id: s
               </span>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Pages</span>
+              <span className="text-muted-foreground">{t("pages")}</span>
               <span className="font-medium">{doc.page_count || "—"}</span>
             </div>
           </CardContent>
@@ -424,17 +425,17 @@ export default function DocumentDetailPage({ params }: { params: Promise<{ id: s
         {/* Timestamps */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Timeline</CardTitle>
+            <CardTitle className="text-base">{t("timeline")}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
             <div className="flex items-center gap-2 text-sm">
-              <Calendar className="h-4 w-4 text-muted-foreground" />
-              <span className="text-muted-foreground">Created:</span>
+              <Calendar className="h-4 w-4 text-brand-teal" />
+              <span className="text-muted-foreground">{t("created")}</span>
               <span>{formatDateTime(doc.created_at)}</span>
             </div>
             <div className="flex items-center gap-2 text-sm">
-              <Calendar className="h-4 w-4 text-muted-foreground" />
-              <span className="text-muted-foreground">Updated:</span>
+              <Calendar className="h-4 w-4 text-brand-teal" />
+              <span className="text-muted-foreground">{t("updated")}</span>
               <span>{formatDateTime(doc.updated_at)}</span>
             </div>
           </CardContent>
@@ -446,11 +447,11 @@ export default function DocumentDetailPage({ params }: { params: Promise<{ id: s
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
-              <Lightbulb className="h-4 w-4" />
-              Summary
+              <Lightbulb className="h-4 w-4 text-brand-teal" />
+              {t("summary")}
             </CardTitle>
             <CardDescription>
-              AI-generated summary of this document
+              {t("summaryDesc")}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -466,11 +467,11 @@ export default function DocumentDetailPage({ params }: { params: Promise<{ id: s
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
-              <Brain className="h-4 w-4" />
-              Extracted Entities
+              <Brain className="h-4 w-4 text-brand-cyan" />
+              {t("extractedEntities")}
             </CardTitle>
             <CardDescription>
-              Named entities identified by the AI pipeline
+              {t("entitiesDesc")}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -506,11 +507,11 @@ export default function DocumentDetailPage({ params }: { params: Promise<{ id: s
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
-              <Tag className="h-4 w-4" />
-              Keywords
+              <Tag className="h-4 w-4 text-brand-teal" />
+              {t("keywords")}
             </CardTitle>
             <CardDescription>
-              Extracted keywords from document metadata
+              {t("keywordsDesc")}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -529,7 +530,7 @@ export default function DocumentDetailPage({ params }: { params: Promise<{ id: s
       {doc.tags.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Tags</CardTitle>
+            <CardTitle className="text-base">{t("tags")}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="flex flex-wrap gap-2">
@@ -548,55 +549,55 @@ export default function DocumentDetailPage({ params }: { params: Promise<{ id: s
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
-              <Info className="h-4 w-4" />
-              Document Metadata
+              <Info className="h-4 w-4 text-brand-cyan" />
+              {t("documentMetadata")}
             </CardTitle>
             <CardDescription>
-              Extracted metadata from the document file
+              {t("metadataDesc")}
             </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
               {metadata.title && (
                 <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Title</span>
+                  <span className="text-muted-foreground">{t("titleLabel")}</span>
                   <span className="font-medium">{metadata.title}</span>
                 </div>
               )}
               {metadata.author && (
                 <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Author</span>
+                  <span className="text-muted-foreground">{t("author")}</span>
                   <span className="font-medium">{metadata.author}</span>
                 </div>
               )}
               {metadata.subject && (
                 <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Subject</span>
+                  <span className="text-muted-foreground">{t("subject")}</span>
                   <span className="font-medium">{metadata.subject}</span>
                 </div>
               )}
               {metadata.creation_date && (
                 <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Creation Date</span>
+                  <span className="text-muted-foreground">{t("creationDate")}</span>
                   <span className="font-medium">{metadata.creation_date}</span>
                 </div>
               )}
               {metadata.modification_date && (
                 <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Modification Date</span>
+                  <span className="text-muted-foreground">{t("modificationDate")}</span>
                   <span className="font-medium">{metadata.modification_date}</span>
                 </div>
               )}
               {metadata.char_count > 0 && (
                 <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Characters</span>
+                  <span className="text-muted-foreground">{t("characters")}</span>
                   <span className="font-medium">{metadata.char_count.toLocaleString()}</span>
                 </div>
               )}
               {Object.keys(metadata.extra).length > 0 && (
                 <>
                   <div className="my-2 border-t" />
-                  <p className="text-sm font-medium text-muted-foreground">Additional Metadata</p>
+                  <p className="text-sm font-medium text-muted-foreground">{t("additionalMetadata")}</p>
                   {Object.entries(metadata.extra).map(([key, value]) => (
                     <div key={key} className="flex justify-between text-sm">
                       <span className="text-muted-foreground">{key}</span>
@@ -616,13 +617,13 @@ export default function DocumentDetailPage({ params }: { params: Promise<{ id: s
       {doc.extracted_text_preview && (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-base">Extracted Text Preview</CardTitle>
+            <CardTitle className="text-base">{t("extractedTextPreview")}</CardTitle>
             <Button
               variant="ghost"
               size="sm"
               onClick={() => setExpanded(!expanded)}
             >
-              {expanded ? "Collapse" : "Expand"}
+              {expanded ? t("collapse") : t("expand")}
               <ChevronsUpDown className="ml-1 h-4 w-4" />
             </Button>
           </CardHeader>
@@ -652,7 +653,7 @@ export default function DocumentDetailPage({ params }: { params: Promise<{ id: s
       {doc.error_message && (
         <Card className="border-destructive">
           <CardHeader>
-            <CardTitle className="text-base text-destructive">Error</CardTitle>
+            <CardTitle className="text-base text-destructive">{t("error")}</CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-sm text-destructive">{doc.error_message}</p>

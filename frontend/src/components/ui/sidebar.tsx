@@ -8,7 +8,6 @@ import {
   FolderOpen,
   Search,
   Settings,
-  Archive,
   ChevronLeft,
   MessageSquare,
   BarChart3,
@@ -16,66 +15,29 @@ import {
   Bot,
   Brain,
 } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/stores/ui-store";
 import OrgSwitcher from "@/components/features/organization/org-switcher";
-
-const navItems = [
-  {
-    label: "Dashboard",
-    href: "/dashboard",
-    icon: LayoutDashboard,
-  },
-  {
-    label: "Files",
-    href: "/files",
-    icon: FolderOpen,
-  },
-  {
-    label: "Documents",
-    href: "/documents",
-    icon: FileText,
-  },
-  {
-    label: "AI Workspace",
-    href: "/ai-workspace",
-    icon: Brain,
-  },
-  {
-    label: "Devices",
-    href: "/agents",
-    icon: Bot,
-  },
-  {
-    label: "Search",
-    href: "/search",
-    icon: Search,
-  },
-  {
-    label: "Workflows",
-    href: "/workflows",
-    icon: GitBranch,
-  },
-  {
-    label: "Reports",
-    href: "/reports",
-    icon: BarChart3,
-  },
-  {
-    label: "Chat",
-    href: "/chat",
-    icon: MessageSquare,
-  },
-  {
-    label: "Settings",
-    href: "/settings",
-    icon: Settings,
-  },
-];
+import { BasirahLogo } from "@/components/ui/basirah-logo";
 
 export function Sidebar() {
   const pathname = usePathname();
   const { sidebarOpen, toggleSidebar } = useUIStore();
+  const t = useTranslations("sidebar");
+
+  const navItems = [
+    { label: t("dashboard"), href: "/dashboard", icon: LayoutDashboard },
+    { label: t("files"), href: "/files", icon: FolderOpen },
+    { label: t("documents"), href: "/documents", icon: FileText },
+    { label: t("aiWorkspace"), href: "/ai-workspace", icon: Brain },
+    { label: t("devices"), href: "/agents", icon: Bot },
+    { label: t("search"), href: "/search", icon: Search },
+    { label: t("workflows"), href: "/workflows", icon: GitBranch },
+    { label: t("reports"), href: "/reports", icon: BarChart3 },
+    { label: t("chat"), href: "/chat", icon: MessageSquare },
+    { label: t("settings"), href: "/settings", icon: Settings },
+  ];
 
   return (
     <aside
@@ -88,13 +50,13 @@ export function Sidebar() {
         <div className="flex h-14 items-center justify-between border-b px-4">
           {sidebarOpen && (
             <Link href="/dashboard" className="flex items-center gap-2">
-              <Archive className="h-6 w-6 text-primary" />
-              <span className="font-bold text-lg">AI Archive</span>
+              <BasirahLogo size={28} />
+              <span className="font-bold text-lg">{t("basirah")}</span>
             </Link>
           )}
           {!sidebarOpen && (
             <Link href="/dashboard" className="mx-auto">
-              <Archive className="h-6 w-6 text-primary" />
+              <BasirahLogo size={24} />
             </Link>
           )}
           <button
@@ -126,8 +88,9 @@ export function Sidebar() {
                 className={cn(
                   "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
                   isActive
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                    ? "bg-brand-teal/10 text-brand-teal"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                  isActive && "border-l-2 border-brand-teal"
                 )}
                 title={!sidebarOpen ? item.label : undefined}
               >

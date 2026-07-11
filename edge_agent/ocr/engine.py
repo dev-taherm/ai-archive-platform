@@ -15,6 +15,7 @@ import tempfile
 from typing import Any
 
 from edge_agent.core.models import Confidence, Language
+from edge_agent.core.providers import OCRProvider
 
 logger = logging.getLogger(__name__)
 
@@ -60,10 +61,19 @@ def _variance(values: list[int]) -> float:
     return sum((x - mean) ** 2 for x in values) / len(values)
 
 
-class OCREngine:
+class OCREngine(OCRProvider):
     """PaddleOCR with Tesseract fallback. Runs PaddleOCR in subprocess for OOM isolation."""
 
-    def __init__(self, *, lang: str = "en", use_gpu: bool = False, timeout: int = _OCR_TIMEOUT) -> None:
+    provider_name = "paddleocr"
+
+    def __init__(
+        self,
+        *,
+        lang: str = "en",
+        use_gpu: bool = False,
+        timeout: int = _OCR_TIMEOUT,
+        plugin_registry: Any = None,
+    ) -> None:
         self._lang = lang
         self._use_gpu = use_gpu
         self._timeout = timeout

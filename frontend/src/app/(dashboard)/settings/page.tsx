@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import { useAuth } from "@/hooks/use-auth";
 import { useUIStore } from "@/stores/ui-store";
 import { Button } from "@/components/ui/button";
@@ -31,19 +32,21 @@ interface ApiKey {
 
 type Tab = "profile" | "appearance" | "api-keys" | "ai-providers" | "organization";
 
-const tabs: { id: Tab; label: string; icon: typeof User }[] = [
-  { id: "profile", label: "Profile", icon: User },
-  { id: "organization", label: "Organization", icon: Building2 },
-  { id: "appearance", label: "Appearance", icon: Palette },
-  { id: "api-keys", label: "API Keys", icon: Key },
-  { id: "ai-providers", label: "AI Providers", icon: Brain },
-];
-
 export default function SettingsPage() {
+  const t = useTranslations("settings");
+  const tc = useTranslations("common");
   const { user } = useAuth();
   const { theme, setTheme } = useUIStore();
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState<Tab>("profile");
+
+  const tabs: { id: Tab; label: string; icon: typeof User }[] = [
+    { id: "profile", label: t("profile"), icon: User },
+    { id: "organization", label: t("organization"), icon: Building2 },
+    { id: "appearance", label: t("appearance"), icon: Palette },
+    { id: "api-keys", label: t("apiKeys"), icon: Key },
+    { id: "ai-providers", label: t("aiProviders"), icon: Brain },
+  ];
   const [firstName, setFirstName] = useState(user?.first_name || "");
   const [lastName, setLastName] = useState(user?.last_name || "");
   const [saving, setSaving] = useState(false);
@@ -61,9 +64,9 @@ export default function SettingsPage() {
         first_name: firstName,
         last_name: lastName,
       });
-      toast({ title: "Profile updated successfully" });
+      toast({ title: t("profileUpdatedSuccess") });
     } catch {
-      toast({ title: "Failed to update profile", variant: "destructive" });
+      toast({ title: t("profileUpdateFailed"), variant: "destructive" });
     } finally {
       setSaving(false);
     }
@@ -78,9 +81,9 @@ export default function SettingsPage() {
       setApiKeys((prev) => [...prev, newKey]);
       setShowNewKey(newKey.key || null);
       setNewKeyName("");
-      toast({ title: "API key created successfully" });
+      toast({ title: t("apiKeyCreatedSuccess") });
     } catch {
-      toast({ title: "Failed to create API key", variant: "destructive" });
+      toast({ title: t("apiKeyCreateFailed"), variant: "destructive" });
     } finally {
       setCreatingKey(false);
     }
@@ -90,9 +93,9 @@ export default function SettingsPage() {
     try {
       await api.delete(`/api-keys/${keyId}/`);
       setApiKeys((prev) => prev.filter((k) => k.id !== keyId));
-      toast({ title: "API key deleted" });
+      toast({ title: t("apiKeyDeleted") });
     } catch {
-      toast({ title: "Failed to delete API key", variant: "destructive" });
+      toast({ title: t("apiKeyDeleteFailed"), variant: "destructive" });
     }
   };
 
@@ -103,9 +106,9 @@ export default function SettingsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Settings</h1>
+        <h1 className="text-2xl font-bold bg-gradient-to-r from-brand-teal to-brand-cyan bg-clip-text text-transparent">{t("title")}</h1>
         <p className="text-muted-foreground">
-          Manage your account settings and preferences
+          {t("subtitle")}
         </p>
       </div>
 
@@ -119,7 +122,7 @@ export default function SettingsPage() {
               onClick={() => setActiveTab(tab.id)}
               className={`flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors ${
                 activeTab === tab.id
-                  ? "bg-background text-foreground shadow-sm"
+                  ? "bg-brand-teal/10 text-brand-teal shadow-sm"
                   : "text-muted-foreground hover:text-foreground"
               }`}
             >
@@ -135,7 +138,7 @@ export default function SettingsPage() {
         <div className="space-y-4">
           <div className="space-y-2">
             <label htmlFor="username" className="text-sm font-medium">
-              Username
+              {t("username")}
             </label>
             <Input
               id="username"
@@ -146,7 +149,7 @@ export default function SettingsPage() {
           </div>
           <div className="space-y-2">
             <label htmlFor="email" className="text-sm font-medium">
-              Email
+              {t("email")}
             </label>
             <Input
               id="email"
@@ -158,7 +161,7 @@ export default function SettingsPage() {
           <div className="grid grid-cols-2 gap-4 max-w-md">
             <div className="space-y-2">
               <label htmlFor="firstName" className="text-sm font-medium">
-                First Name
+                {t("firstName")}
               </label>
               <Input
                 id="firstName"
@@ -168,7 +171,7 @@ export default function SettingsPage() {
             </div>
             <div className="space-y-2">
               <label htmlFor="lastName" className="text-sm font-medium">
-                Last Name
+                {t("lastName")}
               </label>
               <Input
                 id="lastName"
@@ -178,7 +181,7 @@ export default function SettingsPage() {
             </div>
           </div>
           <Button onClick={handleSave} disabled={saving}>
-            {saving ? "Saving..." : "Save Changes"}
+            {saving ? t("saving") : t("saveChanges")}
           </Button>
         </div>
       )}
@@ -187,17 +190,17 @@ export default function SettingsPage() {
       {activeTab === "appearance" && (
         <div className="space-y-4">
           <div className="space-y-2">
-            <label className="text-sm font-medium">Theme</label>
+            <label className="text-sm font-medium">{t("theme")}</label>
             <div className="flex gap-2">
-              {(["light", "dark", "system"] as const).map((t) => (
+              {(["light", "dark", "system"] as const).map((v) => (
                 <Button
-                  key={t}
-                  variant={theme === t ? "default" : "outline"}
+                  key={v}
+                  variant={theme === v ? "default" : "outline"}
                   size="sm"
-                  onClick={() => setTheme(t)}
+                  onClick={() => setTheme(v)}
                   className="capitalize"
                 >
-                  {t}
+                  {t(v)}
                 </Button>
               ))}
             </div>
@@ -211,13 +214,13 @@ export default function SettingsPage() {
           {showNewKey && (
             <div className="rounded-md bg-green-50 p-3 text-sm dark:bg-green-900/20">
               <p className="font-medium text-green-800 dark:text-green-200">
-                New API Key Created
+                {t("newApiKeyCreated")}
               </p>
               <code className="mt-1 block break-all font-mono text-xs">
                 {showNewKey}
               </code>
               <p className="mt-1 text-xs text-green-600 dark:text-green-400">
-                Copy this key now. It will not be shown again.
+                {t("copyKeyWarning")}
               </p>
               <Button
                 variant="outline"
@@ -225,7 +228,7 @@ export default function SettingsPage() {
                 className="mt-2"
                 onClick={() => setShowNewKey(null)}
               >
-                Dismiss
+                {tc("dismiss")}
               </Button>
             </div>
           )}
@@ -242,7 +245,7 @@ export default function SettingsPage() {
                     <p className="text-xs text-muted-foreground">
                       {showKeys[key.id] ? key.key_preview : "••••••••••••••••"}
                       {" "}
-                      Created: {new Date(key.created_at).toLocaleDateString()}
+                      {t("createdLabel", { date: new Date(key.created_at).toLocaleDateString() })}
                     </p>
                   </div>
                   <div className="flex items-center gap-1">
@@ -272,13 +275,13 @@ export default function SettingsPage() {
             </div>
           ) : (
             <p className="text-sm text-muted-foreground">
-              No API keys created yet.
+              {t("noApiKeys")}
             </p>
           )}
 
           <div className="flex items-center gap-2">
             <Input
-              placeholder="Key name (e.g., CI/CD Pipeline)"
+              placeholder={t("keyNamePlaceholder")}
               value={newKeyName}
               onChange={(e) => setNewKeyName(e.target.value)}
               className="max-w-sm"
@@ -290,7 +293,7 @@ export default function SettingsPage() {
               size="sm"
             >
               <Plus className="mr-1 h-3.5 w-3.5" />
-              {creatingKey ? "Creating..." : "Create Key"}
+              {creatingKey ? t("creating") : t("createKey")}
             </Button>
           </div>
         </div>

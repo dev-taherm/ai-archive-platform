@@ -48,6 +48,7 @@ import {
 import Link from "next/link";
 import { formatBytes, formatDateTime } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { useTranslations } from "next-intl";
 
 function getFileIcon(mimeType: string) {
   if (mimeType.startsWith("image/")) return FileImage;
@@ -67,6 +68,8 @@ function getStatusColor(status: string) {
 }
 
 export default function FilesPage() {
+  const t = useTranslations("files");
+  const tc = useTranslations("common");
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [search, setSearch] = useState("");
@@ -186,7 +189,7 @@ export default function FilesPage() {
 
     if (moveMode === "agent") {
       if (!moveTargetAgent) {
-        toast({ title: "Select a target device", variant: "destructive" });
+        toast({ title: t("selectTargetDevice"), variant: "destructive" });
         return;
       }
       // Find the source agent from agents list
@@ -194,7 +197,7 @@ export default function FilesPage() {
         a.folders?.some((f) => file.path.startsWith(f.local_path))
       );
       if (!sourceAgent) {
-        toast({ title: "Cannot determine source device", variant: "destructive" });
+        toast({ title: t("cannotDetermineSource"), variant: "destructive" });
         return;
       }
       moveFileAgent.mutate({
@@ -204,14 +207,14 @@ export default function FilesPage() {
       });
     } else {
       if (!moveSourcePath || !moveTargetPath) {
-        toast({ title: "Enter source and target paths", variant: "destructive" });
+        toast({ title: t("enterSourceTargetPaths"), variant: "destructive" });
         return;
       }
       const sourceAgent = agents.find((a) =>
         a.folders?.some((f) => file.path.startsWith(f.local_path))
       );
       if (!sourceAgent) {
-        toast({ title: "Cannot determine source device", variant: "destructive" });
+        toast({ title: t("cannotDetermineSource"), variant: "destructive" });
         return;
       }
       moveFileFolder.mutate({
@@ -234,9 +237,9 @@ export default function FilesPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Files</h1>
+          <h1 className="text-2xl font-bold bg-gradient-to-r from-brand-teal to-brand-cyan bg-clip-text text-transparent">{t("title")}</h1>
           <p className="text-muted-foreground">
-            Files ingested by edge devices
+            {t("subtitle")}
           </p>
         </div>
       </div>
@@ -244,15 +247,15 @@ export default function FilesPage() {
       {files.length === 0 && !isLoading ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-            <Bot className="mb-4 h-12 w-12 text-muted-foreground opacity-50" />
-            <p className="text-lg font-medium">No files yet</p>
+            <Bot className="mb-4 h-12 w-12 text-brand-teal opacity-50" />
+            <p className="text-lg font-medium">{t("emptyHeading")}</p>
             <p className="mb-4 mt-1 max-w-sm text-sm text-muted-foreground">
-              Files are ingested via Edge Devices. Set up a device to start monitoring folders and processing documents.
+              {t("emptyDescription")}
             </p>
             <Link href="/agents">
               <Button>
                 <Bot className="mr-2 h-4 w-4" />
-                Set up an Edge Device
+                {t("setUpDevice")}
               </Button>
             </Link>
           </CardContent>
@@ -263,7 +266,7 @@ export default function FilesPage() {
             <div className="flex items-center gap-2">
               <Search className="h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search files by name, type, or tag..."
+                placeholder={t("searchPlaceholder")}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="max-w-sm"
@@ -280,24 +283,24 @@ export default function FilesPage() {
           <CardContent>
             {isLoading ? (
               <div className="flex justify-center py-8 text-muted-foreground">
-                Loading files...
+                {t("loading")}
               </div>
             ) : filtered.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-                <FolderOpen className="mb-4 h-12 w-12 opacity-50" />
-                <p className="text-lg font-medium">No files match your search</p>
-                <p className="text-sm">Try a different search term</p>
+                <FolderOpen className="mb-4 h-12 w-12 text-brand-teal opacity-50" />
+                <p className="text-lg font-medium">{t("noSearchResults")}</p>
+                <p className="text-sm">{t("noSearchResultsDesc")}</p>
               </div>
             ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>File</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Size</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Tags</TableHead>
-                    <TableHead>Added</TableHead>
+                    <TableHead>{t("file")}</TableHead>
+                    <TableHead>{t("type")}</TableHead>
+                    <TableHead>{t("size")}</TableHead>
+                    <TableHead>{t("status")}</TableHead>
+                    <TableHead>{t("tags")}</TableHead>
+                    <TableHead>{t("added")}</TableHead>
                     <TableHead className="w-10"></TableHead>
                   </TableRow>
                 </TableHeader>
@@ -363,11 +366,11 @@ export default function FilesPage() {
                                   disabled={processMutation.isPending}
                                 >
                                   {processMutation.isPending ? (
-                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                    <Loader2 className="h-4 w-4 animate-spin text-brand-teal" />
                                   ) : (
                                     <Play className="h-4 w-4" />
                                   )}
-                                  {processMutation.isPending ? "Processing..." : "Process Document"}
+                                  {processMutation.isPending ? t("processing") : t("processDocument")}
                                 </button>
                                 <button
                                   className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-muted"
@@ -381,7 +384,7 @@ export default function FilesPage() {
                                   }}
                                 >
                                   <ArrowRightLeft className="h-4 w-4" />
-                                  Move File
+                                  {t("moveFile")}
                                 </button>
                                 <button
                                   className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-destructive hover:bg-muted"
@@ -389,7 +392,7 @@ export default function FilesPage() {
                                   disabled={deleteMutation.isPending}
                                 >
                                   <Trash2 className="h-4 w-4" />
-                                  Delete
+                                  {tc("delete")}
                                 </button>
                               </div>
                             )}
@@ -409,10 +412,9 @@ export default function FilesPage() {
       <AlertDialog open={!!showMoveDialog} onOpenChange={() => setShowMoveDialog(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Move File</AlertDialogTitle>
+            <AlertDialogTitle>{t("moveFileTitle")}</AlertDialogTitle>
             <AlertDialogDescription>
-              Choose how to move this file. Moving between devices reassigns ownership.
-              Moving between folders changes the file path prefix.
+              {t("moveFileDescription")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="space-y-4 py-4">
@@ -422,26 +424,26 @@ export default function FilesPage() {
                 variant={moveMode === "agent" ? "default" : "outline"}
                 onClick={() => setMoveMode("agent")}
               >
-                Move to Device
+                {t("moveToDevice")}
               </Button>
               <Button
                 size="sm"
                 variant={moveMode === "folder" ? "default" : "outline"}
                 onClick={() => setMoveMode("folder")}
               >
-                Move to Folder
+                {t("moveToFolder")}
               </Button>
             </div>
 
             {moveMode === "agent" ? (
               <div className="space-y-2">
-                <p className="text-sm text-muted-foreground">Target Device</p>
+                <p className="text-sm text-muted-foreground">{t("targetDevice")}</p>
                 <select
                   value={moveTargetAgent}
                   onChange={(e) => setMoveTargetAgent(e.target.value)}
                   className="w-full rounded-md border bg-background px-3 py-2 text-sm"
                 >
-                  <option value="">Select device...</option>
+                  <option value="">{t("selectDevice")}</option>
                   {agents.map((a) => (
                     <option key={a.agent_id} value={a.agent_id}>
                       {a.name} ({a.agent_id})
@@ -452,17 +454,17 @@ export default function FilesPage() {
             ) : (
               <div className="space-y-2">
                 <div>
-                  <p className="text-sm text-muted-foreground mb-1">Source Path Prefix</p>
+                  <p className="text-sm text-muted-foreground mb-1">{t("sourcePathPrefix")}</p>
                   <Input
-                    placeholder="/home/user/documents"
+                    placeholder={t("sourcePathPlaceholder")}
                     value={moveSourcePath}
                     onChange={(e) => setMoveSourcePath(e.target.value)}
                   />
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground mb-1">Target Path Prefix</p>
+                  <p className="text-sm text-muted-foreground mb-1">{t("targetPathPrefix")}</p>
                   <Input
-                    placeholder="/home/user/archives"
+                    placeholder={t("targetPathPlaceholder")}
                     value={moveTargetPath}
                     onChange={(e) => setMoveTargetPath(e.target.value)}
                   />
@@ -471,14 +473,14 @@ export default function FilesPage() {
             )}
           </div>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{tc("cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => showMoveDialog && handleMoveFile(showMoveDialog)}
             >
-              {(moveFileAgent.isPending || moveFileFolder.isPending) && (
-                <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                {(moveFileAgent.isPending || moveFileFolder.isPending) && (
+                <Loader2 className="h-4 w-4 animate-spin mr-1 text-brand-teal" />
               )}
-              Move
+              {t("moveFile")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

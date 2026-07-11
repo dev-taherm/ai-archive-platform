@@ -38,14 +38,25 @@ pub fn run() {
             commands::stop_agent,
             commands::get_config,
             commands::update_config,
-            commands::call_agent_api,
-            commands::read_server_config,
             commands::register_agent,
-            commands::send_heartbeat,
             commands::run_sync,
             commands::start_auth_server,
             commands::poll_auth_result,
             commands::stop_auth_server,
+            commands::add_folder,
+            commands::remove_folder,
+            commands::get_folders,
+            commands::get_files,
+            commands::get_file,
+            commands::scan_file,
+            commands::scan_selected,
+            commands::move_file,
+            commands::rename_file,
+            commands::delete_file,
+            commands::copy_file,
+            commands::archive_files,
+            commands::restore_file,
+            commands::get_trash,
         ])
         .setup(|app| {
             let handle = app.handle().clone();
@@ -60,7 +71,6 @@ pub fn run() {
                     *err = Some(e);
                 }
             }
-
             Ok(())
         })
         .run(tauri::generate_context!())

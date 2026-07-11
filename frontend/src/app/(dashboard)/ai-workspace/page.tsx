@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import {
   Brain,
   FileText,
@@ -49,16 +50,17 @@ const entityTypeVariant: Record<string, "default" | "secondary" | "outline"> = {
   MONEY: "outline",
 };
 
-const tabs: { id: Tab; label: string; icon: typeof Brain }[] = [
-  { id: "summaries", label: "Summaries", icon: Lightbulb },
-  { id: "classifications", label: "Classifications", icon: BarChart3 },
-  { id: "entities", label: "Entities", icon: Users },
-  { id: "duplicates", label: "Duplicates", icon: Copy },
-  { id: "graph", label: "Knowledge Graph", icon: Network },
-];
-
 export default function AIWorkspacePage() {
+  const t = useTranslations("aiWorkspace");
+  const tc = useTranslations("common");
   const [activeTab, setActiveTab] = useState<Tab>("summaries");
+  const tabs: { id: Tab; label: string; icon: typeof Brain }[] = useMemo(() => [
+    { id: "summaries", label: t("summaries"), icon: Lightbulb },
+    { id: "classifications", label: t("classifications"), icon: BarChart3 },
+    { id: "entities", label: t("entities"), icon: Users },
+    { id: "duplicates", label: t("duplicates"), icon: Copy },
+    { id: "graph", label: t("knowledgeGraph"), icon: Network },
+  ], [t]);
   const [search, setSearch] = useState("");
 
   const { data: documents = [], isLoading } = useQuery<Document[]>({
@@ -171,7 +173,7 @@ export default function AIWorkspacePage() {
   }, [aggregatedEntities, docsWithEntities]);
 
   const typeColors: Record<string, string> = {
-    PERSON: "#3b82f6", ORGANIZATION: "#8b5cf6", LOCATION: "#10b981",
+    PERSON: "#0F8B8D", ORGANIZATION: "#38BDF8", LOCATION: "#0B1F3A",
     DATE: "#6b7280", EVENT: "#f59e0b", MONEY: "#ef4444",
   };
 
@@ -179,11 +181,11 @@ export default function AIWorkspacePage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">AI Workspace</h1>
-          <p className="text-muted-foreground">Explore AI-generated insights across all documents</p>
+          <h1 className="text-2xl font-bold bg-gradient-to-r from-brand-teal to-brand-cyan bg-clip-text text-transparent">{t("title")}</h1>
+          <p className="text-muted-foreground">{t("subtitle")}</p>
         </div>
-        <Button variant="outline" onClick={() => api.get("/documents")}>
-          <RefreshCw className="mr-2 h-4 w-4" /> Refresh
+        <Button variant="brand" onClick={() => api.get("/documents")}>
+          <RefreshCw className="mr-2 h-4 w-4" /> {t("refresh")}
         </Button>
       </div>
 
@@ -191,26 +193,26 @@ export default function AIWorkspacePage() {
       <div className="grid gap-4 md:grid-cols-4">
         <Card>
           <CardHeader className="pb-2">
-            <CardDescription>Documents Analyzed</CardDescription>
+            <CardDescription>{t("documentsAnalyzed")}</CardDescription>
             <CardTitle className="text-2xl">{documents.filter((d) => d.processing_status === "completed").length}</CardTitle>
           </CardHeader>
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardDescription>With Summaries</CardDescription>
-            <CardTitle className="text-2xl text-blue-600">{docsWithSummaries.length}</CardTitle>
+            <CardDescription>{t("withSummaries")}</CardDescription>
+            <CardTitle className="text-2xl text-brand-teal">{docsWithSummaries.length}</CardTitle>
           </CardHeader>
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardDescription>Unique Entities</CardDescription>
-            <CardTitle className="text-2xl text-purple-600">{aggregatedEntities.length}</CardTitle>
+            <CardDescription>{t("uniqueEntities")}</CardDescription>
+            <CardTitle className="text-2xl text-brand-cyan">{aggregatedEntities.length}</CardTitle>
           </CardHeader>
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardDescription>Classification Types</CardDescription>
-            <CardTitle className="text-2xl text-emerald-600">{classificationGroups.length}</CardTitle>
+            <CardDescription>{t("classificationTypes")}</CardDescription>
+            <CardTitle className="text-2xl text-brand-teal">{classificationGroups.length}</CardTitle>
           </CardHeader>
         </Card>
       </div>
@@ -224,7 +226,7 @@ export default function AIWorkspacePage() {
               key={tab.id}
               onClick={() => { setActiveTab(tab.id); setSearch(""); }}
               className={`flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors ${
-                activeTab === tab.id ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                activeTab === tab.id ? "bg-brand-teal/10 text-brand-teal shadow-sm" : "text-muted-foreground hover:text-foreground"
               }`}
             >
               <Icon className="h-4 w-4" />
@@ -238,13 +240,13 @@ export default function AIWorkspacePage() {
       {(activeTab === "summaries" || activeTab === "entities") && (
         <div className="relative max-w-sm">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input placeholder={`Search ${activeTab}...`} value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
+          <Input placeholder={activeTab === "summaries" ? t("searchSummaries") : t("searchEntities")} value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
         </div>
       )}
 
       {/* Tab Content */}
       {isLoading ? (
-        <div className="flex justify-center py-12 text-muted-foreground">Loading documents...</div>
+        <div className="flex justify-center py-12 text-muted-foreground">{t("loading")}</div>
       ) : (
         <>
           {/* Summaries Tab */}
@@ -253,9 +255,9 @@ export default function AIWorkspacePage() {
               {filteredSummaries.length === 0 ? (
                 <Card>
                   <CardContent className="flex flex-col items-center justify-center py-12">
-                    <Lightbulb className="mb-4 h-12 w-12 opacity-50" />
-                    <p className="text-lg font-medium">No summaries yet</p>
-                    <p className="text-sm text-muted-foreground">Process documents to generate AI summaries</p>
+                    <Lightbulb className="mb-4 h-12 w-12 text-brand-teal opacity-50" />
+                    <p className="text-lg font-medium">{t("noSummaries")}</p>
+                    <p className="text-sm text-muted-foreground">{t("noSummariesDesc")}</p>
                   </CardContent>
                 </Card>
               ) : (
@@ -275,7 +277,7 @@ export default function AIWorkspacePage() {
                           </CardDescription>
                         </div>
                         <Link href={`/documents/${doc.id}`}>
-                          <Button variant="ghost" size="sm"><Eye className="mr-1 h-3 w-3" /> View</Button>
+                          <Button variant="ghost" size="sm"><Eye className="mr-1 h-3 w-3" /> {t("view")}</Button>
                         </Link>
                       </div>
                     </CardHeader>
@@ -295,16 +297,16 @@ export default function AIWorkspacePage() {
               {classificationGroups.length === 0 ? (
                 <Card>
                   <CardContent className="flex flex-col items-center justify-center py-12">
-                    <BarChart3 className="mb-4 h-12 w-12 opacity-50" />
-                    <p className="text-lg font-medium">No classifications yet</p>
-                    <p className="text-sm text-muted-foreground">Process documents to see classification distribution</p>
+                    <BarChart3 className="mb-4 h-12 w-12 text-brand-cyan opacity-50" />
+                    <p className="text-lg font-medium">{t("noClassifications")}</p>
+                    <p className="text-sm text-muted-foreground">{t("noClassificationsDesc")}</p>
                   </CardContent>
                 </Card>
               ) : (
                 <>
                   <Card>
                     <CardHeader>
-                      <CardTitle className="text-base">Classification Distribution</CardTitle>
+                      <CardTitle className="text-base">{t("classificationDistribution")}</CardTitle>
                     </CardHeader>
                     <CardContent>
                       <div className="space-y-3">
@@ -314,10 +316,10 @@ export default function AIWorkspacePage() {
                             <div key={type} className="space-y-1">
                               <div className="flex items-center justify-between text-sm">
                                 <span className="font-medium capitalize">{type}</span>
-                                <span className="text-muted-foreground">{count} docs ({pct.toFixed(0)}%)</span>
+                                <span className="text-muted-foreground">{t("distribution", { count, pct: pct.toFixed(0) })}</span>
                               </div>
                               <div className="h-2 rounded-full bg-muted overflow-hidden">
-                                <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${pct}%` }} />
+                                <div className="h-full rounded-full bg-gradient-to-r from-brand-teal to-brand-cyan transition-all" style={{ width: `${pct}%` }} />
                               </div>
                             </div>
                           );
@@ -331,7 +333,7 @@ export default function AIWorkspacePage() {
                       <CardHeader className="pb-3">
                         <div className="flex items-center justify-between">
                           <CardTitle className="text-base capitalize">{type}</CardTitle>
-                          <Badge variant="secondary">{docs.length} docs</Badge>
+                          <Badge variant="secondary">{t("nDocs", { n: docs.length })}</Badge>
                         </div>
                       </CardHeader>
                       <CardContent>
@@ -339,7 +341,7 @@ export default function AIWorkspacePage() {
                           {docs.slice(0, 10).map((doc) => (
                             <div key={doc.id} className="flex items-center justify-between rounded-md border px-3 py-2">
                               <div className="flex items-center gap-2">
-                                <FileText className="h-4 w-4 text-muted-foreground" />
+                                <FileText className="h-4 w-4 text-brand-teal" />
                                 <Link href={`/documents/${doc.id}`} className="text-sm font-medium hover:underline">
                                   {doc.title || doc.file_name}
                                 </Link>
@@ -353,7 +355,7 @@ export default function AIWorkspacePage() {
                             </div>
                           ))}
                           {docs.length > 10 && (
-                            <p className="text-xs text-muted-foreground text-center pt-2">And {docs.length - 10} more...</p>
+                            <p className="text-xs text-muted-foreground text-center pt-2">{t("andMore", { n: docs.length - 10 })}</p>
                           )}
                         </div>
                       </CardContent>
@@ -370,10 +372,10 @@ export default function AIWorkspacePage() {
               {filteredEntities.length === 0 ? (
                 <Card>
                   <CardContent className="flex flex-col items-center justify-center py-12">
-                    <Users className="mb-4 h-12 w-12 opacity-50" />
-                    <p className="text-lg font-medium">No entities found</p>
+                    <Users className="mb-4 h-12 w-12 text-brand-teal opacity-50" />
+                    <p className="text-lg font-medium">{t("noEntities")}</p>
                     <p className="text-sm text-muted-foreground">
-                      {search ? "Try a different search term" : "Process documents to extract named entities"}
+                      {search ? tc("tryDifferentSearch") : t("noEntitiesDesc")}
                     </p>
                   </CardContent>
                 </Card>
@@ -381,7 +383,7 @@ export default function AIWorkspacePage() {
                 <>
                   <Card>
                     <CardHeader>
-                      <CardTitle className="text-base">Entity Types</CardTitle>
+                      <CardTitle className="text-base">{t("entityTypes")}</CardTitle>
                     </CardHeader>
                     <CardContent>
                       <div className="flex flex-wrap gap-2">
@@ -402,18 +404,18 @@ export default function AIWorkspacePage() {
                             <Badge variant={entityTypeVariant[entity.type] || "outline"}>{entity.type}</Badge>
                             <CardTitle className="text-base">{entity.name}</CardTitle>
                           </div>
-                          <Badge variant="secondary">{entity.count} {entity.count === 1 ? "doc" : "docs"}</Badge>
+                          <Badge variant="secondary">{t("nDocs", { n: entity.count })}</Badge>
                         </div>
                       </CardHeader>
                       <CardContent>
                         <div className="space-y-1">
                           {entity.documents.slice(0, 5).map((doc) => (
                             <Link key={doc.id} href={`/documents/${doc.id}`} className="flex items-center gap-2 rounded-md px-2 py-1 text-sm hover:bg-muted">
-                              <FileText className="h-3 w-3 text-muted-foreground" /> {doc.title}
+                              <FileText className="h-3 w-3 text-brand-teal" /> {doc.title}
                             </Link>
                           ))}
                           {entity.documents.length > 5 && (
-                            <p className="text-xs text-muted-foreground pl-2">+{entity.documents.length - 5} more documents</p>
+                            <p className="text-xs text-muted-foreground pl-2">{t("moreDocuments", { n: entity.documents.length - 5 })}</p>
                           )}
                         </div>
                       </CardContent>
@@ -429,35 +431,35 @@ export default function AIWorkspacePage() {
             <div className="space-y-4">
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-base">Duplicate Detection</CardTitle>
-                  <CardDescription>Overview of duplicate files detected by checksum analysis</CardDescription>
+                  <CardTitle className="text-base">{t("duplicateDetection")}</CardTitle>
+                  <CardDescription>{t("duplicateDetectionDesc")}</CardDescription>
                 </CardHeader>
                 <CardContent>
                   {stats ? (
                     <div className="grid gap-4 md:grid-cols-2">
                       <div className="rounded-lg border p-4">
-                        <p className="text-sm text-muted-foreground">Duplicate Files</p>
-                        <p className="text-3xl font-bold text-orange-600">{stats.duplicate_files}</p>
+                        <p className="text-sm text-muted-foreground">{t("duplicateFiles")}</p>
+                        <p className="text-3xl font-bold text-brand-teal">{stats.duplicate_files}</p>
                       </div>
                       <div className="rounded-lg border p-4">
                         <p className="text-sm text-muted-foreground">Duplicate Groups</p>
-                        <p className="text-3xl font-bold text-red-600">{stats.duplicate_groups}</p>
+                        <p className="text-3xl font-bold text-brand-cyan">{stats.duplicate_groups}</p>
                       </div>
                     </div>
                   ) : (
-                    <p className="text-sm text-muted-foreground">Loading stats...</p>
+                    <p className="text-sm text-muted-foreground">{t("loadingStats")}</p>
                   )}
                 </CardContent>
               </Card>
               <Card>
                 <CardContent className="flex flex-col items-center justify-center py-12">
-                  <Copy className="mb-4 h-12 w-12 opacity-50" />
-                  <p className="text-lg font-medium">Duplicate Group Details</p>
+                  <Copy className="mb-4 h-12 w-12 text-brand-cyan opacity-50" />
+                  <p className="text-lg font-medium">{t("duplicateGroupDetails")}</p>
                   <p className="text-sm text-muted-foreground text-center max-w-md">
-                    Detailed duplicate group management is coming soon. For now, you can view duplicate file counts on the Dashboard.
+                    {t("duplicateGroupDesc")}
                   </p>
                   <Link href="/dashboard">
-                    <Button variant="outline" className="mt-4"><BarChart3 className="mr-2 h-4 w-4" /> Go to Dashboard</Button>
+                    <Button variant="brand" className="mt-4"><BarChart3 className="mr-2 h-4 w-4" /> {tc("goToDashboard")}</Button>
                   </Link>
                 </CardContent>
               </Card>
@@ -470,19 +472,18 @@ export default function AIWorkspacePage() {
               {graphData.nodes.length === 0 ? (
                 <Card>
                   <CardContent className="flex flex-col items-center justify-center py-12">
-                    <Network className="mb-4 h-12 w-12 opacity-50" />
-                    <p className="text-lg font-medium">No entities to visualize</p>
-                    <p className="text-sm text-muted-foreground">Process documents with entity extraction to build a knowledge graph</p>
+                    <Network className="mb-4 h-12 w-12 text-brand-teal opacity-50" />
+                    <p className="text-lg font-medium">{t("noEntitiesToVisualize")}</p>
+                    <p className="text-sm text-muted-foreground">{t("noEntitiesToVisualizeDesc")}</p>
                   </CardContent>
                 </Card>
               ) : (
                 <>
                   <Card>
                     <CardHeader>
-                      <CardTitle className="text-base">Entity Co-occurrence Graph</CardTitle>
+                      <CardTitle className="text-base">{t("entityCoOccurrence")}</CardTitle>
                       <CardDescription>
-                        Entities that appear together in the same documents are connected.
-                        Node size reflects frequency; edge thickness reflects co-occurrence strength.
+                        {t("graphDescription")}
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
@@ -516,13 +517,13 @@ export default function AIWorkspacePage() {
                   </Card>
                   <Card>
                     <CardHeader className="pb-2">
-                      <CardTitle className="text-sm">Legend</CardTitle>
+                      <CardTitle className="text-sm">{t("legend")}</CardTitle>
                     </CardHeader>
                     <CardContent>
                       <div className="flex flex-wrap gap-3">
                         {[
-                          { type: "PERSON", color: "#3b82f6" }, { type: "ORGANIZATION", color: "#8b5cf6" },
-                          { type: "LOCATION", color: "#10b981" }, { type: "DATE", color: "#6b7280" },
+                          { type: "PERSON", color: "#0F8B8D" }, { type: "ORGANIZATION", color: "#38BDF8" },
+                          { type: "LOCATION", color: "#0B1F3A" }, { type: "DATE", color: "#6b7280" },
                           { type: "EVENT", color: "#f59e0b" }, { type: "MONEY", color: "#ef4444" },
                         ].map((item) => (
                           <div key={item.type} className="flex items-center gap-1.5">
@@ -532,7 +533,7 @@ export default function AIWorkspacePage() {
                         ))}
                       </div>
                       <p className="text-xs text-muted-foreground mt-2">
-                        {graphData.nodes.length} entities &middot; {graphData.edges.length} connections
+                        {t("graphSummary", { n: graphData.nodes.length, m: graphData.edges.length })}
                       </p>
                     </CardContent>
                   </Card>

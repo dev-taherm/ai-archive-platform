@@ -8,18 +8,6 @@ server:
   jwt_token: ''
 folders:
   - /home/taher/Documents/ai-archive-platform/test-docs
-scanner:
-  ignore_patterns:
-  - .git
-  - .svn
-  - __pycache__
-  - node_modules
-  - .DS_Store
-  - Thumbs.db
-  - '*.pyc'
-  - '*.pyo'
-  - '*.swp'
-  max_file_size_mb: 100
 ocr:
   lang: en
   use_gpu: false
@@ -30,12 +18,3 @@ parser:
   language: en
   formula_enable: true
   table_enable: true
-sync:
-  interval_minutes: 30
-  batch_size: 50
-  retry_attempts: 3
-  retry_delay_seconds: 60
-watcher:
-  enabled: true
-  recursive: true
-  debounce_seconds: 2.0

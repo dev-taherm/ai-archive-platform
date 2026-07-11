@@ -1,385 +1,684 @@
-"""API routes for the Edge Agent local server."""
-
 from __future__ import annotations
 
 import logging
+import os
 import time
 from pathlib import Path
-from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
-from .server import get_config, get_db, get_watcher, _start_time
+from .server import (
+    get_config,
+    get_db,
+    get_worker,
+    get_watcher,
+    get_sync_engine,
+    get_metrics,
+    get_log_handler,
+    get_event_bus,
+    _start_time,
+)
+from edge_agent.core.capabilities import detect_capabilities
+
+
+def _validate_path_safe(path: str) -> str:
+    resolved = str(Path(path).resolve())
+    if ".." in path.split("/") or ".." in path.split("\\"):
+        raise HTTPException(status_code=400, detail="Path traversal not allowed")
+    return resolved
+from edge_agent.core.job_queue import JobQueue
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
 
-class ConfigUpdate(BaseModel):
-    server_url: str | None = None
-    api_key: str | None = None
-    jwt_token: str | None = None
-    agent_name: str | None = None
-    folders: list[str] | None = None
-    ocr_engine: str | None = None
-    ocr_lang: str | None = None
-    parser_backend: str | None = None
-    sync_interval_minutes: int | None = None
+class ParseFileRequest(BaseModel):
+    file_path: str
 
 
 class ScanRequest(BaseModel):
-    folder: str
-    recursive: bool = True
+    file_id: str
 
 
-class ProcessRequest(BaseModel):
-    file: str
-
-
-class FolderAddRequest(BaseModel):
+class FolderCreate(BaseModel):
     path: str
-    label: str = ""
+
+
+class ConfigUpdate(BaseModel):
+    config: dict[str, str]
+
+
+class JobCreate(BaseModel):
+    type: str
+    payload: dict | None = None
 
 
 class MarkSyncedRequest(BaseModel):
     file_hashes: list[str]
 
 
-# --- Health & Status ---
+class RescanRequest(BaseModel):
+    path: str
+
+
+class RegisterRequest(BaseModel):
+    server_url: str
+    access_token: str
+
+
+class MoveFileRequest(BaseModel):
+    file_id: str
+    dest_path: str
+
+
+class RenameFileRequest(BaseModel):
+    file_id: str
+    new_name: str
+
+
+class DeleteFileRequest(BaseModel):
+    file_id: str
+
+
+class CopyFileRequest(BaseModel):
+    file_id: str
+    dest_path: str
+
+
+class ArchiveRequest(BaseModel):
+    file_ids: list[str]
+    dest_path: str
+    format: str = "zip"
+
+
+class RestoreFileRequest(BaseModel):
+    trash_id: str
+
 
 @router.get("/health")
 async def health():
-    return {"status": "healthy", "service": "edge-agent-api"}
+    return {"status": "healthy", "service": "edge-agent"}
 
 
 @router.get("/status")
 async def status():
-    config = get_config()
+    cfg = get_config()
     db = get_db()
-    stats = db.get_stats()
+    worker = get_worker()
     watcher = get_watcher()
+    metrics = get_metrics()
+
+    files = db.get_stats()
+    pending_jobs = db.conn.execute(
+        "SELECT COUNT(*) FROM jobs WHERE status='pending'"
+    ).fetchone()[0]
+    total_jobs = db.conn.execute("SELECT COUNT(*) FROM jobs").fetchone()[0]
+
     return {
-        "agent_name": config.agent_name,
-        "agent_id": config.agent_id,
-        "version": config.agent_version,
+        "agent_name": cfg.agent_name,
+        "agent_id": cfg.agent_id,
+        "version": cfg.agent_version,
         "uptime_seconds": int(time.time() - _start_time),
-        "watcher_active": len(watcher.watched_paths) > 0,
-        "watched_folders": watcher.watched_paths,
-        "db_path": config.db_path,
-        "stats": stats,
+        "worker": {
+            "running": worker.is_running,
+            "paused": worker.is_paused,
+            "active_jobs": worker.processing_count,
+        },
+        "watcher": {
+            "running": watcher.is_running,
+            "folder_count": watcher.folder_count,
+        },
+        "files": files,
+        "queue": {
+            "pending_jobs": pending_jobs,
+            "total_jobs": total_jobs,
+        },
+        "memory_mb": metrics.snapshot().get("memory_mb", 0.0),
     }
 
 
-# --- Config ---
+@router.get("/capabilities")
+async def capabilities():
+    return detect_capabilities()
+
 
 @router.get("/config")
-async def get_agent_config():
-    config = get_config()
-    return {
-        "server_url": config.server.url,
-        "api_key": config.server.api_key,
-        "jwt_token": config.server.jwt_token,
-        "agent_name": config.agent_name,
-        "agent_id": config.agent_id,
-        "folders": config.folders,
-        "ocr_engine": config.ocr.engine,
-        "ocr_lang": config.ocr.lang,
-        "parser_backend": config.parser.backend,
-        "sync_interval_minutes": config.sync.interval_minutes,
-    }
+async def get_config_endpoint():
+    db = get_db()
+    return db.get_config()
+
+
+# ── SaaS Communication (proxy to SaaS backend) ─────────────────────────────
+
+
+@router.post("/register")
+async def register_agent(body: RegisterRequest):
+    engine = get_sync_engine()
+    result = engine.register(body.server_url, body.access_token)
+    return result
+
+
+@router.post("/heartbeat")
+async def send_heartbeat():
+    engine = get_sync_engine()
+    return engine.heartbeat()
+
+
+@router.post("/sync")
+async def run_sync():
+    engine = get_sync_engine()
+    return engine.sync_files()
 
 
 @router.put("/config")
-async def update_config(update: ConfigUpdate):
-    config = get_config()
-    if update.server_url is not None:
-        config.server.url = update.server_url
-    if update.api_key is not None:
-        config.server.api_key = update.api_key
-    if update.jwt_token is not None:
-        config.server.jwt_token = update.jwt_token
-    if update.agent_name is not None:
-        config.agent_name = update.agent_name
-    if update.folders is not None:
-        config.folders = update.folders
-    if update.ocr_engine is not None:
-        config.ocr.engine = update.ocr_engine
-    if update.ocr_lang is not None:
-        config.ocr.lang = update.ocr_lang
-    if update.parser_backend is not None:
-        config.parser.backend = update.parser_backend
-    if update.sync_interval_minutes is not None:
-        config.sync.interval_minutes = update.sync_interval_minutes
-
-    _save_config_to_yaml(config)
-    return {"status": "updated"}
-
-
-def _save_config_to_yaml(config):
-    try:
-        from edge_agent.cli import _save_config
-        config_path = Path(config.data_dir) / "config.yaml"
-        _save_config(config, config_path)
-    except Exception as e:
-        logger.warning("Failed to save config: %s", e)
-
-
-# --- Agent Operations ---
-
-@router.get("/pending-sync")
-async def pending_sync(batch_size: int = Query(50, ge=1, le=500)):
-    """Build sync payload from pending local files (no SaaS call)."""
-    from edge_agent.sync.manager import SyncManager
-    config = get_config()
+async def update_config_endpoint(body: ConfigUpdate):
     db = get_db()
-    sync = SyncManager(config, db)
-    try:
-        payload = sync.build_sync_payload(batch_size=batch_size)
-        return payload
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    db.set_config_batch(body.config)
+    return {"status": "ok"}
 
 
-@router.post("/mark-synced")
-async def mark_synced(req: MarkSyncedRequest):
-    """Mark files as synced in local DB by content_hash."""
-    from edge_agent.sync.manager import SyncManager
-    config = get_config()
+@router.get("/folders")
+async def get_folders():
     db = get_db()
-    sync = SyncManager(config, db)
-    try:
-        count = sync.mark_synced(req.file_hashes)
-        return {"status": "ok", "marked": count}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    return db.get_folders()
+
+
+@router.post("/folders")
+async def add_folder(body: FolderCreate):
+    from edge_agent.core.scanner import scan_folder
+
+    db = get_db()
+    db.add_folder(body.path)
+    files = scan_folder(body.path)
+    count = db.upsert_files(files)
+    return {"status": "ok", "path": body.path, "discovered": count}
+
+
+@router.delete("/folders")
+async def remove_folder(path: str = Query(...)):
+    db = get_db()
+    db.remove_folder(path)
+    return {"status": "removed", "path": path}
+
+
+@router.post("/folders/rescan")
+async def rescan_folder(body: RescanRequest):
+    from edge_agent.core.scanner import scan_folder, scan_single
+
+    db = get_db()
+    fpath = body.path
+    if not Path(fpath).is_dir():
+        raise HTTPException(status_code=400, detail=f"Not a directory: {fpath}")
+
+    existing_files = db.get_files(limit=10000)
+    existing_by_path: dict[str, dict] = {f["local_path"]: f for f in existing_files}
+
+    discovered = 0
+    updated = 0
+
+    for root, dirs, files in os.walk(fpath, followlinks=False):
+        dirs[:] = [d for d in dirs if not d.startswith(".")]
+        for fname in files:
+            if fname.startswith("."):
+                continue
+            full = os.path.join(root, fname)
+            meta = scan_single(full)
+            if not meta:
+                continue
+            if full in existing_by_path:
+                old = existing_by_path[full]
+                if meta["file_hash"] != old.get("file_hash"):
+                    db.upsert_files([meta])
+                    updated += 1
+            else:
+                db.upsert_files([meta])
+                discovered += 1
+
+    removed_paths = [p for p in existing_by_path if not Path(p).exists()]
+    for p in removed_paths:
+        db.conn.execute("DELETE FROM files WHERE local_path=?", (p,))
+    if removed_paths:
+        db.conn.commit()
+
+    return {
+        "status": "ok",
+        "path": fpath,
+        "discovered": discovered,
+        "updated": updated,
+        "removed": len(removed_paths),
+    }
+
+
+@router.get("/files")
+async def get_files(
+    status: str | None = Query(None),
+    limit: int = Query(1000),
+    folder: str | None = Query(None),
+):
+    db = get_db()
+    return db.get_files(status=status, limit=limit, folder=folder)
+
+
+@router.get("/files/{file_id}")
+async def get_file(file_id: str):
+    db = get_db()
+    record = db.get_file_by_id(file_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="File not found")
+    return record
+
+
+@router.post("/files/mark-synced")
+async def mark_files_synced(body: MarkSyncedRequest):
+    db = get_db()
+    db.mark_synced(body.file_hashes)
+    return {"status": "ok", "count": len(body.file_hashes)}
 
 
 @router.post("/scan")
-async def scan_folder(req: ScanRequest):
-    """Scan a folder and process all files."""
-    from edge_agent.core.scanner import FileScanner
+async def scan_file(body: ScanRequest):
+    db = get_db()
+    worker = get_worker()
+    queue = JobQueue(db)
+
+    record = db.get_file_by_id(body.file_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    file_path = record["local_path"]
+    if not Path(file_path).exists():
+        db.mark_file_failed(body.file_id)
+        raise HTTPException(status_code=400, detail=f"File not found: {file_path}")
+
+    existing = queue.list_jobs(status="pending", limit=50)
+    existing += queue.list_jobs(status="running", limit=50)
+    for j in existing:
+        payload = j.get("payload", {})
+        if isinstance(payload, dict) and payload.get("file_id") == body.file_id:
+            return {"status": "processing", "job_id": j["id"], "note": "Already queued"}
+
+    job_id = queue.create_job("scan_file", {"file_id": body.file_id})
+
+    result = worker.wait_for_job(job_id, timeout=300.0)
+    if result and result.get("status") == "completed":
+        return {"status": "completed", "file_id": body.file_id}
+    else:
+        return {"status": "processing", "job_id": job_id}
+
+
+@router.get("/logs")
+async def get_logs(
+    level: str | None = Query(None),
+    limit: int = Query(50),
+    since: str | None = Query(None),
+):
+    handler = get_log_handler()
+    if handler is None:
+        return []
+    return handler.get_records(level=level, limit=limit, since=since)
+
+
+@router.get("/metrics")
+async def get_agent_metrics():
+    metrics = get_metrics()
+    return metrics.snapshot()
+
+
+@router.post("/agent/pause")
+async def pause_agent():
+    worker = get_worker()
+    worker.pause()
+    return {"status": "paused"}
+
+
+@router.post("/agent/resume")
+async def resume_agent():
+    worker = get_worker()
+    worker.resume()
+    return {"status": "resumed"}
+
+
+@router.post("/agent/restart")
+async def restart_agent():
+    from edge_agent.api.server import get_config as get_cfg
+
+    worker = get_worker()
+    watcher = get_watcher()
+    cfg = get_cfg()
+
+    worker.stop()
+    logger.info("Worker stopped for restart")
+
+    if watcher.is_running:
+        watcher.stop()
+        logger.info("Watcher stopped for restart")
+
+    worker.start()
+    logger.info("Worker restarted")
+
+    if cfg.watcher.enabled:
+        watcher.start(cfg.folders)
+        logger.info("Watcher restarted for %d folders", len(cfg.folders))
+
+    return {"status": "restarted"}
+
+
+@router.post("/parse-file")
+async def parse_file(req: ParseFileRequest):
     from edge_agent.parsers.router import ParserRouter
     from edge_agent.ocr.engine import OCREngine
 
-    config = get_config()
-    db = get_db()
-    scanner = FileScanner(
-        ignore_patterns=config.scanner.ignore_patterns,
-        max_file_size_mb=config.scanner.max_file_size_mb,
-    )
-    parser = ParserRouter()
-    ocr = OCREngine(lang=config.ocr.lang, use_gpu=config.ocr.use_gpu)
-
-    folder = req.folder
-    if not Path(folder).exists():
-        raise HTTPException(status_code=400, detail=f"Folder not found: {folder}")
-
-    files = list(scanner.scan_folder(folder, recursive=req.recursive))
-    processed = 0
-    errors = 0
-
-    for file_meta in files:
-        try:
-            from edge_agent.cli import _process_file, PROCESSING_VERSION
-            _process_file(
-                file_meta, db, parser, ocr,
-                agent_version=config.agent_version,
-                processing_version=PROCESSING_VERSION,
-                parser_version=config.parser.backend,
-                ocr_engine=config.ocr.engine,
-            )
-            processed += 1
-        except Exception as e:
-            logger.error("Error processing %s: %s", file_meta.get("path"), e)
-            errors += 1
-
-    return {"scanned": len(files), "processed": processed, "errors": errors}
-
-
-@router.post("/process")
-async def process_file(req: ProcessRequest):
-    """Process a single file."""
-    from edge_agent.core.scanner import FileScanner
-    from edge_agent.parsers.router import ParserRouter
-    from edge_agent.ocr.engine import OCREngine
-    from edge_agent.cli import _process_file, PROCESSING_VERSION
-
-    config = get_config()
-    db = get_db()
-    scanner = FileScanner(
-        ignore_patterns=config.scanner.ignore_patterns,
-        max_file_size_mb=config.scanner.max_file_size_mb,
-    )
-    parser = ParserRouter()
-    ocr = OCREngine(lang=config.ocr.lang, use_gpu=config.ocr.use_gpu)
-
-    path = Path(req.file)
+    path = Path(req.file_path)
     if not path.exists():
-        raise HTTPException(status_code=400, detail=f"File not found: {req.file}")
+        raise HTTPException(status_code=400, detail=f"File not found: {req.file_path}")
+    if not path.is_file():
+        raise HTTPException(status_code=400, detail=f"Not a file: {req.file_path}")
+
+    cfg = get_config()
+    parser = ParserRouter()
+    ocr = OCREngine(lang=cfg.ocr.lang, use_gpu=cfg.ocr.use_gpu)
 
     try:
-        file_info = scanner.scan_single(req.file)
-        if not file_info:
-            raise HTTPException(status_code=400, detail=f"Could not scan {req.file}")
+        parsed = parser.parse(req.file_path)
+        text = (parsed.markdown or "").replace("\0", "")
+        ocr_used = False
 
-        _process_file(
-            file_info, db, parser, ocr,
-            agent_version=config.agent_version,
-            processing_version=PROCESSING_VERSION,
-            parser_version=config.parser.backend,
-            ocr_engine=config.ocr.engine,
-        )
-        record = db.get_file_by_hash(file_info["content_hash"])
+        if not text or len(text.strip()) < 50:
+            suffix = path.suffix.lower()
+            if suffix in (".png", ".jpg", ".jpeg", ".tiff", ".bmp", ".gif", ".webp", ".pdf"):
+                content = path.read_bytes()
+                ocr_text = ocr.extract_text(content, content_type="application/octet-stream")
+                if ocr_text and len(ocr_text) > len(text):
+                    text = ocr_text
+                    ocr_used = True
+
         return {
-            "status": "processed",
-            "file": str(path),
-            "text_length": len(record["extracted_text"]) if record else 0,
+            "status": "ok",
+            "file_path": req.file_path,
+            "filename": path.name,
+            "extension": path.suffix.lower(),
+            "markdown": text,
+            "content_blocks": [b.to_dict() if hasattr(b, "to_dict") else vars(b) for b in parsed.content_blocks],
+            "tables": [t.to_dict() if hasattr(t, "to_dict") else vars(t) for t in parsed.tables],
+            "images": [i.to_dict() if hasattr(i, "to_dict") else vars(i) for i in parsed.images],
+            "language": getattr(parsed, "language", "unknown"),
+            "word_count": parsed.word_count,
+            "char_count": parsed.char_count,
+            "page_count": parsed.page_count,
+            "ocr_used": ocr_used,
+            "parse_method": getattr(parsed, "parse_method", ""),
+            "parse_time_ms": getattr(parsed, "parse_time_ms", 0.0),
         }
     except HTTPException:
         raise
     except Exception as e:
+        logger.exception("Failed to parse %s", req.file_path)
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# --- Files ---
-
-@router.get("/files")
-async def list_files(status: str | None = None, limit: int = 50):
-    """List files in the local database."""
+@router.post("/jobs")
+async def create_job(body: JobCreate):
     db = get_db()
-    try:
-        files = db.list_files(status=status, limit=limit)
-        return {"files": files, "count": len(files)}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    queue = JobQueue(db)
+    job_id = queue.create_job(body.type, body.payload)
+    return {"job_id": job_id}
 
 
-# --- Folders ---
-
-@router.get("/folders")
-async def list_folders():
-    """List monitored folders."""
-    config = get_config()
-    watcher = get_watcher()
-    folders = []
-    for path_str in config.folders:
-        folders.append({
-            "path": path_str,
-            "label": Path(path_str).name,
-            "exists": Path(path_str).exists(),
-            "watching": watcher.is_watching(path_str),
-        })
-    return {"folders": folders}
-
-
-@router.post("/folders")
-async def add_folder(req: FolderAddRequest):
-    """Add a folder to monitor."""
-    config = get_config()
-    folder_path = req.path
-
-    if not Path(folder_path).exists():
-        raise HTTPException(status_code=400, detail=f"Folder not found: {folder_path}")
-
-    if folder_path not in config.folders:
-        config.folders.append(folder_path)
-        _save_config_to_yaml(config)
-
-    return {"status": "added", "path": folder_path}
-
-
-@router.delete("/folders/{folder_path:path}")
-async def remove_folder(folder_path: str):
-    """Remove a folder from monitoring."""
-    config = get_config()
-    watcher = get_watcher()
-
-    if folder_path in config.folders:
-        config.folders.remove(folder_path)
-        _save_config_to_yaml(config)
-
-    if watcher.is_watching(folder_path):
-        watcher.stop(folder_path)
-
-    return {"status": "removed", "path": folder_path}
-
-
-# --- Logs ---
-
-@router.get("/logs")
-async def get_logs(lines: int = 100):
-    """Get recent log entries."""
-    config = get_config()
-    log_path = Path(config.log_file)
-    if not log_path.exists():
-        return {"logs": []}
-    try:
-        with open(log_path) as f:
-            all_lines = f.readlines()
-            recent = all_lines[-lines:]
-            return {"logs": [line.rstrip() for line in recent]}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-# --- Watcher ---
-
-@router.post("/watch/start")
-async def start_watcher():
-    """Start watching configured folders."""
-    config = get_config()
+@router.get("/jobs")
+async def list_jobs(
+    status: str | None = Query(None),
+    limit: int = Query(50),
+):
     db = get_db()
-    watcher = get_watcher()
+    queue = JobQueue(db)
+    return queue.list_jobs(status=status, limit=limit)
 
-    if not config.folders:
-        return {"status": "no_folders", "message": "No folders configured"}
 
-    from edge_agent.core.scanner import FileScanner
-    from edge_agent.parsers.router import ParserRouter
-    from edge_agent.ocr.engine import OCREngine
-    from edge_agent.cli import _process_file, PROCESSING_VERSION
+@router.get("/jobs/{job_id}")
+async def get_job(job_id: str):
+    db = get_db()
+    queue = JobQueue(db)
+    job = queue.get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return job
 
-    scanner = FileScanner(
-        ignore_patterns=config.scanner.ignore_patterns,
-        max_file_size_mb=config.scanner.max_file_size_mb,
+
+# ── File Operations ─────────────────────────────────────────────────────────
+
+
+@router.post("/files/move")
+async def move_file(body: MoveFileRequest):
+    db = get_db()
+    record = db.get_file_by_id(body.file_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    src = record["local_path"]
+    dest = _validate_path_safe(body.dest_path)
+    if not Path(src).exists():
+        raise HTTPException(status_code=400, detail=f"Source not found: {src}")
+    if Path(dest).exists():
+        raise HTTPException(status_code=409, detail=f"Destination already exists: {dest}")
+
+    dest_path = Path(dest)
+    dest_path.parent.mkdir(parents=True, exist_ok=True)
+    os.rename(src, str(dest_path))
+
+    db.update_file_path(
+        body.file_id,
+        local_path=str(dest_path),
+        filename=dest_path.name,
+        extension=dest_path.suffix.lower(),
     )
-    parser = ParserRouter()
-    ocr = OCREngine(lang=config.ocr.lang, use_gpu=config.ocr.use_gpu)
-
-    def on_change(event_type: str, path_str: str) -> None:
-        if event_type in ("created", "modified"):
-            file_info = scanner.scan_single(path_str)
-            if file_info:
-                logger.info("File %s: %s", event_type, path_str)
-                _process_file(
-                    file_info, db, parser, ocr,
-                    agent_version=config.agent_version,
-                    processing_version=PROCESSING_VERSION,
-                    parser_version=config.parser.backend,
-                    ocr_engine=config.ocr.engine,
-                )
-        elif event_type == "deleted":
-            record = db.get_file_by_path(path_str)
-            if record:
-                db.delete_file(record["id"])
-                logger.info("Deleted record for %s", path_str)
-
-    for folder in config.folders:
-        if Path(folder).exists() and not watcher.is_watching(folder):
-            watcher.watch(
-                folder,
-                recursive=config.watcher.recursive,
-                callback=on_change,
-            )
-
-    return {"status": "watcher_started", "folders": watcher.watched_paths}
+    return {"status": "ok", "file_id": body.file_id, "new_path": str(dest_path)}
 
 
-@router.post("/watch/stop")
-async def stop_watcher():
-    """Stop watching folders."""
-    watcher = get_watcher()
-    watcher.stop_all()
-    return {"status": "watcher_stopped"}
+@router.post("/files/rename")
+async def rename_file(body: RenameFileRequest):
+    db = get_db()
+    record = db.get_file_by_id(body.file_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    src = Path(record["local_path"])
+    if not src.exists():
+        raise HTTPException(status_code=400, detail=f"File not found: {src}")
+
+    new_name = body.new_name
+    if "/" in new_name or "\\" in new_name:
+        raise HTTPException(status_code=400, detail="Rename cannot contain path separators")
+    dest = src.parent / new_name
+    if dest.exists():
+        raise HTTPException(status_code=409, detail=f"Destination already exists: {dest}")
+    os.rename(str(src), str(dest))
+
+    db.update_file_path(
+        body.file_id,
+        local_path=str(dest),
+        filename=dest.name,
+        extension=dest.suffix.lower(),
+    )
+    return {"status": "ok", "file_id": body.file_id, "new_path": str(dest)}
+
+
+@router.post("/files/delete")
+async def delete_file(body: DeleteFileRequest):
+    db = get_db()
+    record = db.get_file_by_id(body.file_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    src = Path(record["local_path"])
+    if not src.exists():
+        db.delete_file_record(body.file_id)
+        return {"status": "ok", "note": "File already missing, record removed"}
+
+    config = get_config()
+    trash_dir = Path(config.data_dir) / "trash"
+    trash_dir.mkdir(parents=True, exist_ok=True)
+
+    size = src.stat().st_size
+    trash_id = db.add_to_trash(str(src), body.file_id, size)
+    trash_subdir = trash_dir / trash_id
+    trash_subdir.mkdir(parents=True, exist_ok=True)
+    dest = trash_subdir / src.name
+    os.rename(str(src), str(dest))
+
+    db.delete_file_record(body.file_id)
+    return {"status": "ok", "trash_id": trash_id}
+
+
+@router.post("/files/copy")
+async def copy_file(body: CopyFileRequest):
+    db = get_db()
+    record = db.get_file_by_id(body.file_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    src = Path(record["local_path"])
+    if not src.exists():
+        raise HTTPException(status_code=400, detail=f"Source not found: {src}")
+
+    dest_path_str = _validate_path_safe(body.dest_path)
+    dest = Path(dest_path_str)
+    if dest.exists():
+        raise HTTPException(status_code=409, detail=f"Destination already exists: {dest_path_str}")
+    dest.parent.mkdir(parents=True, exist_ok=True)
+
+    import shutil
+    shutil.copy2(str(src), str(dest))
+
+    from edge_agent.core.scanner import scan_single
+    meta = scan_single(str(dest))
+    if meta:
+        db.upsert_files([meta])
+        return {"status": "ok", "file": meta}
+
+    return {"status": "ok", "note": "Copied but could not index"}
+
+
+@router.post("/files/restore")
+async def restore_file(body: RestoreFileRequest):
+    db = get_db()
+    entry = db.get_trash_entry(body.trash_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="Trash entry not found")
+
+    original = Path(entry["original_path"])
+    trash_dir = Path(get_config().data_dir) / "trash" / body.trash_id
+    trash_file = trash_dir / original.name
+
+    if trash_file.exists():
+        original.parent.mkdir(parents=True, exist_ok=True)
+        os.rename(str(trash_file), str(original))
+
+    from edge_agent.core.scanner import scan_single
+    meta = scan_single(str(original))
+    file_id = entry["original_file_id"] if entry["original_file_id"] else None
+    if meta:
+        if file_id:
+            meta["id"] = file_id
+            db.upsert_files([meta])
+        else:
+            db.upsert_files([meta])
+
+    db.remove_from_trash(body.trash_id)
+
+    if trash_dir.exists():
+        import shutil
+        shutil.rmtree(str(trash_dir))
+
+    return {"status": "ok", "original_path": str(original)}
+
+
+@router.post("/files/archive")
+async def archive_files(body: ArchiveRequest):
+    if not body.file_ids:
+        raise HTTPException(status_code=400, detail="No file IDs provided")
+
+    db = get_db()
+    dest = Path(body.dest_path)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+
+    files_to_archive: list[Path] = []
+    for fid in body.file_ids:
+        rec = db.get_file_by_id(fid)
+        if rec:
+            p = Path(rec["local_path"])
+            if p.exists():
+                files_to_archive.append(p)
+
+    if not files_to_archive:
+        raise HTTPException(status_code=400, detail="No valid files to archive")
+
+    import shutil
+    if body.format == "zip":
+        import zipfile
+        with zipfile.ZipFile(str(dest), "w", zipfile.ZIP_DEFLATED) as zf:
+            for fp in files_to_archive:
+                zf.write(str(fp), arcname=fp.name)
+    else:
+        import tarfile
+        with tarfile.open(str(dest), "w:gz") as tf:
+            for fp in files_to_archive:
+                tf.add(str(fp), arcname=fp.name)
+
+    return {"status": "ok", "archive_path": str(dest), "file_count": len(files_to_archive)}
+
+
+@router.get("/trash")
+async def list_trash():
+    db = get_db()
+    entries = db.list_trash()
+    config = get_config()
+    trash_dir = Path(config.data_dir) / "trash"
+    result = []
+    for e in entries:
+        orig = Path(e["original_path"])
+        trash_path = trash_dir / e["id"] / orig.name
+        result.append({
+            **e,
+            "filename": orig.name,
+            "trash_file_exists": trash_path.exists(),
+        })
+    return result
+
+
+# ── WebSocket ────────────────────────────────────────────────────────────────
+
+
+@router.websocket("/ws")
+async def ws_endpoint(ws: WebSocket):
+    await ws.accept()
+    bus = get_event_bus()
+    last_ts: float = 0.0
+    try:
+        while True:
+            data = await ws.receive_text()
+            if data == "ping":
+                await ws.send_json({"type": "pong"})
+            continue_polling = data == "subscribe"
+            if data in ("ping", "subscribe", "poll"):
+                events = bus.drain(since=last_ts, max_events=50)
+                if events:
+                    last_ts = events[-1]["_timestamp"]
+                    await ws.send_json({"type": "events", "events": events})
+                if not continue_polling:
+                    break
+    except WebSocketDisconnect:
+        pass
+
+
+# ── API Key Auth (optional) ──────────────────────────────────────────────────
+
+
+def verify_api_key(auth: str | None = None) -> None:
+    cfg = get_config()
+    key = cfg.server.api_key
+    if not key:
+        return
+    if auth != key:
+        raise HTTPException(status_code=403, detail="Invalid API key")

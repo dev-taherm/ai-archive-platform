@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import { useAuth } from "@/hooks/use-auth";
 import {
   useOrganization,
@@ -39,6 +40,8 @@ const roleColors: Record<string, string> = {
 };
 
 export default function OrganizationSettings() {
+  const t = useTranslations("settings");
+  const tc = useTranslations("common");
   const { user } = useAuth();
   const { toast } = useToast();
   const { data: org, isLoading: orgLoading } = useOrganization();
@@ -66,7 +69,7 @@ export default function OrganizationSettings() {
   const isAdmin = user?.org_role === "owner" || user?.org_role === "admin";
 
   if (orgLoading) {
-    return <div className="text-muted-foreground">Loading organization...</div>;
+    return <div className="text-muted-foreground">{t("loadingOrganization")}</div>;
   }
 
   if (!org) {
@@ -78,12 +81,12 @@ export default function OrganizationSettings() {
           slug: newOrgSlug.trim(),
           description: newOrgDescription.trim() || undefined,
         });
-        toast({ title: "Organization created" });
+        toast({ title: t("orgCreated") });
       } catch (err: any) {
         const msg =
           err?.response?.data?.detail ||
           err?.response?.data?.slug?.[0] ||
-          "Failed to create organization";
+          t("orgCreateFailed");
         toast({ title: msg, variant: "destructive" });
       }
     };
@@ -93,21 +96,21 @@ export default function OrganizationSettings() {
         <div className="space-y-2">
           <h3 className="text-lg font-semibold flex items-center gap-2">
             <Building2 className="h-5 w-5" />
-            Create Organization
+            {t("createOrganization")}
           </h3>
           <p className="text-sm text-muted-foreground">
-            You don&apos;t belong to an organization yet. Create one to get started.
+            {t("noOrgDescription")}
           </p>
         </div>
 
         <div className="space-y-4 max-w-md">
           <div className="space-y-2">
             <label htmlFor="newOrgName" className="text-sm font-medium">
-              Organization Name
+              {t("orgName")}
             </label>
             <Input
               id="newOrgName"
-              placeholder="Acme Corp"
+              placeholder={t("orgNamePlaceholder")}
               value={newOrgName}
               onChange={(e) => {
                 setNewOrgName(e.target.value);
@@ -124,11 +127,11 @@ export default function OrganizationSettings() {
           </div>
           <div className="space-y-2">
             <label htmlFor="newOrgSlug" className="text-sm font-medium">
-              Slug
+              {t("slug")}
             </label>
             <Input
               id="newOrgSlug"
-              placeholder="acme-corp"
+              placeholder={t("slugPlaceholder")}
               value={newOrgSlug}
               onChange={(e) =>
                 setNewOrgSlug(
@@ -140,16 +143,16 @@ export default function OrganizationSettings() {
               }
             />
             <p className="text-xs text-muted-foreground">
-              Used in URLs. Lowercase letters, numbers, and hyphens only.
+              {t("slugHelp")}
             </p>
           </div>
           <div className="space-y-2">
             <label htmlFor="newOrgDescription" className="text-sm font-medium">
-              Description <span className="text-muted-foreground">(optional)</span>
+              {t("orgDescription")} <span className="text-muted-foreground">{tc("optional")}</span>
             </label>
             <Input
               id="newOrgDescription"
-              placeholder="What does your organization do?"
+              placeholder={t("orgDescriptionPlaceholder")}
               value={newOrgDescription}
               onChange={(e) => setNewOrgDescription(e.target.value)}
             />
@@ -158,7 +161,7 @@ export default function OrganizationSettings() {
             onClick={handleCreateOrg}
             disabled={createOrg.isPending || !newOrgName.trim() || !newOrgSlug.trim()}
           >
-            {createOrg.isPending ? "Creating..." : "Create Organization"}
+            {createOrg.isPending ? t("creating") : t("createOrganization")}
           </Button>
         </div>
       </div>
@@ -169,9 +172,9 @@ export default function OrganizationSettings() {
     if (!orgName.trim()) return;
     try {
       await updateOrg.mutateAsync({ name: orgName.trim(), description: orgDescription.trim() });
-      toast({ title: "Organization updated" });
+      toast({ title: t("orgUpdated") });
     } catch {
-      toast({ title: "Failed to update organization", variant: "destructive" });
+      toast({ title: t("orgUpdateFailed"), variant: "destructive" });
     }
   };
 
@@ -180,36 +183,36 @@ export default function OrganizationSettings() {
     try {
       await inviteMember.mutateAsync({ email: inviteEmail.trim(), role: inviteRole });
       setInviteEmail("");
-      toast({ title: `Invitation sent to ${inviteEmail}` });
+      toast({ title: t("invitationSent", { email: inviteEmail }) });
     } catch {
-      toast({ title: "Failed to send invitation", variant: "destructive" });
+      toast({ title: t("invitationSendFailed"), variant: "destructive" });
     }
   };
 
   const handleRevokeInvitation = async (id: string) => {
     try {
       await revokeInvitation.mutateAsync(id);
-      toast({ title: "Invitation revoked" });
+      toast({ title: t("invitationRevoked") });
     } catch {
-      toast({ title: "Failed to revoke invitation", variant: "destructive" });
+      toast({ title: t("invitationRevokeFailed"), variant: "destructive" });
     }
   };
 
   const handleRemoveMember = async (id: string) => {
     try {
       await removeMember.mutateAsync(id);
-      toast({ title: "Member removed" });
+      toast({ title: t("memberRemoved") });
     } catch {
-      toast({ title: "Failed to remove member", variant: "destructive" });
+      toast({ title: t("memberRemoveFailed"), variant: "destructive" });
     }
   };
 
   const handleLeaveOrg = async () => {
     try {
       await leaveOrg.mutateAsync();
-      toast({ title: "You have left the organization" });
+      toast({ title: t("leftOrganization") });
     } catch (err: any) {
-      const msg = err?.response?.data?.detail || "Failed to leave organization";
+      const msg = err?.response?.data?.detail || t("leaveOrgFailed");
       toast({ title: msg, variant: "destructive" });
     }
   };
@@ -217,9 +220,9 @@ export default function OrganizationSettings() {
   const handleSwitchOrg = async (orgId: string) => {
     try {
       await switchOrg.mutateAsync(orgId);
-      toast({ title: "Switched organization" });
+      toast({ title: t("orgSwitched") });
     } catch {
-      toast({ title: "Failed to switch organization", variant: "destructive" });
+      toast({ title: t("orgSwitchFailed"), variant: "destructive" });
     }
   };
 
@@ -227,7 +230,7 @@ export default function OrganizationSettings() {
     navigator.clipboard.writeText(`${window.location.origin}/invitations/accept?token=pending`);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
-    toast({ title: "Invite link copied" });
+    toast({ title: t("inviteLinkCopied") });
   };
 
   return (
@@ -235,7 +238,7 @@ export default function OrganizationSettings() {
       {/* Org Info */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <h3 className="text-lg font-semibold">Organization</h3>
+          <h3 className="text-lg font-semibold">{t("organization")}</h3>
           <Badge variant="outline" className={roleColors[user?.org_role || "member"]}>
             {user?.org_role}
           </Badge>
@@ -243,7 +246,7 @@ export default function OrganizationSettings() {
 
         <div className="space-y-2">
           <label htmlFor="orgName" className="text-sm font-medium">
-            Name
+            {t("name")}
           </label>
           <Input
             id="orgName"
@@ -255,7 +258,7 @@ export default function OrganizationSettings() {
         </div>
         <div className="space-y-2">
           <label htmlFor="orgDescription" className="text-sm font-medium">
-            Description
+            {t("orgDescription")}
           </label>
           <Input
             id="orgDescription"
@@ -266,7 +269,7 @@ export default function OrganizationSettings() {
           />
         </div>
         <div className="space-y-2">
-          <label className="text-sm font-medium">Slug</label>
+          <label className="text-sm font-medium">{t("slug")}</label>
           <div className="flex items-center gap-2">
             <Input value={org.slug} disabled className="max-w-md" />
             <Button variant="outline" size="icon" onClick={copyInviteLink} className="shrink-0">
@@ -276,7 +279,7 @@ export default function OrganizationSettings() {
         </div>
         {isAdmin && (
           <Button onClick={handleUpdateOrg} disabled={updateOrg.isPending}>
-            {updateOrg.isPending ? "Saving..." : "Save Changes"}
+            {updateOrg.isPending ? t("saving") : t("saveChanges")}
           </Button>
         )}
       </div>
@@ -286,15 +289,15 @@ export default function OrganizationSettings() {
         <div className="flex items-center justify-between">
           <h3 className="text-lg font-semibold flex items-center gap-2">
             <Users className="h-5 w-5" />
-            Members
+            {t("members")}
           </h3>
           <Badge variant="secondary">{members.length}</Badge>
         </div>
 
         {membersLoading ? (
-          <p className="text-sm text-muted-foreground">Loading members...</p>
+          <p className="text-sm text-muted-foreground">{t("loadingMembers")}</p>
         ) : members.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No members yet.</p>
+          <p className="text-sm text-muted-foreground">{t("noMembers")}</p>
         ) : (
           <div className="space-y-2">
             {members.map((m) => (
@@ -306,11 +309,11 @@ export default function OrganizationSettings() {
                   <p className="text-sm font-medium">
                     {m.user_email}
                     {m.user === user?.id && (
-                      <span className="ml-2 text-xs text-muted-foreground">(you)</span>
+                      <span className="ml-2 text-xs text-muted-foreground">{t("you")}</span>
                     )}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    @{m.user_username} · Joined {new Date(m.joined_at).toLocaleDateString()}
+                    {t("memberInfo", { username: m.user_username, date: new Date(m.joined_at).toLocaleDateString() })}
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -339,17 +342,17 @@ export default function OrganizationSettings() {
         <div className="space-y-4">
           <h3 className="text-lg font-semibold flex items-center gap-2">
             <Mail className="h-5 w-5" />
-            Invite Member
+            {t("inviteMember")}
           </h3>
           <div className="flex items-end gap-2">
             <div className="flex-1 space-y-2 max-w-sm">
               <label htmlFor="inviteEmail" className="text-sm font-medium">
-                Email
+                {t("email")}
               </label>
               <Input
                 id="inviteEmail"
                 type="email"
-                placeholder="colleague@example.com"
+                placeholder={t("emailPlaceholder")}
                 value={inviteEmail}
                 onChange={(e) => setInviteEmail(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleInvite()}
@@ -357,7 +360,7 @@ export default function OrganizationSettings() {
             </div>
             <div className="space-y-2">
               <label htmlFor="inviteRole" className="text-sm font-medium">
-                Role
+                {t("role")}
               </label>
               <select
                 id="inviteRole"
@@ -365,8 +368,8 @@ export default function OrganizationSettings() {
                 onChange={(e) => setInviteRole(e.target.value)}
                 className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors"
               >
-                <option value="member">Member</option>
-                <option value="admin">Admin</option>
+                <option value="member">{t("member")}</option>
+                <option value="admin">{t("admin")}</option>
               </select>
             </div>
             <Button
@@ -374,7 +377,7 @@ export default function OrganizationSettings() {
               disabled={inviteMember.isPending || !inviteEmail.trim()}
             >
               <Plus className="mr-1 h-3.5 w-3.5" />
-              {inviteMember.isPending ? "Sending..." : "Invite"}
+              {inviteMember.isPending ? t("sending") : t("invite")}
             </Button>
           </div>
         </div>
@@ -383,7 +386,7 @@ export default function OrganizationSettings() {
       {/* Pending Invitations */}
       {invitations.length > 0 && (
         <div className="space-y-4">
-          <h3 className="text-lg font-semibold">Pending Invitations</h3>
+          <h3 className="text-lg font-semibold">{t("pendingInvitations")}</h3>
           <div className="space-y-2">
             {invitations
               .filter((inv) => inv.status === "pending")
@@ -395,8 +398,7 @@ export default function OrganizationSettings() {
                   <div className="flex-1">
                     <p className="text-sm font-medium">{inv.email}</p>
                     <p className="text-xs text-muted-foreground">
-                      Invited as {inv.role} · Expires{" "}
-                      {new Date(inv.expires_at).toLocaleDateString()}
+                      {t("invitationInfo", { role: inv.role, date: new Date(inv.expires_at).toLocaleDateString() })}
                     </p>
                   </div>
                   {isAdmin && (
@@ -420,7 +422,7 @@ export default function OrganizationSettings() {
         <div className="space-y-4">
           <h3 className="text-lg font-semibold flex items-center gap-2">
             <Building2 className="h-5 w-5" />
-            Your Organizations
+            {t("yourOrganizations")}
           </h3>
           <div className="space-y-2">
             {user.organizations.map((o) => (
@@ -446,7 +448,7 @@ export default function OrganizationSettings() {
                       disabled={switchOrg.isPending}
                     >
                       <ArrowRightLeft className="mr-1 h-3.5 w-3.5" />
-                      Switch
+                      {t("switch")}
                     </Button>
                   )}
                 </div>
@@ -459,13 +461,13 @@ export default function OrganizationSettings() {
       {/* Leave Organization */}
       {user?.org_role !== "owner" && user?.current_organization && (
         <div className="space-y-4">
-          <h3 className="text-lg font-semibold text-destructive">Danger Zone</h3>
+          <h3 className="text-lg font-semibold text-destructive">{t("dangerZone")}</h3>
           <div className="rounded-md border border-destructive/20 p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium">Leave Organization</p>
+                <p className="text-sm font-medium">{t("leaveOrganization")}</p>
                 <p className="text-xs text-muted-foreground">
-                  You will lose access to this organization&apos;s data and resources.
+                  {t("leaveOrgDesc")}
                 </p>
               </div>
               <Button
@@ -475,7 +477,7 @@ export default function OrganizationSettings() {
                 disabled={leaveOrg.isPending}
               >
                 <LogOut className="mr-1 h-3.5 w-3.5" />
-                {leaveOrg.isPending ? "Leaving..." : "Leave"}
+                {leaveOrg.isPending ? t("leaving") : t("leave")}
               </Button>
             </div>
           </div>

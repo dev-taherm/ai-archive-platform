@@ -1,8 +1,11 @@
+use std::collections::HashMap;
 use crate::AppState;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::io::{BufRead, BufReader, Write};
 use std::sync::atomic::Ordering;
 use tauri::{AppHandle, State};
+
+// ── Types ──────────────────────────────────────────────────────────────────
 
 #[derive(Serialize)]
 pub struct AgentStatus {
@@ -10,86 +13,31 @@ pub struct AgentStatus {
     pub port: u16,
 }
 
-#[derive(Serialize, Deserialize)]
-pub struct AgentConfig {
-    pub server_url: Option<String>,
-    pub api_key: Option<String>,
-    pub jwt_token: Option<String>,
-    pub agent_name: Option<String>,
-    pub agent_id: Option<String>,
-    pub folders: Option<Vec<String>>,
-    pub ocr_engine: Option<String>,
-    pub ocr_lang: Option<String>,
-    pub parser_backend: Option<String>,
-    pub sync_interval_minutes: Option<u32>,
+#[derive(Serialize, Clone)]
+pub struct AuthTokens {
+    pub access_token: String,
+    pub refresh_token: String,
 }
 
-#[derive(Serialize, Deserialize)]
-pub struct ServerConfig {
-    pub server_url: String,
-    #[serde(default)]
-    pub web_url: String,
+// ── Helper ─────────────────────────────────────────────────────────────────
+
+fn get_port(state: &State<'_, AppState>) -> Result<u16, String> {
+    state.agent_manager.lock().map_err(|e| e.to_string()).map(|m| m.port())
 }
 
-#[derive(Serialize, Deserialize)]
-pub struct RegisterResult {
-    pub agent_id: String,
-    pub api_key: String,
-    pub is_new: bool,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct SyncFilesResult {
-    pub accepted: i32,
-    pub rejected: i32,
-    pub errors: Vec<String>,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct HeartbeatPayload {
-    pub status: String,
-    pub files_count: i32,
-}
-
-#[tauri::command]
-pub fn read_server_config() -> Result<ServerConfig, String> {
-    let home = std::env::var("HOME")
-        .or_else(|_| std::env::var("USERPROFILE"))
-        .map_err(|_| "Cannot determine home directory".to_string())?;
-    
-    let config_path = std::path::PathBuf::from(home).join(".basirah").join("config.json");
-    
-    if !config_path.exists() {
-        return Ok(ServerConfig {
-            server_url: String::new(),
-            web_url: String::new(),
-        });
-    }
-    
-    let content = std::fs::read_to_string(&config_path)
-        .map_err(|e| format!("Failed to read config: {e}"))?;
-    
-    let config: ServerConfig = serde_json::from_str(&content)
-        .map_err(|e| format!("Failed to parse config: {e}"))?;
-    
-    Ok(config)
-}
+// ── Sidecar management ─────────────────────────────────────────────────────
 
 #[tauri::command]
 pub fn get_agent_status(state: State<'_, AppState>) -> Result<AgentStatus, String> {
     let mut manager = state.agent_manager.lock().map_err(|e| e.to_string())?;
-    Ok(AgentStatus {
-        running: manager.is_running(),
-        port: manager.port(),
-    })
+    Ok(AgentStatus { running: manager.is_running(), port: manager.port() })
 }
 
 #[tauri::command]
 pub async fn agent_health(state: State<'_, AppState>) -> Result<bool, String> {
     let port = state.agent_manager.lock().map_err(|e| e.to_string())?.port();
     let resp = reqwest::get(format!("http://localhost:{port}/api/health"))
-        .await
-        .map_err(|e| e.to_string())?;
+        .await.map_err(|e| e.to_string())?;
     Ok(resp.status().is_success())
 }
 
@@ -111,231 +59,283 @@ pub fn stop_agent(state: State<'_, AppState>) -> Result<String, String> {
     manager.stop()
 }
 
+// ── Proxy: Config ──────────────────────────────────────────────────────────
+
 #[tauri::command]
-pub async fn get_config(state: State<'_, AppState>) -> Result<AgentConfig, String> {
-    let port = state.agent_manager.lock().map_err(|e| e.to_string())?.port();
+pub async fn get_config(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
+    let port = get_port(&state)?;
+    let client = reqwest::Client::new();
     let url = format!("http://localhost:{port}/api/config");
-
-    let resp = reqwest::get(&url)
-        .await
-        .map_err(|e| format!("Failed to connect to agent: {e}"))?;
-
-    resp.json::<AgentConfig>()
-        .await
-        .map_err(|e| format!("Failed to parse config: {e}"))
+    let resp = client.get(&url).send().await.map_err(|e| e.to_string())?;
+    resp.json::<serde_json::Value>().await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn update_config(
     state: State<'_, AppState>,
-    config: AgentConfig,
-) -> Result<String, String> {
-    let port = state.agent_manager.lock().map_err(|e| e.to_string())?.port();
+    config: HashMap<String, String>,
+) -> Result<serde_json::Value, String> {
+    let port = get_port(&state)?;
+    let client = reqwest::Client::new();
     let url = format!("http://localhost:{port}/api/config");
+    let resp = client.put(&url).json(&serde_json::json!({"config": config}))
+        .send().await.map_err(|e| e.to_string())?;
+    resp.json::<serde_json::Value>().await.map_err(|e| e.to_string())
+}
 
+// ── Proxy: Folders ─────────────────────────────────────────────────────────
+
+#[tauri::command]
+pub async fn get_folders(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
+    let port = get_port(&state)?;
     let client = reqwest::Client::new();
-    let resp = client
-        .put(&url)
-        .json(&config)
-        .send()
-        .await
-        .map_err(|e| format!("Failed to connect to agent: {e}"))?;
-
-    resp.text()
-        .await
-        .map_err(|e| format!("Failed to read response: {e}"))
+    let url = format!("http://localhost:{port}/api/folders");
+    let resp = client.get(&url).send().await.map_err(|e| e.to_string())?;
+    resp.json::<serde_json::Value>().await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub async fn call_agent_api(
+pub async fn add_folder(
     state: State<'_, AppState>,
-    method: String,
     path: String,
-    body: Option<serde_json::Value>,
 ) -> Result<serde_json::Value, String> {
-    let port = state.agent_manager.lock().map_err(|e| e.to_string())?.port();
-    let url = format!("http://localhost:{port}{path}");
-
+    let port = get_port(&state)?;
     let client = reqwest::Client::new();
-    let mut req = match method.as_str() {
-        "GET" => client.get(&url),
-        "POST" => client.post(&url),
-        "PUT" => client.put(&url),
-        "DELETE" => client.delete(&url),
-        _ => return Err(format!("Unsupported method: {method}")),
-    };
-
-    if let Some(body) = body {
-        req = req.json(&body);
-    }
-
-    let resp = req
-        .send()
-        .await
-        .map_err(|e| format!("Failed to connect to agent: {e}"))?;
-
-    resp.json::<serde_json::Value>()
-        .await
-        .map_err(|e| format!("Failed to parse response: {e}"))
+    let url = format!("http://localhost:{port}/api/folders");
+    let resp = client.post(&url).json(&serde_json::json!({"path": path}))
+        .send().await.map_err(|e| e.to_string())?;
+    resp.json::<serde_json::Value>().await.map_err(|e| e.to_string())
 }
 
-// ── SaaS Communication (desktop → backend) ──────────────────────────────────
+#[tauri::command]
+pub async fn remove_folder(
+    state: State<'_, AppState>,
+    path: String,
+) -> Result<serde_json::Value, String> {
+    let port = get_port(&state)?;
+    let client = reqwest::Client::new();
+    let url = format!("http://localhost:{port}/api/folders");
+    let resp = client.delete(&url).query(&[("path", &path)])
+        .send().await.map_err(|e| e.to_string())?;
+    resp.json::<serde_json::Value>().await.map_err(|e| e.to_string())
+}
+
+// ── Proxy: Files ───────────────────────────────────────────────────────────
 
 #[tauri::command]
-pub async fn register_agent(server_url: String, access_token: String) -> Result<RegisterResult, String> {
+pub async fn get_files(
+    state: State<'_, AppState>,
+    status: Option<String>,
+    limit: Option<i64>,
+) -> Result<serde_json::Value, String> {
+    let port = get_port(&state)?;
     let client = reqwest::Client::new();
-    let url = format!("{}/api/v1/agents/auto-register", server_url.trim_end_matches('/'));
+    let mut url = format!("http://localhost:{port}/api/files?limit={}", limit.unwrap_or(1000));
+    if let Some(s) = status {
+        url.push_str(&format!("&status={}", s));
+    }
+    let resp = client.get(&url).send().await.map_err(|e| e.to_string())?;
+    resp.json::<serde_json::Value>().await.map_err(|e| e.to_string())
+}
 
-    let hostname = whoami::fallible::hostname().unwrap_or_else(|_| "unknown".to_string());
-    let resp = client
-        .post(&url)
-        .header("Authorization", format!("Bearer {}", access_token))
-        .json(&serde_json::json!({
-            "hostname": hostname,
-            "platform": std::env::consts::OS,
-            "agent_version": env!("CARGO_PKG_VERSION"),
-        }))
-        .send()
-        .await
-        .map_err(|e| format!("Registration failed: {e}"))?;
+#[tauri::command]
+pub async fn get_file(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<serde_json::Value, String> {
+    let port = get_port(&state)?;
+    let client = reqwest::Client::new();
+    let url = format!("http://localhost:{port}/api/files/{id}");
+    let resp = client.get(&url).send().await.map_err(|e| e.to_string())?;
+    if resp.status() == reqwest::StatusCode::NOT_FOUND {
+        return Ok(serde_json::Value::Null);
+    }
+    resp.json::<serde_json::Value>().await.map_err(|e| e.to_string())
+}
 
-    let status = resp.status();
-    if !status.is_success() {
+// ── Proxy: Scan ────────────────────────────────────────────────────────────
+
+#[tauri::command]
+pub async fn scan_file(
+    state: State<'_, AppState>,
+    file_id: String,
+) -> Result<serde_json::Value, String> {
+    let port = get_port(&state)?;
+    let client = reqwest::Client::new();
+    let url = format!("http://localhost:{port}/api/scan");
+    let resp = client.post(&url).json(&serde_json::json!({"file_id": file_id}))
+        .send().await.map_err(|e| e.to_string())?;
+    if resp.status().is_success() {
+        resp.json::<serde_json::Value>().await.map_err(|e| e.to_string())
+    } else {
         let body = resp.text().await.unwrap_or_default();
-        return Err(format!("Registration returned {}: {}", status, body));
+        Err(format!("Scan failed: {body}"))
     }
-
-    resp.json::<RegisterResult>()
-        .await
-        .map_err(|e| format!("Failed to parse registration response: {e}"))
 }
 
 #[tauri::command]
-pub async fn send_heartbeat(
-    server_url: String,
-    agent_id: String,
-    api_key: String,
-    files_count: i32,
+pub async fn scan_selected(
+    state: State<'_, AppState>,
+    file_ids: Vec<String>,
 ) -> Result<serde_json::Value, String> {
-    let client = reqwest::Client::new();
-    let url = format!(
-        "{}/api/v1/agents/{}/heartbeat",
-        server_url.trim_end_matches('/'),
-        agent_id
-    );
-
-    let resp = client
-        .post(&url)
-        .header("X-API-Key", &api_key)
-        .json(&serde_json::json!({
-            "status": "online",
-            "files_count": files_count,
-        }))
-        .send()
-        .await
-        .map_err(|e| format!("Heartbeat failed: {e}"))?;
-
-    let status = resp.status();
-    if !status.is_success() {
-        let body = resp.text().await.unwrap_or_default();
-        return Err(format!("Heartbeat returned {}: {}", status, body));
+    let mut results = Vec::new();
+    let mut errors = Vec::new();
+    for id in &file_ids {
+        match scan_file(state.clone(), id.clone()).await {
+            Ok(r) => results.push(r),
+            Err(e) => errors.push(format!("{id}: {e}")),
+        }
     }
-
-    resp.json::<serde_json::Value>()
-        .await
-        .map_err(|e| format!("Failed to parse heartbeat response: {e}"))
-}
-
-#[tauri::command]
-pub async fn run_sync(
-    server_url: String,
-    agent_id: String,
-    api_key: String,
-    sidecar_port: u16,
-    batch_size: i32,
-) -> Result<serde_json::Value, String> {
-    let client = reqwest::Client::new();
-
-    // 1. Get pending sync payload from sidecar
-    let pending_url = format!("http://localhost:{sidecar_port}/api/pending-sync?batch_size={batch_size}");
-    let pending_resp = client
-        .get(&pending_url)
-        .send()
-        .await
-        .map_err(|e| format!("Failed to get pending sync from sidecar: {e}"))?;
-
-    let pending: serde_json::Value = pending_resp
-        .json()
-        .await
-        .map_err(|e| format!("Failed to parse pending sync: {e}"))?;
-
-    let files = pending.get("files").and_then(|f| f.as_array()).ok_or("No files in pending sync")?;
-    if files.is_empty() {
-        return Ok(serde_json::json!({"status": "ok", "synced": 0, "message": "Nothing to sync"}));
-    }
-
-    // 2. Send to SaaS
-    let sync_url = format!(
-        "{}/api/v1/agents/{}/sync",
-        server_url.trim_end_matches('/'),
-        agent_id
-    );
-
-    let sync_resp = client
-        .post(&sync_url)
-        .header("X-API-Key", &api_key)
-        .json(&serde_json::json!({ "files": files }))
-        .send()
-        .await
-        .map_err(|e| format!("Sync to SaaS failed: {e}"))?;
-
-    let sync_status = sync_resp.status();
-    if !sync_status.is_success() {
-        let body = sync_resp.text().await.unwrap_or_default();
-        return Err(format!("Sync returned {}: {}", sync_status, body));
-    }
-
-    let sync_result: serde_json::Value = sync_resp
-        .json()
-        .await
-        .map_err(|e| format!("Failed to parse sync response: {e}"))?;
-
-    // 3. Mark files as synced in sidecar DB
-    let hashes: Vec<String> = files
-        .iter()
-        .filter_map(|f| f.get("file_hash").and_then(|h| h.as_str().map(String::from)))
-        .collect();
-
-    if !hashes.is_empty() {
-        let ack_url = format!("http://localhost:{sidecar_port}/api/mark-synced");
-        let _ = client
-            .post(&ack_url)
-            .json(&serde_json::json!({ "file_hashes": hashes }))
-            .send()
-            .await;
-    }
-
     Ok(serde_json::json!({
-        "status": "ok",
-        "synced": hashes.len(),
-        "saas_result": sync_result,
+        "status": if errors.is_empty() { "completed" } else { "partial" },
+        "processed": results.len(),
+        "errors": errors,
     }))
 }
 
-// ── Browser-based auth ─────────────────────────────────────────────────────
+// ── SaaS Communication (proxy to Python agent) ─────────────────────────────
 
-#[derive(Serialize, Clone)]
-pub struct AuthTokens {
-    pub access_token: String,
-    pub refresh_token: String,
+#[tauri::command]
+pub async fn register_agent(
+    state: State<'_, AppState>,
+    server_url: String,
+    access_token: String,
+) -> Result<serde_json::Value, String> {
+    let port = get_port(&state)?;
+    let client = reqwest::Client::new();
+    let url = format!("http://localhost:{port}/api/register");
+    let resp = client.post(&url)
+        .json(&serde_json::json!({"server_url": server_url, "access_token": access_token}))
+        .send().await.map_err(|e| e.to_string())?;
+    if resp.status().is_success() {
+        resp.json::<serde_json::Value>().await.map_err(|e| e.to_string())
+    } else {
+        Err(resp.text().await.unwrap_or_default())
+    }
 }
+
+#[tauri::command]
+pub async fn run_sync(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
+    let port = get_port(&state)?;
+    let client = reqwest::Client::new();
+    let url = format!("http://localhost:{port}/api/sync");
+    let resp = client.post(&url).send().await.map_err(|e| e.to_string())?;
+    if resp.status().is_success() {
+        resp.json::<serde_json::Value>().await.map_err(|e| e.to_string())
+    } else {
+        Err(resp.text().await.unwrap_or_default())
+    }
+}
+
+// ── Proxy: File Operations ─────────────────────────────────────────────────
+
+#[tauri::command]
+pub async fn move_file(
+    state: State<'_, AppState>,
+    file_id: String,
+    dest_path: String,
+) -> Result<serde_json::Value, String> {
+    let port = get_port(&state)?;
+    let client = reqwest::Client::new();
+    let url = format!("http://localhost:{port}/api/files/move");
+    let resp = client.post(&url)
+        .json(&serde_json::json!({"file_id": file_id, "dest_path": dest_path}))
+        .send().await.map_err(|e| e.to_string())?;
+    resp.json::<serde_json::Value>().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn rename_file(
+    state: State<'_, AppState>,
+    file_id: String,
+    new_name: String,
+) -> Result<serde_json::Value, String> {
+    let port = get_port(&state)?;
+    let client = reqwest::Client::new();
+    let url = format!("http://localhost:{port}/api/files/rename");
+    let resp = client.post(&url)
+        .json(&serde_json::json!({"file_id": file_id, "new_name": new_name}))
+        .send().await.map_err(|e| e.to_string())?;
+    resp.json::<serde_json::Value>().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn delete_file(
+    state: State<'_, AppState>,
+    file_id: String,
+) -> Result<serde_json::Value, String> {
+    let port = get_port(&state)?;
+    let client = reqwest::Client::new();
+    let url = format!("http://localhost:{port}/api/files/delete");
+    let resp = client.post(&url)
+        .json(&serde_json::json!({"file_id": file_id}))
+        .send().await.map_err(|e| e.to_string())?;
+    resp.json::<serde_json::Value>().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn copy_file(
+    state: State<'_, AppState>,
+    file_id: String,
+    dest_path: String,
+) -> Result<serde_json::Value, String> {
+    let port = get_port(&state)?;
+    let client = reqwest::Client::new();
+    let url = format!("http://localhost:{port}/api/files/copy");
+    let resp = client.post(&url)
+        .json(&serde_json::json!({"file_id": file_id, "dest_path": dest_path}))
+        .send().await.map_err(|e| e.to_string())?;
+    resp.json::<serde_json::Value>().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn archive_files(
+    state: State<'_, AppState>,
+    file_ids: Vec<String>,
+    dest_path: String,
+    format: String,
+) -> Result<serde_json::Value, String> {
+    let port = get_port(&state)?;
+    let client = reqwest::Client::new();
+    let url = format!("http://localhost:{port}/api/files/archive");
+    let resp = client.post(&url)
+        .json(&serde_json::json!({"file_ids": file_ids, "dest_path": dest_path, "format": format}))
+        .send().await.map_err(|e| e.to_string())?;
+    resp.json::<serde_json::Value>().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn restore_file(
+    state: State<'_, AppState>,
+    trash_id: String,
+) -> Result<serde_json::Value, String> {
+    let port = get_port(&state)?;
+    let client = reqwest::Client::new();
+    let url = format!("http://localhost:{port}/api/files/restore");
+    let resp = client.post(&url)
+        .json(&serde_json::json!({"trash_id": trash_id}))
+        .send().await.map_err(|e| e.to_string())?;
+    resp.json::<serde_json::Value>().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_trash(
+    state: State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let port = get_port(&state)?;
+    let client = reqwest::Client::new();
+    let url = format!("http://localhost:{port}/api/trash");
+    let resp = client.get(&url).send().await.map_err(|e| e.to_string())?;
+    resp.json::<serde_json::Value>().await.map_err(|e| e.to_string())
+}
+
+// ── Browser-based auth ─────────────────────────────────────────────────────
 
 #[tauri::command]
 pub fn start_auth_server(state: State<'_, AppState>) -> Result<u16, String> {
     let listener = std::net::TcpListener::bind("127.0.0.1:0")
         .map_err(|e| format!("Failed to start auth server: {e}"))?;
     let port = listener.local_addr().map_err(|e| e.to_string())?.port();
-
     let tokens = state.auth_tokens.clone();
     let stop = state.auth_stop.clone();
 
@@ -345,43 +345,27 @@ pub fn start_auth_server(state: State<'_, AppState>) -> Result<u16, String> {
         let timeout = std::time::Duration::from_secs(300);
 
         loop {
-            if stop.load(Ordering::Relaxed) {
-                break;
-            }
-            if start.elapsed() > timeout {
-                break;
-            }
+            if stop.load(Ordering::Relaxed) { break; }
+            if start.elapsed() > timeout { break; }
             match listener.accept() {
                 Ok((mut stream, _)) => {
                     let mut reader = BufReader::new(&stream);
                     let mut request_line = String::new();
                     let _ = reader.read_line(&mut request_line);
-
                     let mut header = String::new();
                     while reader.read_line(&mut header).unwrap_or(0) > 0 {
-                        if header.trim().is_empty() {
-                            break;
-                        }
+                        if header.trim().is_empty() { break; }
                         header.clear();
                     }
-
-                    let path = request_line
-                        .split_whitespace()
-                        .nth(1)
-                        .unwrap_or("/");
-
+                    let path = request_line.split_whitespace().nth(1).unwrap_or("/");
                     if let Some(query) = path.strip_prefix("/callback?") {
                         let params: std::collections::HashMap<String, String> = query
                             .split('&')
                             .filter_map(|pair| {
                                 let mut parts = pair.splitn(2, '=');
-                                Some((
-                                    parts.next()?.to_string(),
-                                    parts.next().unwrap_or("").to_string(),
-                                ))
+                                Some((parts.next()?.to_string(), parts.next().unwrap_or("").to_string()))
                             })
                             .collect();
-
                         if let (Some(access), Some(refresh)) =
                             (params.get("access_token"), params.get("refresh_token"))
                         {
@@ -390,7 +374,6 @@ pub fn start_auth_server(state: State<'_, AppState>) -> Result<u16, String> {
                                 access_token: access.clone(),
                                 refresh_token: refresh.clone(),
                             });
-
                             let body = b"<!DOCTYPE html><html><head><title>Authenticated</title><style>body{font-family:system-ui;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;background:#0f172a;color:#f8fafc}h1{font-size:1.5rem}p{color:#94a3b8}</style></head><body><div style='text-align:center'><h1>Authenticated!</h1><p>You can close this tab and return to Basirah.</p></div></body></html>";
                             let response = format!(
                                 "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
@@ -401,7 +384,6 @@ pub fn start_auth_server(state: State<'_, AppState>) -> Result<u16, String> {
                             break;
                         }
                     }
-
                     let resp = b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
                     let _ = stream.write_all(resp);
                 }
@@ -413,7 +395,6 @@ pub fn start_auth_server(state: State<'_, AppState>) -> Result<u16, String> {
             }
         }
     });
-
     Ok(port)
 }
 
@@ -425,8 +406,6 @@ pub fn poll_auth_result(state: State<'_, AppState>) -> Result<Option<AuthTokens>
 
 #[tauri::command]
 pub fn stop_auth_server(state: State<'_, AppState>) -> Result<(), String> {
-    state
-        .auth_stop
-        .store(true, Ordering::Relaxed);
+    state.auth_stop.store(true, Ordering::Relaxed);
     Ok(())
 }

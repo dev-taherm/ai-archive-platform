@@ -7,9 +7,7 @@ import pytest
 from edge_agent.config import (
     EdgeAgentConfig,
     LLMConfig,
-    ScannerConfig,
     ServerConfig,
-    SyncConfig,
     WatcherConfig,
     load_config,
 )
@@ -28,10 +26,6 @@ class TestEdgeAgentConfigDefaults:
         cfg = EdgeAgentConfig(data_dir=tmp_dir)
         assert cfg.db_path == str(Path(tmp_dir) / "agent.db")
 
-    def test_log_file_property(self, tmp_dir):
-        cfg = EdgeAgentConfig(data_dir=tmp_dir)
-        assert cfg.log_file == str(Path(tmp_dir) / "agent.log")
-
     def test_agent_version_auto_populated(self):
         cfg = EdgeAgentConfig()
         assert cfg.agent_version  # should be set from __version__
@@ -39,9 +33,7 @@ class TestEdgeAgentConfigDefaults:
     def test_sub_configs_default(self):
         cfg = EdgeAgentConfig()
         assert isinstance(cfg.server, ServerConfig)
-        assert isinstance(cfg.scanner, ScannerConfig)
         assert isinstance(cfg.llm, LLMConfig)
-        assert isinstance(cfg.sync, SyncConfig)
         assert isinstance(cfg.watcher, WatcherConfig)
 
 
@@ -56,7 +48,6 @@ class TestLoadConfig:
         assert cfg.server.url == "http://localhost:8000"
         assert cfg.llm.provider == "openai"
         assert cfg.llm.model == "gpt-4o"
-        assert cfg.sync.interval_minutes == 15
 
     def test_load_missing_file(self, tmp_dir):
         cfg = load_config(str(Path(tmp_dir) / "nonexistent.yaml"))

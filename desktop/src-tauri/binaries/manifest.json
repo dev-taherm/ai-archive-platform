@@ -4,9 +4,9 @@
     "linux-x86_64": {
       "filename": "edge-agent",
       "triple": "x86_64-unknown-linux-gnu",
-      "size_bytes": 100273480,
-      "sha256": "b505c2e6d33e3fce18d9dec1f542dabc81d8f0e0ce31def7c9e901f7d45058e3",
-      "built_at": "2026-07-10T02:04:38.423620+00:00"
+      "size_bytes": 100308696,
+      "sha256": "ba8c3ecc56632d99d282f52b7426c904d0761b8633893f451ecb06bc89557065",
+      "built_at": "2026-07-11T00:45:35.971818+00:00"
     }
   }
 }

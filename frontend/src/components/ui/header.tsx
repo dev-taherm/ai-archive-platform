@@ -3,27 +3,31 @@
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { LogOut, User, Search } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-
-const routeLabels: Record<string, string> = {
-  dashboard: "Dashboard",
-  files: "Files",
-  documents: "Documents",
-  search: "Search",
-  agents: "Devices",
-  chat: "Chat",
-  settings: "Settings",
-};
+import { LanguageSwitcher } from "@/components/language-switcher";
 
 export function Header() {
   const { user, logout } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
+  const t = useTranslations("header");
+  const tCommon = useTranslations("common");
+
+  const routeLabels: Record<string, string> = {
+    dashboard: t("dashboard"),
+    files: t("files"),
+    documents: t("documents"),
+    search: t("search"),
+    agents: t("devices"),
+    chat: t("chat"),
+    settings: t("settings"),
+  };
 
   const pathSegments = pathname.split("/").filter(Boolean);
   const breadcrumbs = pathSegments.map((segment, index) => {
@@ -41,7 +45,7 @@ export function Header() {
   };
 
   return (
-    <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b bg-card/95 px-6 backdrop-blur supports-[backdrop-filter]:bg-card/60">
+    <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-brand-teal/10 bg-card/95 px-6 backdrop-blur supports-[backdrop-filter]:bg-card/60">
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         {breadcrumbs.length > 0 ? (
           breadcrumbs.map((crumb, index) => (
@@ -77,6 +81,8 @@ export function Header() {
             />
           </div>
         </form>
+
+        <LanguageSwitcher />
 
         <div className="flex items-center gap-2">
           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted">

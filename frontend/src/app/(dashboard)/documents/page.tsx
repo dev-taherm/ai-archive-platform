@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import {
@@ -51,6 +52,7 @@ const statusVariant: Record<string, "default" | "secondary" | "destructive" | "s
 };
 
 export default function DocumentsPage() {
+  const t = useTranslations("documents");
   const [search, setSearch] = useState("");
   const [viewMode, setViewMode] = useState<"table" | "grid">("table");
   const [page, setPage] = useState(1);
@@ -75,11 +77,11 @@ export default function DocumentsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["documents"] });
-      toast({ title: "Document deleted" });
+      toast({ title: t("deletedToast") });
       setDeleteId(null);
     },
     onError: () => {
-      toast({ title: "Failed to delete document", variant: "destructive" });
+      toast({ title: t("deleteFailedToast"), variant: "destructive" });
     },
   });
 
@@ -97,9 +99,9 @@ export default function DocumentsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Documents</h1>
+          <h1 className="text-2xl font-bold bg-gradient-to-r from-brand-teal to-brand-cyan bg-clip-text text-transparent">{t("title")}</h1>
           <p className="text-muted-foreground">
-            Processed and indexed documents
+            {t("subtitle")}
           </p>
         </div>
       </div>
@@ -107,7 +109,7 @@ export default function DocumentsPage() {
       <div className="flex items-center gap-2">
         <Search className="h-4 w-4 text-muted-foreground" />
         <Input
-          placeholder="Search documents..."
+          placeholder={t("searchPlaceholder")}
           value={search}
           onChange={(e) => {
             setSearch(e.target.value);
@@ -137,20 +139,20 @@ export default function DocumentsPage() {
 
       {isLoading ? (
         <div className="flex h-48 items-center justify-center">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-brand-cyan border-t-transparent" />
         </div>
       ) : viewMode === "table" ? (
         <div className="rounded-md border">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Document</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Language</TableHead>
-                <TableHead>Words</TableHead>
-                <TableHead>Chunks</TableHead>
-                <TableHead>Created</TableHead>
+                <TableHead>{t("document")}</TableHead>
+                <TableHead>{t("type")}</TableHead>
+                <TableHead>{t("status")}</TableHead>
+                <TableHead>{t("language")}</TableHead>
+                <TableHead>{t("words")}</TableHead>
+                <TableHead>{t("chunks")}</TableHead>
+                <TableHead>{t("created")}</TableHead>
                 <TableHead className="w-20" />
               </TableRow>
             </TableHeader>
@@ -158,7 +160,7 @@ export default function DocumentsPage() {
               {paginated.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
-                    No documents found
+                    {t("noDocuments")}
                   </TableCell>
                 </TableRow>
               ) : (
@@ -166,8 +168,8 @@ export default function DocumentsPage() {
                   <TableRow key={doc.id}>
                     <TableCell>
                       <Link href={`/documents/${doc.id}`} className="flex items-center gap-3 hover:underline">
-                        <div className="rounded-md bg-muted p-2">
-                          <FileText className="h-4 w-4" />
+                        <div className="rounded-md bg-brand-teal/10 p-2">
+                          <FileText className="h-4 w-4 text-brand-teal" />
                         </div>
                         <div>
                           <p className="font-medium">{doc.title || doc.doc_type}</p>
@@ -220,15 +222,15 @@ export default function DocumentsPage() {
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {paginated.length === 0 ? (
             <div className="col-span-full py-12 text-center text-muted-foreground">
-              No documents found
+              {t("noDocuments")}
             </div>
           ) : (
             paginated.map((doc) => (
               <Card key={doc.id} className="relative overflow-hidden transition-colors hover:bg-muted/50">
                 <Link href={`/documents/${doc.id}`} className="block p-4">
                   <div className="mb-3 flex items-start justify-between">
-                    <div className="rounded-md bg-muted p-2">
-                      <FileText className="h-5 w-5" />
+                    <div className="rounded-md bg-brand-teal/10 p-2">
+                      <FileText className="h-5 w-5 text-brand-teal" />
                     </div>
                     <Badge variant={statusVariant[doc.processing_status] || "secondary"} className="text-xs">
                       {doc.processing_status}
@@ -243,7 +245,7 @@ export default function DocumentsPage() {
                     {doc.language && <Badge variant="secondary" className="text-xs">{doc.language}</Badge>}
                   </div>
                   <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
-                    <span>{doc.word_count.toLocaleString()} words</span>
+                    <span>{t("wordCount", { wordCount: doc.word_count.toLocaleString() })}</span>
                     <span>{formatDate(doc.created_at)}</span>
                   </div>
                 </Link>
@@ -267,7 +269,7 @@ export default function DocumentsPage() {
       {totalPages > 1 && (
         <div className="flex items-center justify-between">
           <span className="text-sm text-muted-foreground">
-            Page {page} of {totalPages} ({filtered.length} documents)
+            {t("pageInfo", { page, totalPages, count: filtered.length })}
           </span>
           <div className="flex gap-2">
             <Button
@@ -277,7 +279,7 @@ export default function DocumentsPage() {
               disabled={page === 1}
             >
               <ChevronLeft className="h-4 w-4" />
-              Prev
+              {t("prev")}
             </Button>
             <Button
               variant="outline"
@@ -285,7 +287,7 @@ export default function DocumentsPage() {
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               disabled={page >= totalPages}
             >
-              Next
+              {t("next")}
               <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
@@ -294,25 +296,25 @@ export default function DocumentsPage() {
 
       {filtered.length > 0 && (
         <p className="text-sm text-muted-foreground">
-          {filtered.length} document(s)
+          {t("countInfo", { count: filtered.length })}
         </p>
       )}
 
       <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Document</AlertDialogTitle>
+            <AlertDialogTitle>{t("deleteTitle")}</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete this document and its extracted entities. This action cannot be undone.
+              {t("deleteDescription")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={() => deleteId && deleteMutation.mutate(deleteId)}
             >
-              Delete
+              {t("delete")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

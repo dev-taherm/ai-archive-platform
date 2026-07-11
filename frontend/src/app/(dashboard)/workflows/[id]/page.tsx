@@ -1,6 +1,7 @@
 "use client";
 
 import { use } from "react";
+import { useTranslations } from "next-intl";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
@@ -92,6 +93,8 @@ const stepStatusIcon: Record<string, typeof Clock> = {
 
 export default function WorkflowDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
+  const t = useTranslations("workflows");
+  const tc = useTranslations("common");
   const router = useRouter();
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -123,10 +126,10 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ id: s
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["workflows", id] });
       queryClient.invalidateQueries({ queryKey: ["workflows", id, "runs"] });
-      toast({ title: "Workflow started" });
+      toast({ title: t("workflowStarted") });
     },
     onError: () => {
-      toast({ title: "Failed to start workflow", variant: "destructive" });
+      toast({ title: t("workflowStartFailed"), variant: "destructive" });
     },
   });
 
@@ -136,10 +139,10 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ id: s
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["workflows", id] });
-      toast({ title: "Workflow paused" });
+      toast({ title: t("workflowPaused") });
     },
     onError: () => {
-      toast({ title: "Failed to pause workflow", variant: "destructive" });
+      toast({ title: t("workflowPauseFailed"), variant: "destructive" });
     },
   });
 
@@ -149,11 +152,11 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ id: s
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["workflows"] });
-      toast({ title: "Workflow deleted" });
+      toast({ title: t("workflowDeleted") });
       router.push("/workflows");
     },
     onError: () => {
-      toast({ title: "Failed to delete workflow", variant: "destructive" });
+      toast({ title: t("workflowDeleteFailed"), variant: "destructive" });
     },
   });
 
@@ -179,10 +182,10 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ id: s
     return (
       <div className="flex flex-col items-center justify-center py-12 gap-4">
         <XCircle className="h-12 w-12 text-muted-foreground" />
-        <p className="text-lg font-medium">Workflow not found</p>
+        <p className="text-lg font-medium">{t("notFound")}</p>
         <Button variant="outline" onClick={() => router.push("/workflows")}>
           <ArrowLeft className="h-4 w-4 mr-2" />
-          Back to Workflows
+          {t("backToWorkflows")}
         </Button>
       </div>
     );
@@ -201,8 +204,8 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ id: s
               <GitBranch className="h-5 w-5" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold">{workflow.name}</h1>
-              <p className="text-sm text-muted-foreground">{workflow.description || "No description"}</p>
+              <h1 className="text-2xl font-bold bg-gradient-to-r from-brand-teal to-brand-cyan bg-clip-text text-transparent">{workflow.name}</h1>
+              <p className="text-sm text-muted-foreground">{workflow.description || tc("noDescription")}</p>
             </div>
           </div>
           <Badge variant={statusVariant[workflow.status] || "secondary"}>
@@ -216,7 +219,7 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ id: s
             onClick={() => queryClient.invalidateQueries({ queryKey: ["workflows", id] })}
           >
             <RefreshCw className="h-4 w-4 mr-2" />
-            Refresh
+            {t("refresh")}
           </Button>
           {workflow.status === "active" ? (
             <Button
@@ -226,7 +229,7 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ id: s
               disabled={pauseMutation.isPending}
             >
               <Pause className="h-4 w-4 mr-2" />
-              Pause
+              {t("pause")}
             </Button>
           ) : (
             <Button
@@ -235,7 +238,7 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ id: s
               disabled={runMutation.isPending || workflow.status === "completed"}
             >
               <Play className="h-4 w-4 mr-2" />
-              Run
+              {t("run")}
             </Button>
           )}
           <Button
@@ -244,7 +247,7 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ id: s
             onClick={() => setShowDeleteDialog(true)}
           >
             <Trash2 className="h-4 w-4 mr-2" />
-            Delete
+            {tc("delete")}
           </Button>
         </div>
       </div>
@@ -258,7 +261,7 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ id: s
                 <History className="h-4 w-4" />
               </div>
               <div>
-                <p className="text-xs text-muted-foreground">Total Runs</p>
+                <p className="text-xs text-muted-foreground">{t("totalRuns")}</p>
                 <p className="text-2xl font-bold">{workflow.run_count}</p>
               </div>
             </div>
@@ -271,9 +274,9 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ id: s
                 <Clock className="h-4 w-4" />
               </div>
               <div>
-                <p className="text-xs text-muted-foreground">Last Run</p>
+                <p className="text-xs text-muted-foreground">{t("lastRun")}</p>
                 <p className="text-sm font-medium">
-                  {workflow.last_run_at ? formatDate(workflow.last_run_at) : "Never"}
+                  {workflow.last_run_at ? formatDate(workflow.last_run_at) : tc("never")}
                 </p>
               </div>
             </div>
@@ -286,7 +289,7 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ id: s
                 <Settings className="h-4 w-4" />
               </div>
               <div>
-                <p className="text-xs text-muted-foreground">Trigger</p>
+                <p className="text-xs text-muted-foreground">{t("trigger")}</p>
                 <Badge variant="outline">{workflow.trigger}</Badge>
               </div>
             </div>
@@ -298,15 +301,15 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ id: s
       <Card>
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
-            <Settings className="h-4 w-4" />
-            Pipeline Steps ({workflow.steps.length})
+            <Settings className="h-4 w-4 text-brand-teal" />
+            {t("pipelineSteps", { count: workflow.steps.length })}
           </CardTitle>
         </CardHeader>
         <CardContent>
           {workflow.steps.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-4">
-              No steps configured
-            </p>
+              <p className="text-sm text-muted-foreground text-center py-4">
+                {t("noStepsConfigured")}
+              </p>
           ) : (
             <div className="space-y-2">
               {workflow.steps.map((step, i) => {
@@ -316,9 +319,9 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ id: s
                     <span className="text-xs text-muted-foreground w-6">#{i + 1}</span>
                     <div className="flex items-center gap-2 flex-1">
                       <StepIcon className={`h-4 w-4 ${
-                        step.status === "completed" ? "text-emerald-500" :
+                        step.status === "completed" ? "text-brand-teal" :
                         step.status === "failed" ? "text-red-500" :
-                        step.status === "running" ? "text-amber-500 animate-spin" :
+                        step.status === "running" ? "text-brand-cyan animate-spin" :
                         "text-muted-foreground"
                       }`} />
                       <div>
@@ -349,15 +352,15 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ id: s
       <Card>
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
-            <History className="h-4 w-4" />
-            Run History ({runs.length})
+            <History className="h-4 w-4 text-brand-cyan" />
+            {t("runHistory", { count: runs.length })}
           </CardTitle>
         </CardHeader>
         <CardContent>
           {runs.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-4">
-              No runs yet
-            </p>
+              <p className="text-sm text-muted-foreground text-center py-4">
+                {t("noRunsYet")}
+              </p>
           ) : (
             <div className="space-y-2">
               {runs.map((run) => (
@@ -368,11 +371,11 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ id: s
                     </Badge>
                     <div>
                       <p className="text-sm font-medium">
-                        Step {run.current_step}/{run.total_steps}
+                        {t("stepIndicator", { n: run.current_step, m: run.total_steps })}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        Started {formatDate(run.started_at)}
-                        {run.completed_at && ` — Completed ${formatDate(run.completed_at)}`}
+                        {t("started", { date: formatDate(run.started_at) })}
+                        {run.completed_at && ` — ${t("completedDate", { date: formatDate(run.completed_at) })}`}
                       </p>
                     </div>
                   </div>
@@ -392,18 +395,18 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ id: s
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Workflow</AlertDialogTitle>
+            <AlertDialogTitle>{t("deleteWorkflow")}</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete this workflow? This action cannot be undone.
+              {t("deleteWorkflowConfirm")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{tc("cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => deleteMutation.mutate()}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Delete
+              {tc("delete")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

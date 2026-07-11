@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
+import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -37,15 +38,8 @@ interface Session {
   updated_at: string;
 }
 
-const STARTER_PROMPTS = [
-  "What documents do I have about contracts?",
-  "Summarize the project X files",
-  "Show me files related to accounting",
-  "Which documents are missing or incomplete?",
-  "Find similar documents to the latest contract",
-];
-
 export default function ChatInterface() {
+  const t = useTranslations("chat");
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -54,6 +48,11 @@ export default function ChatInterface() {
   const [sessionsLoading, setSessionsLoading] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const starterPrompts = useMemo(
+    () => [t("starter1"), t("starter2"), t("starter3"), t("starter4"), t("starter5")],
+    [t]
+  );
 
   useEffect(() => {
     loadSessions();
@@ -146,7 +145,7 @@ export default function ChatInterface() {
         content:
           res.data.message?.content ||
           res.data.assistant_message ||
-          "No response",
+          t("noResponse"),
         sources: res.data.message?.sources,
         tool_calls: res.data.message?.tool_calls,
       };
@@ -158,7 +157,7 @@ export default function ChatInterface() {
         {
           id: crypto.randomUUID(),
           role: "assistant",
-          content: "Failed to get response. Please try again.",
+          content: t("errorResponse"),
         },
       ]);
     } finally {
@@ -178,18 +177,18 @@ export default function ChatInterface() {
               variant="outline"
             >
               <Plus className="h-4 w-4" />
-              New Conversation
+              {t("newConversation")}
             </Button>
           </div>
           <div className="flex-1 overflow-auto p-2 space-y-1">
             {sessionsLoading ? (
               <div className="flex items-center justify-center py-8 text-muted-foreground text-sm">
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                Loading...
+                <Loader2 className="h-4 w-4 animate-spin mr-2 text-brand-teal" />
+                {t("loading")}
               </div>
             ) : sessions.length === 0 ? (
               <div className="text-center text-muted-foreground text-sm py-8">
-                No conversations yet
+                {t("noConversations")}
               </div>
             ) : (
               sessions.map((session) => (
@@ -198,7 +197,7 @@ export default function ChatInterface() {
                   onClick={() => loadSessionMessages(session.id)}
                   className={`w-full flex items-center gap-2 px-3 py-2 rounded-md text-left text-sm transition-colors group ${
                     sessionId === session.id
-                      ? "bg-primary text-primary-foreground"
+                      ? "bg-brand-teal/10 text-brand-teal"
                       : "hover:bg-muted text-muted-foreground hover:text-foreground"
                   }`}
                 >
@@ -229,7 +228,7 @@ export default function ChatInterface() {
             <MessageSquare className="h-4 w-4" />
           </Button>
           <span className="text-sm font-medium text-muted-foreground">
-            {sessionId ? "Conversation" : "New Chat"}
+            {sessionId ? t("conversation") : t("newChat")}
           </span>
         </div>
 
@@ -240,15 +239,14 @@ export default function ChatInterface() {
               <div className="space-y-2">
                 <div className="flex items-center justify-center gap-2 text-2xl font-semibold">
                   <Sparkles className="h-6 w-6 text-primary" />
-                  AI Assistant
+                  {t("aiAssistant")}
                 </div>
                 <p className="text-muted-foreground max-w-md">
-                  Ask questions about your archived documents, find insights,
-                  or manage your knowledge base.
+                  {t("emptyDescription")}
                 </p>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-w-lg w-full">
-                {STARTER_PROMPTS.map((prompt) => (
+                {starterPrompts.map((prompt) => (
                   <button
                     key={prompt}
                     onClick={() => sendMessage(prompt)}
@@ -266,8 +264,8 @@ export default function ChatInterface() {
           {loading && (
             <div className="flex justify-start">
               <div className="bg-muted rounded-lg px-4 py-2 text-sm flex items-center gap-2">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Thinking...
+                <Loader2 className="h-4 w-4 animate-spin text-brand-teal" />
+                {t("thinking")}
               </div>
             </div>
           )}
@@ -286,7 +284,7 @@ export default function ChatInterface() {
             <Input
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Ask about your documents..."
+              placeholder={t("inputPlaceholder")}
               disabled={loading}
             />
             <Button type="submit" disabled={loading || !input.trim()}>

@@ -6,6 +6,7 @@ import {
   LayoutDashboard,
   FolderOpen,
   Settings,
+  Trash2,
   LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -13,6 +14,7 @@ import { cn } from "@/lib/utils";
 const navItems = [
   { to: "/dashboard", icon: LayoutDashboard, labelKey: "nav.dashboard" },
   { to: "/folders", icon: FolderOpen, labelKey: "nav.folders" },
+  { to: "/trash", icon: Trash2, labelKey: "nav.trash" },
   { to: "/settings", icon: Settings, labelKey: "nav.settings" },
 ];
 

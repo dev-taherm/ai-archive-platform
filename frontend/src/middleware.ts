@@ -1,13 +1,40 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import createIntlMiddleware from "next-intl/middleware";
+
+const locales = ["en", "ar"];
+const defaultLocale = "en";
+
+const intlMiddleware = createIntlMiddleware({
+  locales,
+  defaultLocale,
+  localePrefix: "never",
+});
 
 export function middleware(request: NextRequest) {
-  const token = request.cookies.get("accessToken");
+  const { pathname } = request.nextUrl;
 
   const isAuthPage =
-    request.nextUrl.pathname.startsWith("/login") ||
-    request.nextUrl.pathname.startsWith("/register") ||
-    request.nextUrl.pathname.startsWith("/invitations/accept");
+    pathname.startsWith("/login") ||
+    pathname.startsWith("/register") ||
+    pathname.startsWith("/invitations/accept");
+
+  const isStaticAsset =
+    pathname.startsWith("/_next") ||
+    pathname.startsWith("/api") ||
+    pathname === "/favicon.ico";
+
+  if (isStaticAsset) {
+    return NextResponse.next();
+  }
+
+  // Intl middleware must be returned to provide locale context for getLocale()
+  const intlResponse = intlMiddleware(request);
+  if (!intlResponse) {
+    return NextResponse.next();
+  }
+
+  const token = request.cookies.get("accessToken");
 
   if (!token && !isAuthPage) {
     return NextResponse.redirect(new URL("/login", request.url));
@@ -19,9 +46,5 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL("/dashboard", request.url));
   }
 
-  return NextResponse.next();
+  return intlResponse;
 }
-
-export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|api).*)"],
-};

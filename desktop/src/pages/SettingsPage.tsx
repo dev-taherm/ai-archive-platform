@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
+import { invoke } from "@tauri-apps/api/core";
 import { useConfigStore } from "../stores/config-store";
 import { useAgentStore } from "../stores/agent-store";
-import { agentApi } from "../lib/agent-api";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import {
@@ -27,13 +27,12 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    agentApi
-      .config()
+    invoke<Record<string, string>>("get_config")
       .then((cfg) => {
-        setLocalServerUrl(cfg.server_url);
-        setLocalApiKey(cfg.api_key);
-        setLocalAgentName(cfg.agent_name);
-        setOcrLang(cfg.ocr_lang);
+        if (cfg.server_url) setLocalServerUrl(cfg.server_url);
+        if (cfg.api_key) setLocalApiKey(cfg.api_key);
+        if (cfg.agent_name) setLocalAgentName(cfg.agent_name);
+        if (cfg.ocr_lang) setOcrLang(cfg.ocr_lang);
       })
       .catch(() => {});
     fetchLogs(200);
@@ -47,11 +46,13 @@ export default function SettingsPage() {
         apiKey: localApiKey,
         agentName: localAgentName,
       });
-      await agentApi.updateConfig({
-        server_url: localServerUrl,
-        api_key: localApiKey,
-        agent_name: localAgentName,
-        ocr_lang: ocrLang,
+      await invoke("update_config", {
+        config: {
+          server_url: localServerUrl,
+          api_key: localApiKey,
+          agent_name: localAgentName,
+          ocr_lang: ocrLang,
+        },
       });
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);

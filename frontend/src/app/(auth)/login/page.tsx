@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import axios from "axios";
+import { useTranslations } from "next-intl";
 import { useAuth } from "@/hooks/use-auth";
 import { useAuthStore } from "@/stores/auth-store";
 import api from "@/lib/api";
@@ -19,6 +20,7 @@ import {
 } from "@/components/ui/card";
 
 export default function LoginPage() {
+  const t = useTranslations("auth");
   const searchParams = useSearchParams();
   const desktopCallback = searchParams.get("desktop_callback");
   const [email, setEmail] = useState("");
@@ -57,7 +59,7 @@ export default function LoginPage() {
         setDesktopError(
           err?.response?.data?.detail
             || err?.response?.data?.email
-            || "Invalid credentials"
+            || t("invalidCredentials")
         );
       }
       return;
@@ -70,18 +72,18 @@ export default function LoginPage() {
     <Card>
       <CardHeader>
         <CardTitle>
-          {desktopCallback ? "Authenticate Desktop App" : "Sign in"}
+          {desktopCallback ? t("authenticateDesktop") : t("signIn")}
         </CardTitle>
         <CardDescription>
           {desktopCallback
-            ? "Log in to connect your desktop application."
-            : "Enter your credentials to access your account"}
+            ? t("logInToConnectDesktop")
+            : t("enterCredentials")}
         </CardDescription>
       </CardHeader>
       {desktopCallback && desktopRedirecting ? (
         <CardContent className="flex flex-col items-center space-y-4 py-8">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-          <p className="text-sm text-muted-foreground">Connecting desktop app...</p>
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-brand-cyan border-t-transparent" />
+          <p className="text-sm text-muted-foreground">{t("connectingDesktop")}</p>
         </CardContent>
       ) : (
       <form onSubmit={handleSubmit}>
@@ -95,17 +97,17 @@ export default function LoginPage() {
             <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
               {(loginError as any)?.response?.data?.detail
                 || (loginError as any)?.response?.data?.email
-                || "Invalid credentials"}
+                || t("invalidCredentials")}
             </div>
           )}
           <div className="space-y-2">
             <label htmlFor="email" className="text-sm font-medium">
-              Email
+              {t("email")}
             </label>
             <Input
               id="email"
               type="email"
-              placeholder="name@example.com"
+              placeholder={t("emailPlaceholder")}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
@@ -113,12 +115,12 @@ export default function LoginPage() {
           </div>
           <div className="space-y-2">
             <label htmlFor="password" className="text-sm font-medium">
-              Password
+              {t("password")}
             </label>
             <Input
               id="password"
               type="password"
-              placeholder="••••••••"
+              placeholder={t("passwordPlaceholder")}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
@@ -127,13 +129,13 @@ export default function LoginPage() {
         </CardContent>
         <CardFooter className="flex flex-col space-y-4">
           <Button type="submit" className="w-full" disabled={isLoggingIn}>
-            {isLoggingIn ? "Signing in..." : "Sign in"}
+            {isLoggingIn ? t("signingIn") : t("signIn")}
           </Button>
           {!desktopCallback && (
             <p className="text-sm text-muted-foreground">
-              Don&apos;t have an account?{" "}
-              <Link href="/register" className="text-primary hover:underline">
-                Sign up
+              {t("dontHaveAccount")}{" "}
+               <Link href="/register" className="text-brand-cyan hover:underline">
+                {t("signUp")}
               </Link>
             </p>
           )}
