@@ -28,6 +28,7 @@ class OCRConfig:
     lang: str = "en"
     use_gpu: bool = False
     timeout_seconds: int = 120
+    auto_detect: bool = True
 
 
 @dataclass
@@ -37,6 +38,7 @@ class ParserConfig:
     language: str = "en"
     formula_enable: bool = True
     table_enable: bool = True
+    auto_detect: bool = True
 
 
 @dataclass
@@ -124,6 +126,7 @@ def load_config(config_path: str | Path | None = None) -> EdgeAgentConfig:
         lang=ocr_raw.get("lang", cfg.ocr.lang),
         use_gpu=ocr_raw.get("use_gpu", cfg.ocr.use_gpu),
         timeout_seconds=ocr_raw.get("timeout_seconds", cfg.ocr.timeout_seconds),
+        auto_detect=ocr_raw.get("auto_detect", cfg.ocr.auto_detect),
     )
 
     # Parser
@@ -134,6 +137,7 @@ def load_config(config_path: str | Path | None = None) -> EdgeAgentConfig:
         language=parser_raw.get("language", cfg.parser.language),
         formula_enable=parser_raw.get("formula_enable", cfg.parser.formula_enable),
         table_enable=parser_raw.get("table_enable", cfg.parser.table_enable),
+        auto_detect=parser_raw.get("auto_detect", cfg.parser.auto_detect),
     )
 
     # Watcher

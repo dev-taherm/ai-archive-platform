@@ -13,9 +13,11 @@ ocr:
   lang: en
   use_gpu: false
   timeout_seconds: 120
+  auto_detect: true
 parser:
   backend: pipeline
   effort: medium
   language: en
   formula_enable: true
   table_enable: true
+  auto_detect: true

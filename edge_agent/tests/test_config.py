@@ -67,3 +67,30 @@ class TestLoadConfig:
         monkeypatch.setenv("EDGE_AGENT_NAME", "env-agent")
         cfg = load_config()
         assert cfg.agent_name == "env-agent"
+
+
+class TestAutoDetectConfig:
+    def test_ocr_auto_detect_default(self):
+        from edge_agent.config import OCRConfig
+        cfg = OCRConfig()
+        assert cfg.auto_detect is True
+
+    def test_parser_auto_detect_default(self):
+        from edge_agent.config import ParserConfig
+        cfg = ParserConfig()
+        assert cfg.auto_detect is True
+
+    def test_config_load_auto_detect(self, tmp_path):
+        from edge_agent.config import load_config
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("""
+ocr:
+  lang: en
+  auto_detect: false
+parser:
+  language: en
+  auto_detect: false
+""")
+        cfg = load_config(str(config_file))
+        assert cfg.ocr.auto_detect is False
+        assert cfg.parser.auto_detect is False
