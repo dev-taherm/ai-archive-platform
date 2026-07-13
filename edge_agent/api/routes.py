@@ -662,7 +662,10 @@ async def ws_endpoint(ws: WebSocket):
         # Send buffered events immediately on connect
         buffered = bus.snapshot(max_events=100)
         if buffered:
-            await ws.send_json({"type": "events", "events": buffered})
+            try:
+                await ws.send_json({"type": "events", "events": buffered})
+            except WebSocketDisconnect:
+                return
 
         async def _sender() -> None:
             """Push events from EventBus observer to the WS client."""

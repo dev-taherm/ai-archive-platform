@@ -27,7 +27,7 @@ const RECONNECT_DELAYS = [1000, 2000, 4000, 8000, 16000, 30000];
  *  - document_update        (from DashboardConsumer.document_update)
  *  - processing_update      (from ProcessingConsumer.processing_update)
  *
- * Requires a valid JWT refresh token stored in useAuthStore.
+ * Requires a valid JWT access token stored in useAuthStore.
  */
 export function useDashboardWS(callbacks: UseDashboardWSOptions = {}) {
   const wsRef = useRef<WebSocket | null>(null);
@@ -40,15 +40,15 @@ export function useDashboardWS(callbacks: UseDashboardWSOptions = {}) {
   const [isConnected, setIsConnected] = useState(false);
 
   const connect = useCallback(() => {
-    const { refreshToken, isAuthenticated } = useAuthStore.getState();
-    if (!isAuthenticated || !refreshToken) return;
+    const { accessToken, isAuthenticated } = useAuthStore.getState();
+    if (!isAuthenticated || !accessToken) return;
 
     // Derive WS URL from API base URL
     const apiBase =
       process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
     let wsBase = apiBase.replace(/^http/, "ws");
     if (!wsBase.endsWith("/")) wsBase += "/";
-    const url = `${wsBase}dashboard?token=${encodeURIComponent(refreshToken)}`;
+    const url = `${wsBase}ws/dashboard?token=${encodeURIComponent(accessToken)}`;
 
     try {
       const ws = new WebSocket(url);
