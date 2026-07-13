@@ -95,6 +95,20 @@ class TestParsedDocument:
         assert doc.has_images is True
 
 
+class TestParsedDocumentLanguage:
+    def test_default_language_is_unknown(self):
+        doc = ParsedDocument(document_name="test.pdf")
+        assert doc.language == "unknown"
+
+    def test_language_can_be_set(self):
+        doc = ParsedDocument(document_name="test.pdf", language="ar")
+        assert doc.language == "ar"
+
+    def test_language_in_metadata_dict(self):
+        doc = ParsedDocument(document_name="test.pdf", language="en")
+        assert doc.language == "en"
+
+
 class TestExtractionResult:
     def test_auto_word_count(self):
         result = ExtractionResult(text="hello world foo bar")

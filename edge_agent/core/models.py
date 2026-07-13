@@ -92,6 +92,7 @@ class ParsedDocument:
     page_count: int = 0
     word_count: int = 0
     char_count: int = 0
+    language: str = "unknown"
     parse_method: str = ""  # "mineru", "reader", "ocr"
     parse_time_ms: float = 0.0
 
