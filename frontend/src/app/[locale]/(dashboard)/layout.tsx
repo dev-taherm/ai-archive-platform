@@ -1,11 +1,13 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Sidebar } from "@/components/ui/sidebar";
 import { Header } from "@/components/ui/header";
 import { useUIStore } from "@/stores/ui-store";
 import { useAuthStore } from "@/stores/auth-store";
 import { OnboardingModal } from "@/components/features/onboarding/setup-device-modal";
+import { useDashboardWS } from "@/hooks/use-dashboard-ws";
 import { cn } from "@/lib/utils";
 
 export default function DashboardLayout({
@@ -16,6 +18,37 @@ export default function DashboardLayout({
   const { sidebarOpen } = useUIStore();
   const { user } = useAuthStore();
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const queryClient = useQueryClient();
+
+  // Real-time dashboard updates via WebSocket
+  const onAgentStatusChanged = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ["agents"] });
+    queryClient.invalidateQueries({ queryKey: ["dashboard", "stats"] });
+  }, [queryClient]);
+
+  const onFilesSynced = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ["files"] });
+    queryClient.invalidateQueries({ queryKey: ["agents"] });
+    queryClient.invalidateQueries({ queryKey: ["dashboard", "stats"] });
+  }, [queryClient]);
+
+  const onDocumentUpdate = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ["documents"] });
+    queryClient.invalidateQueries({ queryKey: ["dashboard", "stats"] });
+  }, [queryClient]);
+
+  const onProcessingUpdate = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ["documents"] });
+    queryClient.invalidateQueries({ queryKey: ["files"] });
+    queryClient.invalidateQueries({ queryKey: ["dashboard", "stats"] });
+  }, [queryClient]);
+
+  useDashboardWS({
+    onAgentStatusChanged,
+    onFilesSynced,
+    onDocumentUpdate,
+    onProcessingUpdate,
+  });
 
   // Show onboarding for new users (joined within last 5 minutes) with no agents
   useEffect(() => {

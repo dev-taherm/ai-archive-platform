@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef, useCallback, useState } from "react";
 import { useAuthStore } from "@/stores/auth-store";
 
 // Event types received from the SaaS backend
@@ -36,6 +36,9 @@ export function useDashboardWS(callbacks: UseDashboardWSOptions = {}) {
   const callbacksRef = useRef(callbacks);
   callbacksRef.current = callbacks;
 
+  // Reactive connection state
+  const [isConnected, setIsConnected] = useState(false);
+
   const connect = useCallback(() => {
     const { refreshToken, isAuthenticated } = useAuthStore.getState();
     if (!isAuthenticated || !refreshToken) return;
@@ -54,6 +57,7 @@ export function useDashboardWS(callbacks: UseDashboardWSOptions = {}) {
       ws.onopen = () => {
         console.log("[DashboardWS] Connected");
         reconnectAttempt.current = 0;
+        setIsConnected(true);
       };
 
       ws.onmessage = (event) => {
@@ -84,6 +88,7 @@ export function useDashboardWS(callbacks: UseDashboardWSOptions = {}) {
       ws.onclose = (event) => {
         console.log("[DashboardWS] Disconnected", event.code);
         wsRef.current = null;
+        setIsConnected(false);
         // Auto-reconnect unless explicitly closed
         if (event.code !== 1000) {
           scheduleReconnect();
@@ -119,7 +124,5 @@ export function useDashboardWS(callbacks: UseDashboardWSOptions = {}) {
     };
   }, [connect]);
 
-  return {
-    isConnected: wsRef.current?.readyState === WebSocket.OPEN,
-  };
+  return { isConnected };
 }
