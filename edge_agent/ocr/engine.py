@@ -215,7 +215,13 @@ class OCREngine(OCRProvider):
             return ""
 
         if self._is_paddle_available():
-            text = self._extract_paddle(content, content_type)
+            original_lang = self._lang
+            if language_hint:
+                self._lang = language_hint.value
+            try:
+                text = self._extract_paddle(content, content_type)
+            finally:
+                self._lang = original_lang
             if text and text.strip():
                 return text
 

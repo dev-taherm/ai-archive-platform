@@ -42,3 +42,28 @@ class TestOCREngineExtractText:
              patch.object(eng, "_is_tesseract_available", return_value=False):
             result = eng.extract_text(b"fake image bytes", content_type="image/png")
             assert isinstance(result, str)
+
+
+class TestOCREngineLanguageHint:
+    def test_language_hint_passed_to_paddle(self):
+        eng = OCREngine(lang="en")
+        captured_lang = []
+
+        def capture_lang(tmp_path: str) -> str:
+            captured_lang.append(eng._lang)
+            return "ocr result"
+
+        with patch.object(eng, "_run_paddle_subprocess", side_effect=capture_lang) as mock_paddle, \
+             patch.object(eng, "_is_paddle_available", return_value=True), \
+             patch.object(eng, "_is_tesseract_available", return_value=False):
+            eng.extract_text(b"fake", content_type="image/png", language_hint=Language.AR)
+            assert captured_lang == ["ar"]
+
+    def test_language_hint_restore_after_call(self):
+        eng = OCREngine(lang="en")
+        with patch.object(eng, "_run_paddle_subprocess") as mock_paddle, \
+             patch.object(eng, "_is_paddle_available", return_value=True), \
+             patch.object(eng, "_is_tesseract_available", return_value=False):
+            mock_paddle.return_value = "result"
+            eng.extract_text(b"fake", content_type="image/png", language_hint=Language.AR)
+            assert eng._lang == "en"
