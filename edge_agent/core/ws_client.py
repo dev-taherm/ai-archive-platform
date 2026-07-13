@@ -154,13 +154,13 @@ class SaaSWebSocketClient:
         # Convert HTTP(S) → WS(S)
         ws_url = server_url.replace("https://", "wss://").replace("http://", "ws://")
         ws_url = f"{ws_url}/ws/agent/"
-        extra_headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+        if api_key:
+            ws_url = f"{ws_url}?api_key={api_key}"
 
         logger.info("Connecting to SaaS WebSocket: %s", ws_url)
 
         async with websockets.connect(
             ws_url,
-            extra_headers=extra_headers,
             ping_interval=30,
             ping_timeout=10,
             close_timeout=5,
