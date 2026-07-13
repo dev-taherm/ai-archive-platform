@@ -44,9 +44,9 @@ def chunk_text(
             chunks.append(Chunk(text=chunk_text_str, index=idx, start_char=start, end_char=end))
             idx += 1
 
-        start = end - chunk_overlap
-        if start >= len(text):
+        if end >= len(text):
             break
+        start = end - chunk_overlap
 
     return chunks
 
@@ -66,7 +66,7 @@ def _find_split_point(text: str, start: int, end: int) -> int:
         return start + nl + 1
 
     # Try sentence boundary
-    for sep in [". ", "! ", "? ", "؟ "]:
+    for sep in [". ", "! ", "? ", "؟ ", "؛ ", "، "]:
         pos = search_range.rfind(sep)
         if pos > chunk_size_min(end - start):
             return start + pos + len(sep)

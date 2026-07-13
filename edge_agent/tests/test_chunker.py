@@ -48,3 +48,25 @@ class TestChunkSizeMin:
 
     def test_medium_total(self):
         assert chunk_size_min(1000) == 300
+
+
+class TestArabicChunking:
+    def test_arabic_question_mark_split(self):
+        text = "هل تريد المتابعة؟ ثم اضغط على الزر" * 30
+        chunks = chunk_text(text, chunk_size=100, chunk_overlap=20)
+        assert len(chunks) > 1
+
+    def test_arabic_semicolon_split(self):
+        text = "النقطة الأولى؛ النقطة الثانية؛ النقطة الثالثة" * 30
+        chunks = chunk_text(text, chunk_size=80, chunk_overlap=20)
+        assert len(chunks) > 1
+
+    def test_arabic_comma_split(self):
+        text = "البيان الأول، البيانات الثاني، البيانات الثالث" * 40
+        chunks = chunk_text(text, chunk_size=100, chunk_overlap=20)
+        assert len(chunks) > 1
+
+    def test_mixed_arabic_english(self):
+        text = "هذا نص عربي. This is English. هذا نص آخر." * 30
+        chunks = chunk_text(text, chunk_size=100, chunk_overlap=20)
+        assert len(chunks) > 1
