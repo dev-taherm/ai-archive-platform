@@ -53,3 +53,5 @@ hashlib-additional>=1.0
 
 # WSGI server
 gunicorn>=22.0
+# ASGI server (for WebSocket support)
+daphne>=4.1

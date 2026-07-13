@@ -86,6 +86,27 @@ class Worker:
         self.stop()
         self.start()
 
+    # ── Command handler (called by WS client) ────────────────────────────────
+
+    def handle_command(self, command_type: str, payload: dict[str, Any]) -> None:
+        """Handle a command received from the SaaS backend via WebSocket."""
+        logger.info("Handling command: %s", command_type)
+        try:
+            if command_type == "restart":
+                self.restart()
+            elif command_type == "shutdown":
+                self._running = False
+                self._paused = False
+                logger.info("Shutdown command received")
+            elif command_type == "start_scan":
+                self.resume()
+            elif command_type == "stop_scan":
+                self.pause()
+            else:
+                logger.warning("Unknown command type: %s", command_type)
+        except Exception:
+            logger.exception("Failed to handle command: %s", command_type)
+
     # ── Event publishing helper ───────────────────────────────────────────────
 
     def _publish_event(self, event: dict[str, Any]) -> None:

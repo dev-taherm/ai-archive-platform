@@ -7,6 +7,8 @@ import uuid
 import zipfile
 from pathlib import Path
 
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
 from django.conf import settings
 from django.db import transaction
 from django.http import FileResponse, HttpResponse
@@ -544,6 +546,26 @@ class AgentViewSet(viewsets.ModelViewSet):
             command_type=command_type,
             payload=payload,
         )
+
+        try:
+            channel_layer = get_channel_layer()
+            async_to_sync(channel_layer.group_send)(
+                f"agent_{agent.agent_id}",
+                {
+                    "type": "push_command",
+                    "command_id": str(cmd.id),
+                    "command_type": command_type,
+                    "payload": payload,
+                },
+            )
+        except Exception:
+            logger.warning(
+                "Failed to push command %s to agent %s via WebSocket; "
+                "command saved in DB, agent will pick it up on next heartbeat.",
+                cmd.id,
+                agent.agent_id,
+            )
+
         return Response(
             AgentCommandSerializer(cmd).data,
             status=status.HTTP_201_CREATED,

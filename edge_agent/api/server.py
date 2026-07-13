@@ -31,6 +31,7 @@ _metrics: Any | None = None
 _log_handler: Any | None = None
 _registry: PluginRegistry | None = None
 _event_bus: EventBus | None = None
+_ws_client: Any | None = None
 _start_time: float = 0.0
 
 
@@ -88,6 +89,11 @@ def get_log_handler() -> Any:
     return _log_handler
 
 
+def get_ws_client() -> Any:
+    global _ws_client
+    return _ws_client
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global _config, _db, _worker, _watcher, _sync_engine, _registry, _event_bus, _metrics, _start_time
@@ -126,6 +132,17 @@ async def lifespan(app: FastAPI):
     _worker = Worker(_db, _sync_engine, metrics=_metrics, event_bus=_event_bus)
     _worker.start()
 
+    # Start SaaS WebSocket client (replaces HTTP heartbeat polling)
+    from edge_agent.core.ws_client import SaaSWebSocketClient
+    _ws_client = SaaSWebSocketClient(
+        db=_db,
+        sync_engine=_sync_engine,
+        event_bus=_event_bus,
+        command_handler=_worker.handle_command,
+    )
+    _ws_client._start_time = _start_time
+    _ws_client.start()
+
     if _config.watcher.enabled:
         _watcher = FolderWatcher(_db, debounce_seconds=_config.watcher.debounce_seconds, event_bus=_event_bus)
         _watcher.start(_config.folders)
@@ -137,6 +154,8 @@ async def lifespan(app: FastAPI):
 
     if _watcher:
         _watcher.stop()
+    if _ws_client:
+        _ws_client.stop()
     if _worker:
         _worker.stop()
     _db.close()
