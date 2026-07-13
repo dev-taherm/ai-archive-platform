@@ -180,7 +180,7 @@ class MinerUParser:
 
     def _parse_with_fallback(self, path: Path, **kwargs) -> ParsedDocument:
         start = time.monotonic()
-        language = kwargs.get("language", self._language)
+        # language = kwargs.get("language", self._language)  # reserved for future use
         suffix = path.suffix.lower()
         text, metadata = "", {}
         try:
