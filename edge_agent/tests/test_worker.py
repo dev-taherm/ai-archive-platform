@@ -242,3 +242,45 @@ class TestWorkerLanguagePassthrough:
             mock_parser.parse.assert_called_once_with(str(f))
         finally:
             w.stop()
+
+
+class TestWorkerOCRLanguageHint:
+    @patch("edge_agent.api.server.get_config")
+    @patch("edge_agent.ocr.engine.OCREngine")
+    @patch("edge_agent.parsers.router.ParserRouter")
+    def test_arabic_ocr_fallback_uses_detected_lang(self, mock_parser_cls, mock_ocr_cls, mock_get_config, db, tmp_path):
+        from edge_agent.core.models import ParsedDocument, Language
+        from edge_agent.config import EdgeAgentConfig
+
+        # Parser returns short text (triggers OCR fallback)
+        mock_parser = MagicMock()
+        mock_parser.parse.return_value = ParsedDocument(markdown="نا")
+        mock_parser_cls.return_value = mock_parser
+
+        mock_ocr = MagicMock()
+        mock_ocr.detect_language.return_value = Language.AR
+        mock_ocr_cls.return_value = mock_ocr
+
+        mock_get_config.return_value = EdgeAgentConfig()
+
+        f = tmp_path / "scanned_arabic.png"
+        f.write_bytes(b"\x89PNG fake image")
+        db.upsert_files([{"id": "file1", "local_path": str(f), "filename": "scanned_arabic.png"}])
+
+        with patch("edge_agent.core.worker.ocr_fallback") as mock_fallback:
+            mock_fallback.return_value = ("نص عربي كامل من OCR", True)
+            w = Worker(db)
+            w.start()
+            try:
+                jid = db.create_job("scan_file", {"file_id": "file1"})
+                for _ in range(50):
+                    time.sleep(0.2)
+                    job = db.get_job(jid)
+                    if job and job["status"] in ("completed", "failed"):
+                        break
+                # ocr_fallback should have been called with language_hint="ar"
+                mock_fallback.assert_called_once()
+                call_args = mock_fallback.call_args
+                assert call_args.kwargs.get("language_hint") == "ar" or call_args[1].get("language_hint") == "ar"
+            finally:
+                w.stop()

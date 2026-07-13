@@ -234,7 +234,7 @@ class Worker:
         if self._metrics:
             self._metrics.increment_scanned()
             self._metrics.add_parse_time(parse_time_ms)
-        text, ocr_used = ocr_fallback(text, path_obj, ocr)
+        text, ocr_used = ocr_fallback(text, path_obj, ocr, language_hint=language)
 
         content_blocks = json.dumps(
             [b.to_dict() for b in parsed.content_blocks]

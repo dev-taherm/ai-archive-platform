@@ -17,7 +17,7 @@ _OCR_EXTENSIONS = frozenset({
 _MIN_TEXT_LENGTH = 50
 
 
-def ocr_fallback(text: str, file_path: Path, ocr_engine: Any) -> tuple[str, bool]:
+def ocr_fallback(text: str, file_path: Path, ocr_engine: Any, language_hint: str | None = None) -> tuple[str, bool]:
     """Attempt OCR if extracted text is too short.
 
     Returns (final_text, ocr_used).
@@ -31,7 +31,14 @@ def ocr_fallback(text: str, file_path: Path, ocr_engine: Any) -> tuple[str, bool
 
     try:
         content = file_path.read_bytes()
-        ocr_text = ocr_engine.extract_text(content, content_type="application/octet-stream")
+        from edge_agent.core.models import Language
+        hint = None
+        if language_hint:
+            try:
+                hint = Language(language_hint)
+            except ValueError:
+                hint = None
+        ocr_text = ocr_engine.extract_text(content, content_type="application/octet-stream", language_hint=hint)
         if ocr_text and len(ocr_text) > len(text):
             return ocr_text, True
     except Exception:
