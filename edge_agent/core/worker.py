@@ -228,6 +228,9 @@ class Worker:
         parse_time_ms = (time.time() - t0) * 1000
         text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', parsed.markdown or "")
 
+        detected_lang = ocr.detect_language(text)
+        language = detected_lang.value if detected_lang else "unknown"
+
         if self._metrics:
             self._metrics.increment_scanned()
             self._metrics.add_parse_time(parse_time_ms)
@@ -242,7 +245,6 @@ class Worker:
         images = json.dumps(
             [i.to_dict() for i in parsed.images]
         )
-        language = getattr(parsed, "language", "unknown")
         word_count = parsed.word_count
         char_count = parsed.char_count
         page_count = parsed.page_count
@@ -266,5 +268,6 @@ class Worker:
             "file_id": file_id,
             "ocr_used": ocr_used,
             "word_count": word_count,
+            "language": language,
         })
-        logger.info("Job %s completed: %s", job_id, file_id)
+        logger.info("Job %s completed: %s (lang=%s)", job_id, file_id, language)

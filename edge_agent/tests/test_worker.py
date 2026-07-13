@@ -124,3 +124,83 @@ class TestWorker:
         w.restart()
         assert w.is_running
         w.stop()
+
+
+class TestWorkerLanguageDetection:
+    @patch("edge_agent.api.server.get_config")
+    @patch("edge_agent.ocr.engine.OCREngine")
+    @patch("edge_agent.parsers.router.ParserRouter")
+    def test_arabic_document_detected(self, mock_parser_cls, mock_ocr_cls, mock_get_config, db, tmp_path):
+        from edge_agent.core.models import ParsedDocument, Language
+        from edge_agent.config import EdgeAgentConfig
+
+        mock_parser = MagicMock()
+        mock_parser.parse.return_value = ParsedDocument(
+            markdown="هذه وثيقة عربية تحتوي على نص كامل يمكن كشفه"
+        )
+        mock_parser_cls.return_value = mock_parser
+
+        mock_ocr = MagicMock()
+        mock_ocr.detect_language.return_value = Language.AR
+        mock_ocr_cls.return_value = mock_ocr
+
+        mock_get_config.return_value = EdgeAgentConfig()
+
+        f = tmp_path / "arabic.txt"
+        f.write_text("هذه وثيقة عربية")
+        db.upsert_files([{"id": "file1", "local_path": str(f), "filename": "arabic.txt"}])
+
+        w = Worker(db)
+        w.start()
+        try:
+            jid = db.create_job("scan_file", {"file_id": "file1"})
+            for _ in range(50):
+                time.sleep(0.2)
+                job = db.get_job(jid)
+                if job and job["status"] in ("completed", "failed"):
+                    break
+            assert job is not None
+            assert job["status"] == "completed"
+            file_record = db.get_file_by_id("file1")
+            assert file_record["language"] == "ar"
+        finally:
+            w.stop()
+
+    @patch("edge_agent.api.server.get_config")
+    @patch("edge_agent.ocr.engine.OCREngine")
+    @patch("edge_agent.parsers.router.ParserRouter")
+    def test_english_document_detected(self, mock_parser_cls, mock_ocr_cls, mock_get_config, db, tmp_path):
+        from edge_agent.core.models import ParsedDocument, Language
+        from edge_agent.config import EdgeAgentConfig
+
+        mock_parser = MagicMock()
+        mock_parser.parse.return_value = ParsedDocument(
+            markdown="This is an English document with enough text to detect the language"
+        )
+        mock_parser_cls.return_value = mock_parser
+
+        mock_ocr = MagicMock()
+        mock_ocr.detect_language.return_value = Language.EN
+        mock_ocr_cls.return_value = mock_ocr
+
+        mock_get_config.return_value = EdgeAgentConfig()
+
+        f = tmp_path / "english.txt"
+        f.write_text("This is an English document")
+        db.upsert_files([{"id": "file2", "local_path": str(f), "filename": "english.txt"}])
+
+        w = Worker(db)
+        w.start()
+        try:
+            jid = db.create_job("scan_file", {"file_id": "file2"})
+            for _ in range(50):
+                time.sleep(0.2)
+                job = db.get_job(jid)
+                if job and job["status"] in ("completed", "failed"):
+                    break
+            assert job is not None
+            assert job["status"] == "completed"
+            file_record = db.get_file_by_id("file2")
+            assert file_record["language"] == "en"
+        finally:
+            w.stop()
