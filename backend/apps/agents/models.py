@@ -15,6 +15,10 @@ class Agent(models.Model):
         SYNCING = "syncing", "Syncing"
         ERROR = "error", "Error"
 
+    class SyncScope(models.TextChoices):
+        PERSONAL = "personal", "Personal"
+        ORGANIZATION = "organization", "Organization"
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     organization = models.ForeignKey(
         "organizations.Organization",
@@ -42,6 +46,12 @@ class Agent(models.Model):
     )
 
     # Configuration
+    sync_scope = models.CharField(
+        max_length=20,
+        choices=SyncScope.choices,
+        default=SyncScope.PERSONAL,
+        help_text="Personal: synced data is owned by user only. Organization: shared with org.",
+    )
     sync_interval_minutes = models.IntegerField(default=30)
     max_file_size_mb = models.IntegerField(default=100)
 

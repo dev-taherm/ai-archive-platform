@@ -737,6 +737,8 @@ class AgentViewSet(viewsets.ModelViewSet):
                             "agent": agent,
                             "tags": file_data.get("tags", []),
                             "metadata": file_record_metadata,
+                            "owner": agent.user,
+                            "organization": agent.organization if agent.sync_scope == "organization" else None,
                         },
                     )
 
@@ -762,6 +764,8 @@ class AgentViewSet(viewsets.ModelViewSet):
                         parser_version=file_data.get("parser_version", ""),
                         ocr_engine=file_data.get("ocr_engine", ""),
                         tags=file_data.get("tags", []),
+                        owner=agent.user,
+                        organization=agent.organization if agent.sync_scope == "organization" else None,
                     )
 
                     # Persist extracted entities

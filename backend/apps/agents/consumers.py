@@ -293,6 +293,13 @@ class AgentConsumer(AsyncWebsocketConsumer):
         validated = serializer.validated_data
         files = validated["files"]
 
+        # Fetch agent to determine scope
+        from apps.agents.models import Agent
+        try:
+            agent = Agent.objects.get(pk=agent_pk)
+        except Agent.DoesNotExist:
+            return {"accepted": 0, "rejected": len(files_data), "errors": [{"error": "Agent not found"}]}
+
         accepted = 0
         rejected = 0
         errors = []
@@ -340,6 +347,8 @@ class AgentConsumer(AsyncWebsocketConsumer):
                             "agent_id": agent_pk,
                             "tags": file_data.get("tags", []),
                             "metadata": file_record_metadata,
+                            "owner": agent.user,
+                            "organization": agent.organization if agent.sync_scope == "organization" else None,
                         },
                     )
 
@@ -364,6 +373,8 @@ class AgentConsumer(AsyncWebsocketConsumer):
                         parser_version=file_data.get("parser_version", ""),
                         ocr_engine=file_data.get("ocr_engine", ""),
                         tags=file_data.get("tags", []),
+                        owner=agent.user,
+                        organization=agent.organization if agent.sync_scope == "organization" else None,
                     )
 
                     entities = file_data.get("entities", [])
@@ -389,13 +400,8 @@ class AgentConsumer(AsyncWebsocketConsumer):
                     logger.warning("WS sync error for %s: %s", file_data.get("local_path"), e)
 
             # Update agent sync timestamp
-            from apps.agents.models import Agent
-            try:
-                agent = Agent.objects.get(pk=agent_pk)
-                agent.last_sync_at = timezone.now()
-                agent.save(update_fields=["last_sync_at"])
-            except Agent.DoesNotExist:
-                pass
+            agent.last_sync_at = timezone.now()
+            agent.save(update_fields=["last_sync_at"])
 
         # Get pending commands
         pending = list(

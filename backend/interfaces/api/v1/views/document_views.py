@@ -8,7 +8,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from core.domain.common.exceptions import DomainException
-from apps.organizations.mixins import OrgScopedMixin, get_user_organization
+from apps.organizations.mixins import OrgScopedMixin, get_scoped_queryset
 from interfaces.api.v1.serializers.document_serializers import (
     DocumentClassifySerializer,
     DocumentExtractSerializer,
@@ -197,8 +197,7 @@ class DocumentViewSet(OrgScopedMixin, viewsets.GenericViewSet):
         from apps.files.models import FileRecord as FileRecordModel
 
         try:
-            org = get_user_organization(request.user)
-            file_record = FileRecordModel.objects.get(id=file_id, organization=org)
+            file_record = get_scoped_queryset(FileRecordModel, request.user, request).get(id=file_id)
         except FileRecordModel.DoesNotExist:
             return Response(
                 {"detail": "File not found."},

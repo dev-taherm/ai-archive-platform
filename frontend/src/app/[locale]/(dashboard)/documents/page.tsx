@@ -41,6 +41,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import type { Document } from "@/types/api";
 import { documentStatusVariant as statusVariant } from "@/lib/constants";
+import ScopeSelector from "@/components/features/shared/scope-selector";
 
 export default function DocumentsPage() {
   const t = useTranslations("documents");
@@ -48,15 +49,16 @@ export default function DocumentsPage() {
   const [viewMode, setViewMode] = useState<"table" | "grid">("table");
   const [page, setPage] = useState(1);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [scope, setScope] = useState<"personal" | "organization">("personal");
   const pageSize = 20;
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
   const { data: documents = [], isLoading } = useQuery<Document[]>({
-    queryKey: ["documents", search],
+    queryKey: ["documents", search, scope],
     queryFn: async () => {
       const response = await api.get("/documents", {
-        params: { q: search || undefined },
+        params: { q: search || undefined, scope },
       });
       return Array.isArray(response.data) ? response.data : response.data.results || [];
     },
@@ -96,6 +98,8 @@ export default function DocumentsPage() {
           </p>
         </div>
       </div>
+
+      <ScopeSelector value={scope} onChange={setScope} />
 
       <div className="flex items-center gap-2">
         <Search className="h-4 w-4 text-muted-foreground" />

@@ -19,22 +19,25 @@ import {
   FileTypeChart,
   FileStatusChart,
 } from "@/components/features/dashboard/charts-section";
+import ScopeSelector from "@/components/features/shared/scope-selector";
+import { useState } from "react";
 import type { DashboardStats, ActivityResponse } from "@/types/api";
 
 export default function DashboardPage() {
   const t = useTranslations("dashboard");
+  const [scope, setScope] = useState<"personal" | "organization">("personal");
   const { data: stats, isLoading: statsLoading } = useQuery<DashboardStats>({
-    queryKey: ["dashboard", "stats"],
+    queryKey: ["dashboard", "stats", scope],
     queryFn: async () => {
-      const response = await api.get("/dashboard/stats");
+      const response = await api.get("/dashboard/stats", { params: { scope } });
       return response.data;
     },
   });
 
   const { data: activityData } = useQuery<ActivityResponse>({
-    queryKey: ["dashboard", "activity"],
+    queryKey: ["dashboard", "activity", scope],
     queryFn: async () => {
-      const response = await api.get("/dashboard/activity");
+      const response = await api.get("/dashboard/activity", { params: { scope } });
       return response.data;
     },
   });
@@ -55,6 +58,8 @@ export default function DashboardPage() {
           {t("subtitle")}
         </p>
       </div>
+
+      <ScopeSelector value={scope} onChange={setScope} className="mb-4" />
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <StatsCard

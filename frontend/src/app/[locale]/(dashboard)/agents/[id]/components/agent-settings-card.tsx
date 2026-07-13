@@ -13,9 +13,11 @@ interface AgentSettingsCardProps {
   editName: string;
   editSyncInterval: number;
   editMaxFileSize: number;
+  editSyncScope: "personal" | "organization";
   onEditNameChange: (v: string) => void;
   onEditSyncIntervalChange: (v: number) => void;
   onEditMaxFileSizeChange: (v: number) => void;
+  onEditSyncScopeChange: (v: "personal" | "organization") => void;
   onStartEdit: () => void;
   onCancelEdit: () => void;
   onSave: () => void;
@@ -30,9 +32,11 @@ export function AgentSettingsCard({
   editName,
   editSyncInterval,
   editMaxFileSize,
+  editSyncScope,
   onEditNameChange,
   onEditSyncIntervalChange,
   onEditMaxFileSizeChange,
+  onEditSyncScopeChange,
   onStartEdit,
   onCancelEdit,
   onSave,
@@ -86,6 +90,17 @@ export function AgentSettingsCard({
                 />
               </div>
             </div>
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground">{t('syncScope')}</p>
+              <select
+                value={editSyncScope}
+                onChange={(e) => onEditSyncScopeChange(e.target.value as "personal" | "organization")}
+                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              >
+                <option value="personal">{tCommon('scopePersonal')}</option>
+                <option value="organization">{tCommon('scopeOrganization')}</option>
+              </select>
+            </div>
             <div className="flex gap-2">
               <Button
                 size="sm"
@@ -121,6 +136,10 @@ export function AgentSettingsCard({
             <div className="space-y-1">
               <p className="text-xs text-muted-foreground">{t('ipAddress')}</p>
               <p className="text-sm">{agent.ip_address || "N/A"}</p>
+            </div>
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground">{t('syncScope')}</p>
+              <p className="text-sm">{agent.sync_scope === 'organization' ? tCommon('scopeOrganization') : tCommon('scopePersonal')}</p>
             </div>
           </div>
         )}

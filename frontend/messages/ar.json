@@ -43,7 +43,9 @@
     "noData": "لا توجد بيانات",
     "comingSoon": "قريباً",
     "saveChanges": "حفظ التغييرات",
-    "selectDevice": "اختر جهاز..."
+    "selectDevice": "اختر جهاز...",
+    "scopePersonal": "شخصي",
+    "scopeOrganization": "المؤسسة"
   },
   "auth": {
     "signIn": "تسجيل الدخول",
@@ -413,7 +415,8 @@
     "remove": "إزالة",
     "commandQueued": "تم جدولة الأمر بنجاح",
     "failedToSendCommand": "فشل في إرسال الأمر",
-    "failedToDeleteDevice": "فشل في حذف الجهاز"
+    "failedToDeleteDevice": "فشل في حذف الجهاز",
+    "syncScope": "نطاق المزامنة"
   },
   "downloadAgent": {
     "title": "تنزيل بصيرة سطح المكتب",

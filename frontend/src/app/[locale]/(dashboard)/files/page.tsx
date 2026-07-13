@@ -13,6 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useTranslations } from "next-intl";
 import FilesTable from "./components/files-table";
 import MoveFileDialog from "./components/move-file-dialog";
+import ScopeSelector from "@/components/features/shared/scope-selector";
 
 export default function FilesPage() {
   const t = useTranslations("files");
@@ -26,11 +27,12 @@ export default function FilesPage() {
   const [moveSourcePath, setMoveSourcePath] = useState("");
   const [moveTargetPath, setMoveTargetPath] = useState("");
   const [moveMode, setMoveMode] = useState<"agent" | "folder">("agent");
+  const [scope, setScope] = useState<"personal" | "organization">("personal");
 
   const { data: files = [], isLoading } = useQuery<FileRecord[]>({
-    queryKey: ["files"],
+    queryKey: ["files", scope],
     queryFn: async () => {
-      const res = await api.get("/files");
+      const res = await api.get("/files", { params: { scope } });
       return Array.isArray(res.data) ? res.data : res.data.results || [];
     },
   });
@@ -130,6 +132,7 @@ export default function FilesPage() {
           <h1 className="text-2xl font-bold bg-gradient-to-r from-brand-teal to-brand-cyan bg-clip-text text-transparent">{t("title")}</h1>
           <p className="text-muted-foreground">{t("subtitle")}</p>
         </div>
+        <ScopeSelector value={scope} onChange={setScope} />
       </div>
 
       {files.length === 0 && !isLoading ? (

@@ -6,7 +6,7 @@ from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from apps.organizations.mixins import OrgScopedMixin, get_user_organization
+from apps.organizations.mixins import OrgScopedMixin, get_user_scope, get_scoped_queryset
 from interfaces.api.v1.serializers.dashboard_serializers import (
     ActivitySerializer,
     ChartDataSerializer,
@@ -28,8 +28,9 @@ class DashboardView(OrgScopedMixin, viewsets.GenericViewSet):
 
     permission_classes = [permissions.IsAuthenticated]
 
-    def _get_org(self):
-        return get_user_organization(self.request.user)
+    def _get_model_qs(self, model):
+        """Return a scope-aware queryset for the given model."""
+        return get_scoped_queryset(model, self.request.user, self.request)
 
     @action(detail=False, methods=["get"])
     def stats(self, request):
@@ -37,8 +38,6 @@ class DashboardView(OrgScopedMixin, viewsets.GenericViewSet):
             from django.db.models import Count, Sum, Avg
             from django.utils import timezone
             from datetime import timedelta
-
-            org = self._get_org()
 
             stats_data = {
                 "total_files": 0,
@@ -61,7 +60,7 @@ class DashboardView(OrgScopedMixin, viewsets.GenericViewSet):
             try:
                 from apps.files.models import FileRecord as FileModel
 
-                file_qs = FileModel.objects.filter(organization=org)
+                file_qs = self._get_model_qs(FileModel)
                 stats_data["total_files"] = file_qs.count()
 
                 status_counts = (
@@ -89,7 +88,7 @@ class DashboardView(OrgScopedMixin, viewsets.GenericViewSet):
             try:
                 from apps.documents.models import Document as DocumentModel
 
-                doc_qs = DocumentModel.objects.filter(organization=org)
+                doc_qs = self._get_model_qs(DocumentModel)
                 stats_data["total_documents"] = doc_qs.count()
 
                 # Documents by type
@@ -113,10 +112,7 @@ class DashboardView(OrgScopedMixin, viewsets.GenericViewSet):
                 }
 
                 # Average processing time
-                avg_time = doc_qs.filter(
-                    processing_status="completed"
-                ).aggregate(avg=Avg("processing_time_ms"))
-                stats_data["avg_processing_time_ms"] = avg_time["avg"] or 0.0
+                stats_data["avg_processing_time_ms"] = 0.0
             except Exception:
                 logger.debug("Could not query document stats")
 
@@ -124,9 +120,7 @@ class DashboardView(OrgScopedMixin, viewsets.GenericViewSet):
             try:
                 from apps.search.models import SearchLog
 
-                stats_data["total_searches"] = SearchLog.objects.filter(
-                    organization=org
-                ).count()
+                stats_data["total_searches"] = self._get_model_qs(SearchLog).count()
             except Exception:
                 pass
 
@@ -134,9 +128,7 @@ class DashboardView(OrgScopedMixin, viewsets.GenericViewSet):
             try:
                 from apps.chat.models import ChatSession
 
-                stats_data["total_chat_sessions"] = ChatSession.objects.filter(
-                    organization=org
-                ).count()
+                stats_data["total_chat_sessions"] = self._get_model_qs(ChatSession).count()
             except Exception:
                 pass
 
@@ -144,7 +136,7 @@ class DashboardView(OrgScopedMixin, viewsets.GenericViewSet):
             try:
                 from apps.agents.models import Agent
 
-                agent_qs = Agent.objects.filter(organization=org)
+                agent_qs = self._get_model_qs(Agent)
                 stats_data["agents_total"] = agent_qs.count()
                 stats_data["agents_online"] = agent_qs.filter(
                     status="online"
@@ -156,7 +148,7 @@ class DashboardView(OrgScopedMixin, viewsets.GenericViewSet):
             try:
                 from apps.files.models import FileRecord as FileModel
 
-                file_qs = FileModel.objects.filter(organization=org)
+                file_qs = self._get_model_qs(FileModel)
                 stats_data["duplicate_files"] = file_qs.filter(
                     duplicate_group_id__isnull=False
                 ).count()
@@ -185,7 +177,6 @@ class DashboardView(OrgScopedMixin, viewsets.GenericViewSet):
         from django.db.models.functions import TruncDate
         from datetime import timedelta
 
-        org = self._get_org()
         period = request.query_params.get("period", "7d")
         days = int(period.replace("d", "")) if period.endswith("d") else 7
         since = timezone.now() - timedelta(days=days)
@@ -197,7 +188,7 @@ class DashboardView(OrgScopedMixin, viewsets.GenericViewSet):
             from apps.files.models import FileRecord as FileModel
 
             data = (
-                FileModel.objects.filter(organization=org)
+                self._get_model_qs(FileModel)
                 .values("status")
                 .annotate(count=Count("id"))
                 .order_by("status")
@@ -228,7 +219,7 @@ class DashboardView(OrgScopedMixin, viewsets.GenericViewSet):
             from apps.files.models import FileRecord as FileModel
 
             data = (
-                FileModel.objects.filter(organization=org, created_at__gte=since)
+                self._get_model_qs(FileModel).filter(created_at__gte=since)
                 .annotate(date=TruncDate("created_at"))
                 .values("date")
                 .annotate(count=Count("id"))
@@ -260,7 +251,7 @@ class DashboardView(OrgScopedMixin, viewsets.GenericViewSet):
             from apps.documents.models import Document as DocumentModel
 
             data = (
-                DocumentModel.objects.filter(organization=org)
+                self._get_model_qs(DocumentModel)
                 .values("doc_type")
                 .annotate(count=Count("id"))
                 .order_by("-count")
@@ -291,7 +282,7 @@ class DashboardView(OrgScopedMixin, viewsets.GenericViewSet):
             from apps.search.models import SearchLog
 
             data = (
-                SearchLog.objects.filter(organization=org, created_at__gte=since)
+                self._get_model_qs(SearchLog).filter(created_at__gte=since)
                 .annotate(date=TruncDate("created_at"))
                 .values("date")
                 .annotate(count=Count("id"))
@@ -325,7 +316,6 @@ class DashboardView(OrgScopedMixin, viewsets.GenericViewSet):
 
     @action(detail=False, methods=["get"])
     def activity(self, request):
-        org = self._get_org()
         limit = int(request.query_params.get("limit", 20))
         offset = int(request.query_params.get("offset", 0))
 
@@ -334,9 +324,7 @@ class DashboardView(OrgScopedMixin, viewsets.GenericViewSet):
         try:
             from apps.files.models import AuditLog
 
-            recent_logs = AuditLog.objects.select_related("user").filter(
-                organization=org
-            ).order_by("-created_at")[offset : offset + limit]
+            recent_logs = self._get_model_qs(AuditLog).select_related("user").order_by("-created_at")[offset : offset + limit]
             for log in recent_logs:
                 activities.append(
                     {
@@ -370,7 +358,6 @@ class DashboardView(OrgScopedMixin, viewsets.GenericViewSet):
         from django.utils import timezone
         from datetime import timedelta
 
-        org = self._get_org()
         recommendations = []
         rec_id = 0
 
@@ -378,8 +365,8 @@ class DashboardView(OrgScopedMixin, viewsets.GenericViewSet):
         try:
             from apps.documents.models import Document as DocumentModel
 
-            failed_count = DocumentModel.objects.filter(
-                organization=org, processing_status="failed"
+            failed_count = self._get_model_qs(DocumentModel).filter(
+                processing_status="failed"
             ).count()
             if failed_count > 0:
                 recommendations.append({
@@ -400,8 +387,8 @@ class DashboardView(OrgScopedMixin, viewsets.GenericViewSet):
         try:
             from apps.documents.models import Document as DocumentModel
 
-            queued_count = DocumentModel.objects.filter(
-                organization=org, processing_status="queued"
+            queued_count = self._get_model_qs(DocumentModel).filter(
+                processing_status="queued"
             ).count()
             if queued_count > 0:
                 recommendations.append({
@@ -422,8 +409,8 @@ class DashboardView(OrgScopedMixin, viewsets.GenericViewSet):
         try:
             from apps.files.models import FileRecord as FileModel
 
-            dup_count = FileModel.objects.filter(
-                organization=org, duplicate_group_id__isnull=False
+            dup_count = self._get_model_qs(FileModel).filter(
+                duplicate_group_id__isnull=False
             ).count()
             if dup_count > 0:
                 recommendations.append({
@@ -444,7 +431,7 @@ class DashboardView(OrgScopedMixin, viewsets.GenericViewSet):
         try:
             from apps.documents.models import Document as DocumentModel
 
-            doc_qs = DocumentModel.objects.filter(organization=org)
+            doc_qs = self._get_model_qs(DocumentModel)
             completed = doc_qs.filter(processing_status="completed").count()
             with_summary = doc_qs.filter(
                 processing_status="completed",
@@ -471,8 +458,7 @@ class DashboardView(OrgScopedMixin, viewsets.GenericViewSet):
             from apps.agents.models import Agent
 
             threshold = timezone.now() - timedelta(hours=1)
-            stale = Agent.objects.filter(
-                organization=org,
+            stale = self._get_model_qs(Agent).filter(
                 status="online",
                 last_seen__lt=threshold,
             ).count()
@@ -517,7 +503,7 @@ class DashboardView(OrgScopedMixin, viewsets.GenericViewSet):
         try:
             from apps.documents.models import Document as DocumentModel
 
-            doc_qs = DocumentModel.objects.filter(organization=org)
+            doc_qs = self._get_model_qs(DocumentModel)
             completed = doc_qs.filter(processing_status="completed").count()
             with_entities = doc_qs.filter(
                 processing_status="completed",

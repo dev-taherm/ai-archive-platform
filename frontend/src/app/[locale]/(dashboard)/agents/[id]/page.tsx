@@ -37,6 +37,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
   const [editName, setEditName] = useState("");
   const [editSyncInterval, setEditSyncInterval] = useState(0);
   const [editMaxFileSize, setEditMaxFileSize] = useState(0);
+  const [editSyncScope, setEditSyncScope] = useState<"personal" | "organization">("personal");
 
   // Queries
   const { data: agent, isLoading } = useQuery<Agent>({
@@ -173,6 +174,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
     setEditName(agent.name);
     setEditSyncInterval(agent.sync_interval_minutes);
     setEditMaxFileSize(agent.max_file_size_mb);
+    setEditSyncScope(agent.sync_scope);
     setEditingSettings(true);
   };
 
@@ -181,6 +183,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
       name: editName,
       sync_interval_minutes: editSyncInterval,
       max_file_size_mb: editMaxFileSize,
+      sync_scope: editSyncScope,
     });
   };
 
@@ -263,9 +266,11 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
         editName={editName}
         editSyncInterval={editSyncInterval}
         editMaxFileSize={editMaxFileSize}
+        editSyncScope={editSyncScope}
         onEditNameChange={setEditName}
         onEditSyncIntervalChange={setEditSyncInterval}
         onEditMaxFileSizeChange={setEditMaxFileSize}
+        onEditSyncScopeChange={setEditSyncScope}
         onStartEdit={startEditSettings}
         onCancelEdit={() => setEditingSettings(false)}
         onSave={handleSaveSettings}

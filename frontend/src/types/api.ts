@@ -357,6 +357,7 @@ export interface Agent {
   last_seen: string | null;
   last_sync_at: string | null;
   files_count: number;
+  sync_scope: "personal" | "organization";
   total_size_bytes: number;
   sync_interval_minutes: number;
   max_file_size_mb: number;
