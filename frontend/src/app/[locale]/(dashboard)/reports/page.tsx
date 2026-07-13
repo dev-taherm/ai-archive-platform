@@ -22,32 +22,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import type { DashboardStats } from "@/types/api";
-
-interface ReportData {
-  storage: {
-    total_files: number;
-    total_size_bytes: number;
-    by_type: Record<string, { count: number; size_bytes: number }>;
-  };
-  processing: {
-    total_processed: number;
-    success_rate: number;
-    avg_time_ms: number;
-    by_status: Record<string, number>;
-  };
-  activity: {
-    daily_uploads: { date: string; count: number }[];
-    top_tags: { tag: string; count: number }[];
-    recent_reports: {
-      id: string;
-      name: string;
-      type: string;
-      generated_at: string;
-      file_size: number;
-    }[];
-  };
-}
+import type { DashboardStats, ReportData } from "@/types/api";
 
 export default function ReportsPage() {
   const t = useTranslations("reports");

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import threading
+from collections import deque
 from datetime import datetime, timezone
 from typing import Any
 
@@ -10,7 +11,7 @@ class RingBufferLogHandler(logging.Handler):
     def __init__(self, capacity: int = 1000) -> None:
         super().__init__()
         self.capacity = capacity
-        self._buffer: list[dict[str, Any]] = []
+        self._buffer: deque[dict[str, Any]] = deque(maxlen=capacity)
         self._lock = threading.Lock()
 
     def emit(self, record: logging.LogRecord) -> None:
@@ -21,8 +22,6 @@ class RingBufferLogHandler(logging.Handler):
             "message": self.format(record),
         }
         with self._lock:
-            if len(self._buffer) >= self.capacity:
-                self._buffer.pop(0)
             self._buffer.append(entry)
 
     def get_records(

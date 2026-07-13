@@ -48,6 +48,8 @@ export default function OrgSwitcher() {
         variant="ghost"
         className="w-full justify-start gap-2 px-3 py-2 h-auto text-sm font-normal"
         onClick={() => setOpen(!open)}
+        aria-label="Switch organization"
+        aria-expanded={open}
       >
         <Building2 className="h-4 w-4 shrink-0 text-muted-foreground" />
         <span className="truncate flex-1 text-left">{currentOrg?.name || "Select organization"}</span>

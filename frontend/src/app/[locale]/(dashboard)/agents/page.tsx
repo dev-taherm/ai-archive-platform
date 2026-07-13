@@ -27,16 +27,7 @@ import {
 } from "@/components/ui/card";
 import { DownloadAgentDialog } from "@/components/features/agents/download-agent-dialog";
 import type { Agent } from "@/types/api";
-
-const statusVariant: Record<
-  string,
-  "default" | "secondary" | "destructive" | "success" | "warning"
-> = {
-  online: "success",
-  syncing: "warning",
-  offline: "secondary",
-  error: "destructive",
-};
+import { agentStatusVariant as statusVariant } from "@/lib/constants";
 
 export default function AgentsPage() {
   const t = useTranslations("agents");

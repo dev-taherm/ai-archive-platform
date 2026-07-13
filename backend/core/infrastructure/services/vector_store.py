@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from pathlib import Path
 from typing import Any
 
@@ -11,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 # On-disk vector store: chunks + embeddings in a JSON file
 # Production: replace with pgvector
-DEFAULT_STORE_PATH = Path("/home/taher/Documents/ai-archive-platform/backend/data/vector_store.json")
+DEFAULT_STORE_PATH = Path(os.environ.get("VECTOR_STORE_PATH", "data/vector_store.json"))
 
 
 class VectorStore:

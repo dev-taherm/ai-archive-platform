@@ -8,14 +8,19 @@ from pathlib import Path
 
 
 def compute_file_hash(filepath: str | Path, algorithm: str = "sha256") -> str:
-    """Compute a content hash for a file.
+    """Compute a content hash for a file using chunked reading.
 
     Returns a string in the format ``algorithm:hexdigest``
     (e.g. ``sha256:abc123...``).
     """
     path = Path(filepath)
     h = hashlib.new(algorithm)
-    h.update(path.read_bytes())
+    with open(path, "rb") as f:
+        while True:
+            chunk = f.read(8192)
+            if not chunk:
+                break
+            h.update(chunk)
     return f"{algorithm}:{h.hexdigest()}"
 
 

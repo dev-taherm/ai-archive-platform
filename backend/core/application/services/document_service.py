@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import logging
 import uuid
-from typing import Any
 
 from core.application.dtos.document_dto import (
     ClassificationResultDTO,
@@ -12,9 +10,8 @@ from core.application.dtos.document_dto import (
 from core.application.interfaces.repositories import (
     AuditLogRepository,
 )
+from core.application.services.audit_service import AuditService
 from core.application.use_cases.document_use_cases import DocumentUseCases
-
-logger = logging.getLogger(__name__)
 
 
 class DocumentService:
@@ -26,7 +23,7 @@ class DocumentService:
         audit_log_repository: AuditLogRepository,
     ) -> None:
         self._document_use_cases = document_use_cases
-        self._audit_log_repository = audit_log_repository
+        self._audit_service = AuditService(audit_log_repository)
 
     async def process_document(
         self,
@@ -37,7 +34,7 @@ class DocumentService:
         """Process a document through the full pipeline and log the operation."""
         result = await self._document_use_cases.process_document(file_id)
 
-        await self._audit(
+        await self._audit_service.log(
             action="document.processed",
             user_id=user_id,
             resource_type="document",
@@ -81,7 +78,7 @@ class DocumentService:
             categories=categories,
         )
 
-        await self._audit(
+        await self._audit_service.log(
             action="document.classified",
             user_id=user_id,
             resource_type="document",
@@ -107,7 +104,7 @@ class DocumentService:
             fields=fields,
         )
 
-        await self._audit(
+        await self._audit_service.log(
             action="document.metadata_extracted",
             user_id=user_id,
             resource_type="document",
@@ -116,23 +113,3 @@ class DocumentService:
         )
 
         return result
-
-    async def _audit(
-        self,
-        action: str,
-        user_id: uuid.UUID | None,
-        resource_type: str,
-        resource_id: uuid.UUID | None,
-        details: dict[str, Any] | None = None,
-    ) -> None:
-        """Persist an audit log entry."""
-        try:
-            await self._audit_log_repository.save({
-                "action": action,
-                "user_id": str(user_id) if user_id else None,
-                "resource_type": resource_type,
-                "resource_id": str(resource_id) if resource_id else None,
-                "details": details or {},
-            })
-        except Exception as e:
-            logger.warning("Failed to write audit log: %s", e)

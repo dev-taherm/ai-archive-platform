@@ -472,3 +472,99 @@ export interface Invitation {
   created_at: string;
   expires_at: string;
 }
+
+// Workflow types
+export interface WorkflowStep {
+  id: string;
+  name: string;
+  type: string;
+  status: "pending" | "running" | "completed" | "failed" | "skipped";
+}
+
+export interface Workflow {
+  id: string;
+  name: string;
+  description: string;
+  status: "draft" | "active" | "paused" | "completed" | "failed";
+  trigger: string;
+  steps: WorkflowStep[];
+  last_run_at: string | null;
+  next_run_at: string | null;
+  run_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WorkflowRun {
+  id: string;
+  workflow_id: string;
+  status: string;
+  input_data: Record<string, unknown>;
+  output_data: Record<string, unknown>;
+  current_step: number;
+  total_steps: number;
+  error_message: string | null;
+  started_at: string;
+  completed_at: string | null;
+  created_at: string;
+}
+
+// Chat types
+export interface Message {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  sources?: Array<{ document_id: string; title: string; snippet: string }>;
+  tool_calls?: ToolCall[];
+}
+
+export interface Session {
+  id: string;
+  title: string;
+  message_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+// Report types
+export interface ReportData {
+  storage: {
+    total_files: number;
+    total_size_bytes: number;
+    by_type: Record<string, { count: number; size_bytes: number }>;
+  };
+  processing: {
+    total_processed: number;
+    success_rate: number;
+    avg_time_ms: number;
+    by_status: Record<string, number>;
+  };
+  activity: {
+    daily_uploads: { date: string; count: number }[];
+    top_tags: { tag: string; count: number }[];
+    recent_reports: {
+      id: string;
+      name: string;
+      type: string;
+      generated_at: string;
+      file_size: number;
+    }[];
+  };
+}
+
+// API Key type
+export interface ApiKey {
+  id: string;
+  name: string;
+  key_preview: string;
+  created_at: string;
+  last_used: string | null;
+}
+
+// Entity aggregation type
+export interface EntityAgg {
+  name: string;
+  type: string;
+  count: number;
+  documents: { id: string; title: string }[];
+}

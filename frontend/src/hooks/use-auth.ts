@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import api from "@/lib/api";
@@ -46,9 +47,11 @@ export function useAuth() {
   });
 
   // Sync currentUser back to store
-  if (currentUser && !user) {
-    setUser(currentUser);
-  }
+  useEffect(() => {
+    if (currentUser && !user) {
+      setUser(currentUser);
+    }
+  }, [currentUser, user, setUser]);
 
   const handleLogout = async () => {
     const refreshToken = useAuthStore.getState().refreshToken;

@@ -27,6 +27,36 @@ class Metrics:
                 "memory_mb": self._get_memory_mb(),
             }
 
+    # ── Thread-safe increment helpers ─────────────────────────────────────────
+
+    def increment_scanned(self) -> None:
+        with self._lock:
+            self.files_scanned += 1
+
+    def add_parse_time(self, ms: float) -> None:
+        with self._lock:
+            self.parse_time_total_ms += ms
+
+    def increment_errors(self) -> None:
+        with self._lock:
+            self.parse_errors += 1
+
+    def increment_sync_events(self) -> None:
+        with self._lock:
+            self.sync_events += 1
+
+    def increment_sync_files(self, count: int = 1) -> None:
+        with self._lock:
+            self.sync_files += count
+
+    def increment_heartbeat(self) -> None:
+        with self._lock:
+            self.heartbeat_count += 1
+
+    @property
+    def memory_mb(self) -> float:
+        return self._get_memory_mb()
+
     def _get_memory_mb(self) -> float:
         try:
             with open("/proc/self/status") as f:

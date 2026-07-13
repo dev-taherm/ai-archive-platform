@@ -5,7 +5,7 @@ log_level: INFO
 server:
   url: http://localhost:8000
   web_url: http://localhost:3000
-  api_key: ak_2a23347299b9f643086e6052b9a5850d6a54d3bae74d9bd61a545a8001448a81
+  api_key: ${EDGE_API_KEY}
   jwt_token: ''
 folders:
   - /home/taher/Documents/ai-archive-platform/test-docs

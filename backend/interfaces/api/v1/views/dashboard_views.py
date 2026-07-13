@@ -493,7 +493,7 @@ class DashboardView(OrgScopedMixin, viewsets.GenericViewSet):
 
         # 6. No AI providers configured
         try:
-            from apps.providers.models import ProviderConfig
+            from apps.ai.models import ProviderConfig
 
             active_providers = ProviderConfig.objects.filter(
                 is_active=True

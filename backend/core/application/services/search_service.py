@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import logging
 import uuid
-from typing import Any
 
 from core.application.dtos.search_dto import (
     SearchFiltersDTO,
@@ -11,9 +9,8 @@ from core.application.dtos.search_dto import (
     SearchResultDTO,
 )
 from core.application.interfaces.repositories import AuditLogRepository
+from core.application.services.audit_service import AuditService
 from core.application.use_cases.search_use_cases import SearchUseCases
-
-logger = logging.getLogger(__name__)
 
 
 class SearchService:
@@ -25,7 +22,7 @@ class SearchService:
         audit_log_repository: AuditLogRepository,
     ) -> None:
         self._search_use_cases = search_use_cases
-        self._audit_log_repository = audit_log_repository
+        self._audit_service = AuditService(audit_log_repository)
 
     async def search(
         self,
@@ -36,7 +33,7 @@ class SearchService:
         """Execute a search and log the operation."""
         result = await self._search_use_cases.search(query_dto)
 
-        await self._audit(
+        await self._audit_service.log(
             action="search.executed",
             user_id=user_id,
             resource_type="search",
@@ -68,7 +65,7 @@ class SearchService:
             filters=filters,
         )
 
-        await self._audit(
+        await self._audit_service.log(
             action="search.semantic",
             user_id=user_id,
             resource_type="search",
@@ -95,7 +92,7 @@ class SearchService:
             filters=filters,
         )
 
-        await self._audit(
+        await self._audit_service.log(
             action="search.keyword",
             user_id=user_id,
             resource_type="search",
@@ -126,7 +123,7 @@ class SearchService:
             keyword_weight=keyword_weight,
         )
 
-        await self._audit(
+        await self._audit_service.log(
             action="search.hybrid",
             user_id=user_id,
             resource_type="search",
@@ -140,23 +137,3 @@ class SearchService:
         )
 
         return results
-
-    async def _audit(
-        self,
-        action: str,
-        user_id: uuid.UUID | None,
-        resource_type: str,
-        resource_id: uuid.UUID | None,
-        details: dict[str, Any] | None = None,
-    ) -> None:
-        """Persist an audit log entry."""
-        try:
-            await self._audit_log_repository.save({
-                "action": action,
-                "user_id": str(user_id) if user_id else None,
-                "resource_type": resource_type,
-                "resource_id": str(resource_id) if resource_id else None,
-                "details": details or {},
-            })
-        except Exception as e:
-            logger.warning("Failed to write audit log: %s", e)

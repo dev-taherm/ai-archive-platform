@@ -22,97 +22,93 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("edge_agent.api")
 
-_config: EdgeAgentConfig | None = None
-_db: LocalDB | None = None
-_worker: Worker | None = None
-_watcher: FolderWatcher | None = None
-_sync_engine: SyncEngine | None = None
-_metrics: Any | None = None
-_log_handler: Any | None = None
-_registry: PluginRegistry | None = None
-_event_bus: EventBus | None = None
-_ws_client: Any | None = None
-_start_time: float = 0.0
+
+class AppState:
+    """Encapsulates all global application state."""
+    def __init__(self) -> None:
+        self.config: EdgeAgentConfig | None = None
+        self.db: LocalDB | None = None
+        self.worker: Worker | None = None
+        self.watcher: FolderWatcher | None = None
+        self.sync_engine: SyncEngine | None = None
+        self.metrics: Any | None = None
+        self.log_handler: Any | None = None
+        self.registry: PluginRegistry | None = None
+        self.event_bus: EventBus | None = None
+        self.ws_client: Any | None = None
+        self.start_time: float = 0.0
+
+
+_app_state = AppState()
 
 
 def get_plugin_registry() -> PluginRegistry:
-    global _registry
-    assert _registry is not None, "Plugin registry not initialized"
-    return _registry
+    assert _app_state.registry is not None, "Plugin registry not initialized"
+    return _app_state.registry
 
 
 def get_config() -> EdgeAgentConfig:
-    global _config
-    if _config is None:
-        _config = load_config()
-    return _config
+    if _app_state.config is None:
+        _app_state.config = load_config()
+    return _app_state.config
 
 
 def get_db() -> LocalDB:
-    global _db
-    assert _db is not None, "DB not initialized (lifespan not started)"
-    return _db
+    assert _app_state.db is not None, "DB not initialized (lifespan not started)"
+    return _app_state.db
 
 
 def get_worker() -> Worker:
-    global _worker
-    assert _worker is not None, "Worker not initialized"
-    return _worker
+    assert _app_state.worker is not None, "Worker not initialized"
+    return _app_state.worker
 
 
 def get_watcher() -> FolderWatcher:
-    global _watcher
-    assert _watcher is not None, "Watcher not initialized"
-    return _watcher
+    assert _app_state.watcher is not None, "Watcher not initialized"
+    return _app_state.watcher
 
 
 def get_sync_engine() -> SyncEngine:
-    global _sync_engine
-    assert _sync_engine is not None, "SyncEngine not initialized"
-    return _sync_engine
+    assert _app_state.sync_engine is not None, "SyncEngine not initialized"
+    return _app_state.sync_engine
 
 
 def get_metrics() -> Any:
-    global _metrics
-    assert _metrics is not None, "Metrics not initialized"
-    return _metrics
+    assert _app_state.metrics is not None, "Metrics not initialized"
+    return _app_state.metrics
 
 
 def get_event_bus() -> EventBus:
-    global _event_bus
-    assert _event_bus is not None, "EventBus not initialized"
-    return _event_bus
+    assert _app_state.event_bus is not None, "EventBus not initialized"
+    return _app_state.event_bus
 
 
 def get_log_handler() -> Any:
-    global _log_handler
-    return _log_handler
+    return _app_state.log_handler
 
 
 def get_ws_client() -> Any:
-    global _ws_client
-    return _ws_client
+    return _app_state.ws_client
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _config, _db, _worker, _watcher, _sync_engine, _registry, _event_bus, _metrics, _start_time
-    _config = load_config()
-    Path(_config.data_dir).mkdir(parents=True, exist_ok=True)
-    _db = LocalDB(_config.db_path)
-    run_migration(_config.db_path)
-    _start_time = time.time()
+    _app_state.config = load_config()
+    Path(_app_state.config.data_dir).mkdir(parents=True, exist_ok=True)
+    _app_state.db = LocalDB(_app_state.config.db_path)
+    run_migration(_app_state.config.db_path)
+    _app_state.start_time = time.time()
 
     # Seed frontend_url into SQLite so the desktop app can read it before registration
-    if _config.server.web_url:
-        existing_cfg = _db.get_config()
+    if _app_state.config.server.web_url:
+        existing_cfg = _app_state.db.get_config()
         if not existing_cfg.get("frontend_url"):
-            _db.set_config("frontend_url", _config.server.web_url)
+            _app_state.db.set_config("frontend_url", _app_state.config.server.web_url)
 
-    _registry = PluginRegistry()
-    _registry.discover_plugins(_config.plugin_dir)
-    if _registry.list_capabilities():
-        logger.info("Plugins loaded: %s", _registry.list_capabilities())
+    _app_state.registry = PluginRegistry()
+    _app_state.registry.discover_plugins(_app_state.config.plugin_dir)
+    if _app_state.registry.list_capabilities():
+        logger.info("Plugins loaded: %s", _app_state.registry.list_capabilities())
 
     from edge_agent.core.sync_engine import SyncEngine
     from edge_agent.core.worker import Worker
@@ -120,45 +116,44 @@ async def lifespan(app: FastAPI):
     from edge_agent.core.metrics import Metrics
     from edge_agent.core.log_capture import RingBufferLogHandler
 
-    _metrics = Metrics()
-    _event_bus = EventBus()
+    _app_state.metrics = Metrics()
+    _app_state.event_bus = EventBus()
 
-    global _log_handler
-    _log_handler = RingBufferLogHandler(1000)
-    _log_handler.setFormatter(logging.Formatter("%(message)s"))
-    logging.getLogger().addHandler(_log_handler)
+    _app_state.log_handler = RingBufferLogHandler(1000)
+    _app_state.log_handler.setFormatter(logging.Formatter("%(message)s"))
+    logging.getLogger().addHandler(_app_state.log_handler)
 
-    _sync_engine = SyncEngine(_db, _config, metrics=_metrics)
-    _worker = Worker(_db, _sync_engine, metrics=_metrics, event_bus=_event_bus)
-    _worker.start()
+    _app_state.sync_engine = SyncEngine(_app_state.db, _app_state.config, metrics=_app_state.metrics)
+    _app_state.worker = Worker(_app_state.db, _app_state.sync_engine, metrics=_app_state.metrics, event_bus=_app_state.event_bus)
+    _app_state.worker.start()
 
     # Start SaaS WebSocket client (replaces HTTP heartbeat polling)
     from edge_agent.core.ws_client import SaaSWebSocketClient
-    _ws_client = SaaSWebSocketClient(
-        db=_db,
-        sync_engine=_sync_engine,
-        event_bus=_event_bus,
-        command_handler=_worker.handle_command,
+    _app_state.ws_client = SaaSWebSocketClient(
+        db=_app_state.db,
+        sync_engine=_app_state.sync_engine,
+        event_bus=_app_state.event_bus,
+        command_handler=_app_state.worker.handle_command,
     )
-    _ws_client._start_time = _start_time
-    _ws_client.start()
+    _app_state.ws_client._start_time = _app_state.start_time
+    _app_state.ws_client.start()
 
-    if _config.watcher.enabled:
-        _watcher = FolderWatcher(_db, debounce_seconds=_config.watcher.debounce_seconds, event_bus=_event_bus)
-        _watcher.start(_config.folders)
-        logger.info("Watcher started for %d folders", len(_config.folders))
+    if _app_state.config.watcher.enabled:
+        _app_state.watcher = FolderWatcher(_app_state.db, debounce_seconds=_app_state.config.watcher.debounce_seconds, event_bus=_app_state.event_bus)
+        _app_state.watcher.start(_app_state.config.folders)
+        logger.info("Watcher started for %d folders", len(_app_state.config.folders))
 
-    logger.info("Edge Agent started (DB: %s)", _config.db_path)
+    logger.info("Edge Agent started (DB: %s)", _app_state.config.db_path)
 
     yield
 
-    if _watcher:
-        _watcher.stop()
-    if _ws_client:
-        _ws_client.stop()
-    if _worker:
-        _worker.stop()
-    _db.close()
+    if _app_state.watcher:
+        _app_state.watcher.stop()
+    if _app_state.ws_client:
+        _app_state.ws_client.stop()
+    if _app_state.worker:
+        _app_state.worker.stop()
+    _app_state.db.close()
     logger.info("Edge Agent shutting down")
 
 
@@ -169,9 +164,10 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
+    allowed_origins = _app_state.config.server.cors_origins if _app_state.config and hasattr(_app_state.config.server, 'cors_origins') else ["http://localhost:3000"]
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
+        allow_origins=allowed_origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

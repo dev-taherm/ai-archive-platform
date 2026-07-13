@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import logging
 import time
+from html import escape as html_escape
 from pathlib import Path
 from typing import Any
 
@@ -112,7 +113,7 @@ class MinerUParser:
                 result.tables = [ParsedTable(html=item.get("text", ""), caption=item.get("caption", "")) for item in content_list if item.get("type") == "table"]
                 result.images = [ParsedImage(image_path=item.get("img_path", ""), description=item.get("text", "")) for item in content_list if item.get("type") == "image"]
             except (json.JSONDecodeError, KeyError):
-                pass
+                logger.debug("Failed to parse content list from %s", cl_path, exc_info=True)
         middle_path = parse_dir / f"{doc_name}_middle.json"
         if middle_path.exists():
             try:
@@ -121,7 +122,7 @@ class MinerUParser:
                 result.metadata = {"parse_type": middle_json.get("_parse_type", "unknown"), "total_blocks": sum(len(p.get("data", [])) for p in pdf_info)}
                 result.page_count = pdf_info[-1].get("page_idx", 0) + 1 if pdf_info else 0
             except (json.JSONDecodeError, KeyError):
-                pass
+                logger.debug("Failed to parse middle JSON from %s", middle_path, exc_info=True)
         result.word_count = len(result.markdown.split()) if result.markdown else 0
         result.char_count = len(result.markdown) if result.markdown else 0
         return result
@@ -172,9 +173,9 @@ class MinerUParser:
             return ""
         headers = [c.strip() for c in table_lines[0].split("|")[1:-1]]
         rows = [[c.strip() for c in line.split("|")[1:-1]] for line in table_lines[2:]]
-        html = "<table><thead><tr>" + "".join(f"<th>{h}</th>" for h in headers) + "</tr></thead><tbody>"
+        html = "<table><thead><tr>" + "".join(f"<th>{html_escape(h)}</th>" for h in headers) + "</tr></thead><tbody>"
         for row in rows:
-            html += "<tr>" + "".join(f"<td>{c}</td>" for c in row) + "</tr>"
+            html += "<tr>" + "".join(f"<td>{html_escape(c)}</td>" for c in row) + "</tr>"
         return html + "</tbody></table>"
 
     def _parse_with_fallback(self, path: Path, **kwargs) -> ParsedDocument:

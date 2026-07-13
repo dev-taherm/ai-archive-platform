@@ -40,16 +40,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import type { Document } from "@/types/api";
-
-const statusVariant: Record<string, "default" | "secondary" | "destructive" | "success" | "warning"> = {
-  queued: "warning",
-  extracting: "secondary",
-  classifying: "secondary",
-  indexing: "secondary",
-  completed: "success",
-  failed: "destructive",
-  retrying: "warning",
-};
+import { documentStatusVariant as statusVariant } from "@/lib/constants";
 
 export default function DocumentsPage() {
   const t = useTranslations("documents");

@@ -68,7 +68,7 @@ export function useSwitchOrganization() {
       try {
         const userRes = await api.get("/users/me/");
         useAuthStore.getState().setUser(userRes.data);
-      } catch {}
+      } catch (error) { console.error("Failed to refresh user data:", error); }
       queryClient.invalidateQueries({ queryKey: ["organization"] });
       queryClient.invalidateQueries({ queryKey: ["organizations"] });
     },
@@ -90,7 +90,7 @@ export function useLeaveOrganization() {
       try {
         const userRes = await api.get("/users/me/");
         useAuthStore.getState().setUser(userRes.data);
-      } catch {}
+      } catch (error) { console.error("Failed to refresh user data:", error); }
       queryClient.invalidateQueries({ queryKey: ["organization"] });
       queryClient.invalidateQueries({ queryKey: ["organizations"] });
     },
@@ -172,7 +172,7 @@ export function useCreateOrganization() {
       try {
         const userRes = await api.get("/users/me/");
         useAuthStore.getState().setUser(userRes.data);
-      } catch {}
+      } catch (error) { console.error("Failed to refresh user data:", error); }
       queryClient.invalidateQueries({ queryKey: ["organization"] });
       queryClient.invalidateQueries({ queryKey: ["organizations"] });
     },

@@ -75,6 +75,7 @@ export function Header() {
             <Input
               type="search"
               placeholder="Quick search..."
+              aria-label={tCommon("search")}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="h-8 w-48 ps-8 text-sm lg:w-64"

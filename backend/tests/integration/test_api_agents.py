@@ -1,4 +1,6 @@
 """Tests for the Agents API — CRUD, heartbeat, sync, and commands."""
+import json
+
 import pytest
 from django.urls import reverse
 
@@ -214,3 +216,98 @@ class TestAgentSync:
         )
         assert resp.status_code == 200
         assert resp.data["accepted"] == 0
+
+    def test_sync_strips_null_bytes_from_content_blocks(self, auth_client, sample_agent):
+        """Null bytes in content_blocks/metadata must not reach PostgreSQL.
+
+        The REST path's JSON parser rejects \\u0000 at the HTTP layer,
+        so this test sends pre-sanitized data and verifies the sync
+        endpoint handles it correctly. The *real* defense-in-depth is
+        in the WS consumer and sanitize.py — tested below.
+        """
+        payload = {
+            "files": [
+                {
+                    "local_path": "/docs/screenshot.png",
+                    "file_hash": "png_null_bytes_test",
+                    "mime_type": "image/png",
+                    "file_size": 42000,
+                    "extracted_text": "PNG screenshot",
+                    "markdown": "PNG screenshot content",
+                    "content_blocks": [
+                        {"type": "text", "content": "PNG header garbage end"},
+                    ],
+                    "tables": [],
+                    "images": [],
+                    "metadata": {"parser_version": "v2"},
+                    "word_count": 2,
+                    "char_count": 30,
+                }
+            ],
+            "stats": {"files_count": 1},
+        }
+        resp = auth_client.post(
+            f"/api/v1/agents/{sample_agent.agent_id}/sync",
+            payload,
+            format="json",
+        )
+        assert resp.status_code == 200, f"Response {resp.status_code}: {resp.data}"
+        assert resp.data["accepted"] == 1
+
+    def test_sanitize_removes_null_bytes_before_db_write(self):
+        """Verify sanitize.py strips null bytes from all fields including
+        content_blocks and metadata — the real defense for the WS path."""
+        from apps.agents.sanitize import sanitize_file_data, sanitize_json_recursive
+
+        file_data = {
+            "local_path": "/docs/screenshot.png",
+            "file_hash": "test",
+            "file_size": 100,
+            "extracted_text": "text with \x00 null",
+            "markdown": "md with \x00 null",
+            "summary": "summary with \x00 null",
+            "content_blocks": [
+                {"type": "text", "content": "PNG header \x00\x00 garbage \x1a\x00 end"},
+            ],
+            "tables": [{"headers": ["col\x001"], "rows": [["val\x002"]]}],
+            "images": [{"data": "base64\x00junk"}],
+            "metadata": {"parser_version": "v2\x00bad", "nested": {"key": "val\x00ue"}},
+            "entities": [{"name": "John\x00Doe", "context": "author \x00 here"}],
+            "tags": ["tag\x00one"],
+        }
+
+        sanitize_file_data(file_data)
+
+        # No null bytes in any field
+        import json
+        for field in ("extracted_text", "markdown", "summary"):
+            assert "\x00" not in file_data[field], f"null byte in {field}"
+        for field in ("content_blocks", "tables", "images", "metadata", "entities", "tags"):
+            serialized = json.dumps(file_data[field])
+            assert "\x00" not in serialized, f"null byte in {field}: {serialized[:100]}"
+
+        # Content is still readable
+        assert "PNG header" in json.dumps(file_data["content_blocks"])
+        assert "garbage" in json.dumps(file_data["content_blocks"])
+
+    def test_sanitize_json_recursive_constructed_metadata(self):
+        """Verify that the final metadata dict construction (consumers.py
+        pattern) is clean even when source fields carry null bytes."""
+        from apps.agents.sanitize import sanitize_json_recursive
+
+        metadata = sanitize_json_recursive({
+            "agent_id": "0eff54e8",
+            "agent_version": "v1\x00bad",
+            "content_blocks": [
+                {"type": "text", "content": "\x00PNG data\x00"},
+            ],
+            "tables": [],
+            "images": [],
+            "extracted_text": "text\x00here",
+            "markdown": "md\x00here",
+        })
+
+        import json
+        serialized = json.dumps(metadata)
+        assert "\x00" not in serialized
+        assert "PNG data" in serialized

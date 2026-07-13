@@ -23,7 +23,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 EDGE_AGENT_DIR = REPO_ROOT / "edge_agent"
-SPEC_FILE = REPO_ROOT / "edge-agent.spec"
+SPEC_FILE = EDGE_AGENT_DIR / "edge-agent.spec"
 DIST_DIR = REPO_ROOT / "edge_agent" / "dist"
 BINARIES_DIR = REPO_ROOT / "backend" / "media" / "agents" / "binaries"
 TAURI_BINARIES_DIR = REPO_ROOT / "desktop" / "src-tauri" / "binaries"

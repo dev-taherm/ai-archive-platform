@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 import threading
 import time
 from typing import Any, Callable
+
+logger = logging.getLogger(__name__)
 
 # ── Event type constants ─────────────────────────────────────────────────────
 
@@ -63,7 +66,7 @@ class EventBus:
             try:
                 obs(event)
             except Exception:
-                pass  # Don't let observer errors break publish
+                logger.debug("Observer error during publish", exc_info=True)
 
     def drain(
         self, since: float = 0.0, max_events: int = 100

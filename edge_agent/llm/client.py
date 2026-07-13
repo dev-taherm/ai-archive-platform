@@ -12,6 +12,8 @@ from edge_agent.core.providers import LLMProvider
 
 logger = logging.getLogger(__name__)
 
+MAX_ENTITY_TEXT_LENGTH = 8000  # max chars to send to LLM for entity extraction
+
 
 @dataclass(frozen=True)
 class ExtractedEntity:
@@ -51,12 +53,12 @@ class LLMClient(LLMProvider):
         self._config = config
         self._provider = config.provider.lower()
 
-    def extract_entities(self, text: str) -> list[ExtractedEntity]:
+    def extract_entities(self, text: str, schema: dict[str, Any] | None = None) -> list[ExtractedEntity]:
         """Extract named entities from text using the configured LLM provider."""
         if not text or len(text.strip()) < 20:
             return []
 
-        truncated = text[:8000]
+        truncated = text[:MAX_ENTITY_TEXT_LENGTH]
         prompt = ENTITY_EXTRACTION_PROMPT + truncated
 
         try:

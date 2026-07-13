@@ -112,7 +112,6 @@ class ProviderConfigViewSet(viewsets.GenericViewSet):
                 "provider_type": provider.provider_type,
                 "capabilities": provider.capabilities,
                 "api_key_set": bool(provider.api_key),
-                "api_key": provider.api_key,  # Only on retrieve for editing
                 "base_url": provider.base_url,
                 "model_name": provider.model_name,
                 "is_active": provider.is_active,

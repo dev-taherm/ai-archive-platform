@@ -12,6 +12,7 @@ from pathlib import Path
 
 def _agent_url() -> str:
     cfg_path = Path.home() / ".edge-agent" / "config.yaml"
+    raw = {}
     if cfg_path.exists():
         import yaml
         raw = yaml.safe_load(cfg_path.read_text()) or {}

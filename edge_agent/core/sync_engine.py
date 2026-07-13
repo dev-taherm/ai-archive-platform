@@ -32,9 +32,70 @@ def _to_epoch(value: Any) -> float:
 _CONTROL_CHARS_RE = re.compile(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]')
 
 
-def _sanitize_text(value: str) -> str:
+def _sanitize_text(value: Any) -> str:
     """Strip control characters that PostgreSQL rejects in text/jsonb columns."""
+    if isinstance(value, bytes):
+        try:
+            value = value.decode("utf-8", errors="replace")
+        except Exception:
+            return ""
+    if not isinstance(value, str):
+        return str(value) if value else ""
     return _CONTROL_CHARS_RE.sub('', value)
+
+
+def _sanitize_json_recursive(obj: Any) -> Any:
+    """Recursively sanitize control chars in all strings within a JSON-like structure."""
+    if isinstance(obj, bytes):
+        try:
+            obj = obj.decode("utf-8", errors="replace")
+        except Exception:
+            return ""
+    if isinstance(obj, str):
+        return _CONTROL_CHARS_RE.sub('', obj)
+    if isinstance(obj, dict):
+        return {k: _sanitize_json_recursive(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_sanitize_json_recursive(item) for item in obj]
+    return obj
+
+
+def build_files_payload(pending_rows: list[dict]) -> list[dict]:
+    """Build the files payload array from pending database rows."""
+    files_payload = []
+    for f in pending_rows:
+        raw_text = _sanitize_text(f.get("extracted_text") or "")
+        raw_md = _sanitize_text(f.get("markdown") or "")
+        if not (raw_text.strip() or raw_md.strip()):
+            logger.warning(
+                "Skipping sync for %s: extracted_text and markdown are both empty",
+                f.get("local_path"),
+            )
+            continue
+        entry = {
+            "local_path": f["local_path"],
+            "file_hash": f["file_hash"],
+            "file_size": f["size_bytes"],
+            "mime_type": f["mime_type"],
+            "modified_at": _to_epoch(f["modified_at"]),
+            "extracted_text": raw_text,
+            "markdown": raw_md,
+            "language": f["language"],
+            "word_count": f["word_count"],
+            "char_count": f["char_count"],
+            "page_count": f["page_count"],
+        }
+        for key in ("content_blocks", "tables", "images"):
+            val = f.get(key, "[]")
+            if isinstance(val, str):
+                try:
+                    entry[key] = _sanitize_json_recursive(json.loads(val))
+                except json.JSONDecodeError:
+                    entry[key] = []
+            else:
+                entry[key] = _sanitize_json_recursive(val)
+        files_payload.append(entry)
+    return files_payload
 
 
 class SyncEngine:
@@ -94,41 +155,6 @@ class SyncEngine:
         logger.info("Registered agent %s at %s", result["agent_id"], server_url)
         return result
 
-    # ── Heartbeat ────────────────────────────────────────────────────────────
-
-    def heartbeat(self) -> dict[str, Any]:
-        creds = self.get_credentials()
-        if not all(creds.values()):
-            return {"status": "skipped", "reason": "not registered"}
-
-        url = f"{creds['server_url'].rstrip('/')}/api/v1/agents/{creds['agent_id']}/heartbeat"
-
-        completed = self.db.count_completed_files()
-
-        body = json.dumps({"status": "online", "files_count": completed}).encode()
-        req = urllib.request.Request(
-            url,
-            data=body,
-            headers={
-                "Content-Type": "application/json",
-                "X-API-Key": creds["api_key"],
-            },
-            method="POST",
-        )
-
-        try:
-            with urllib.request.urlopen(req, timeout=self._http_timeout) as resp:
-                result = json.loads(resp.read().decode())
-                if self._metrics:
-                    self._metrics.heartbeat_count += 1
-                return result
-        except urllib.error.HTTPError as e:
-            logger.warning("Heartbeat failed (%s): %s", e.code, e.read().decode()[:200])
-            return {"status": "error", "code": e.code}
-        except urllib.error.URLError as e:
-            logger.warning("Heartbeat connection failed: %s", e)
-            return {"status": "error", "reason": str(e)}
-
     # ── File Sync ────────────────────────────────────────────────────────────
 
     def sync_files(self, limit: int = 50) -> dict[str, Any]:
@@ -140,39 +166,7 @@ class SyncEngine:
         if not pending:
             return {"status": "ok", "synced": 0, "message": "Nothing to sync"}
 
-        files_payload = []
-        for f in pending:
-            raw_text = _sanitize_text(f.get("extracted_text") or "")
-            raw_md = _sanitize_text(f.get("markdown") or "")
-            if not (raw_text.strip() or raw_md.strip()):
-                logger.warning(
-                    "Skipping sync for %s: extracted_text and markdown are both empty",
-                    f.get("local_path"),
-                )
-                continue
-            entry = {
-                "local_path": f["local_path"],
-                "file_hash": f["file_hash"],
-                "file_size": f["size_bytes"],
-                "mime_type": f["mime_type"],
-                "modified_at": _to_epoch(f["modified_at"]),
-                "extracted_text": raw_text,
-                "markdown": raw_md,
-                "language": f["language"],
-                "word_count": f["word_count"],
-                "char_count": f["char_count"],
-                "page_count": f["page_count"],
-            }
-            for key in ("content_blocks", "tables", "images"):
-                val = f.get(key, "[]")
-                if isinstance(val, str):
-                    try:
-                        entry[key] = json.loads(val)
-                    except json.JSONDecodeError:
-                        entry[key] = []
-                else:
-                    entry[key] = val
-            files_payload.append(entry)
+        files_payload = build_files_payload(pending)
 
         if not files_payload:
             return {"status": "ok", "synced": 0, "message": "All files skipped (empty text)"}
@@ -205,8 +199,8 @@ class SyncEngine:
             self.db.mark_synced(synced_hashes)
 
         if self._metrics:
-            self._metrics.sync_events += 1
-            self._metrics.sync_files += len(synced_hashes)
+            self._metrics.increment_sync_events()
+            self._metrics.increment_sync_files(len(synced_hashes))
 
         logger.info("Synced %d files to %s", len(synced_hashes), creds["server_url"])
         return {

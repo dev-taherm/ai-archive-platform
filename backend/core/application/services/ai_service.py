@@ -1,16 +1,14 @@
 from __future__ import annotations
 
-import logging
 import uuid
 from typing import Any
 
 from core.application.dtos.ai_dto import ClassificationDTO, EmbeddingDTO
 from core.application.dtos.chat_dto import ChatMessageDTO, ChatResponseDTO, ChatSessionDTO
 from core.application.interfaces.repositories import AuditLogRepository
+from core.application.services.audit_service import AuditService
 from core.application.use_cases.ai_use_cases import AIUseCases
 from core.application.use_cases.chat_use_cases import ChatUseCases
-
-logger = logging.getLogger(__name__)
 
 
 class AIService:
@@ -24,7 +22,7 @@ class AIService:
     ) -> None:
         self._ai_use_cases = ai_use_cases
         self._chat_use_cases = chat_use_cases
-        self._audit_log_repository = audit_log_repository
+        self._audit_service = AuditService(audit_log_repository)
 
     async def classify(
         self,
@@ -41,7 +39,7 @@ class AIService:
             system_prompt=system_prompt,
         )
 
-        await self._audit(
+        await self._audit_service.log(
             action="ai.classified",
             user_id=user_id,
             resource_type="ai",
@@ -70,7 +68,7 @@ class AIService:
             system_prompt=system_prompt,
         )
 
-        await self._audit(
+        await self._audit_service.log(
             action="ai.extracted",
             user_id=user_id,
             resource_type="ai",
@@ -95,7 +93,7 @@ class AIService:
             system_prompt=system_prompt,
         )
 
-        await self._audit(
+        await self._audit_service.log(
             action="ai.summarized",
             user_id=user_id,
             resource_type="ai",
@@ -117,7 +115,7 @@ class AIService:
         """Generate embeddings for a document and log the operation."""
         results = await self._ai_use_cases.generate_embeddings(document_id)
 
-        await self._audit(
+        await self._audit_service.log(
             action="ai.embeddings_generated",
             user_id=user_id,
             resource_type="document",
@@ -149,7 +147,7 @@ class AIService:
             user_id=user_id,
         )
 
-        await self._audit(
+        await self._audit_service.log(
             action="chat.message_sent",
             user_id=user_id,
             resource_type="chat_session",
@@ -171,23 +169,3 @@ class AIService:
     ) -> list[ChatMessageDTO]:
         """Retrieve chat history for a session."""
         return await self._chat_use_cases.get_history(session_id, limit=limit)
-
-    async def _audit(
-        self,
-        action: str,
-        user_id: uuid.UUID | None,
-        resource_type: str,
-        resource_id: uuid.UUID | None,
-        details: dict[str, Any] | None = None,
-    ) -> None:
-        """Persist an audit log entry."""
-        try:
-            await self._audit_log_repository.save({
-                "action": action,
-                "user_id": str(user_id) if user_id else None,
-                "resource_type": resource_type,
-                "resource_id": str(resource_id) if resource_id else None,
-                "details": details or {},
-            })
-        except Exception as e:
-            logger.warning("Failed to write audit log: %s", e)

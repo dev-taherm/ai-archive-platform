@@ -4,31 +4,10 @@ import logging
 import time
 from typing import Any
 
+from core.infrastructure.pipelines.document_pipeline import DOCUMENT_CATEGORIES
 from core.infrastructure.pipelines.document_state import DocumentPipelineState
 
 logger = logging.getLogger(__name__)
-
-DOCUMENT_CATEGORIES = [
-    "invoice",
-    "receipt",
-    "contract",
-    "report",
-    "letter",
-    "memo",
-    "email",
-    "resume",
-    "academic_paper",
-    "legal_document",
-    "financial_statement",
-    "technical_specification",
-    "meeting_notes",
-    "proposal",
-    "presentation",
-    "spreadsheet",
-    "code",
-    "data_export",
-    "other",
-]
 
 
 def classify_node(state: DocumentPipelineState) -> dict[str, Any]:

@@ -16,8 +16,11 @@ from edge_agent.core.event_bus import (
 )
 from edge_agent.core.job_queue import JobQueue
 from edge_agent.db.local_db import LocalDB
+from edge_agent.ocr.fallback import ocr_fallback, _MIN_TEXT_LENGTH
 
 logger = logging.getLogger(__name__)
+
+SYNC_INTERVAL_SECONDS = 300  # how often to run recurring sync tasks
 
 
 class Worker:
@@ -36,7 +39,6 @@ class Worker:
         self._running = False
         self._paused = False
         self._thread: threading.Thread | None = None
-        self._last_heartbeat: float = 0.0
         self._last_sync: float = 0.0
 
     @property
@@ -153,14 +155,7 @@ class Worker:
 
     def _run_recurring_tasks(self) -> None:
         now = time.time()
-        if now - self._last_heartbeat >= 60:
-            try:
-                self.sync_engine.heartbeat()
-            except Exception:
-                logger.exception("Heartbeat failed")
-            self._last_heartbeat = now
-
-        if now - self._last_sync >= 300:
+        if now - self._last_sync >= SYNC_INTERVAL_SECONDS:
             try:
                 self.sync_engine.sync_files()
             except Exception:
@@ -200,7 +195,7 @@ class Worker:
             except Exception:
                 logger.exception("Failed to mark job %s as failed", job_id)
             if self._metrics:
-                self._metrics.parse_errors += 1
+                self._metrics.increment_errors()
             self._publish_event({
                 "type": EVENT_SCAN_FAILED,
                 "job_id": job_id,
@@ -234,27 +229,18 @@ class Worker:
         text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', parsed.markdown or "")
 
         if self._metrics:
-            self._metrics.files_scanned += 1
-            self._metrics.parse_time_total_ms += parse_time_ms
-        ocr_used = False
-
-        if not text or len(text.strip()) < 50:
-            suffix = path_obj.suffix.lower()
-            if suffix in (".png", ".jpg", ".jpeg", ".tiff", ".bmp", ".gif", ".webp", ".pdf"):
-                content = path_obj.read_bytes()
-                ocr_text = ocr.extract_text(content, content_type="application/octet-stream")
-                if ocr_text and len(ocr_text) > len(text):
-                    text = ocr_text
-                    ocr_used = True
+            self._metrics.increment_scanned()
+            self._metrics.add_parse_time(parse_time_ms)
+        text, ocr_used = ocr_fallback(text, path_obj, ocr)
 
         content_blocks = json.dumps(
-            [b.to_dict() if hasattr(b, "to_dict") else vars(b) for b in parsed.content_blocks]
+            [b.to_dict() for b in parsed.content_blocks]
         )
         tables = json.dumps(
-            [t.to_dict() if hasattr(t, "to_dict") else vars(t) for t in parsed.tables]
+            [t.to_dict() for t in parsed.tables]
         )
         images = json.dumps(
-            [i.to_dict() if hasattr(i, "to_dict") else vars(i) for i in parsed.images]
+            [i.to_dict() for i in parsed.images]
         )
         language = getattr(parsed, "language", "unknown")
         word_count = parsed.word_count

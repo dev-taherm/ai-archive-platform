@@ -33,7 +33,10 @@ def run_migration(db_path: str) -> None:
         return
 
     # Drop any stale tables from old Python agent DB to avoid schema conflicts
+    _ALLOWED_TABLES = frozenset({"files", "sync_log", "entities"})
     for table in ("files", "sync_log", "entities"):
+        if table not in _ALLOWED_TABLES:
+            continue
         dest_conn.execute(f"DROP TABLE IF EXISTS {table}")
     dest_conn.commit()
 
@@ -97,6 +100,8 @@ def _migrate_table(
     table: str,
     columns: tuple[str, ...],
 ) -> None:
+    # NOTE: table and columns are caller-supplied but currently hardcoded.
+    # If this function is ever exposed to external input, use parameterized queries.
     try:
         rows = src.execute(f"SELECT {', '.join(columns)} FROM {table}").fetchall()
     except sqlite3.OperationalError:

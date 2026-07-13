@@ -19,7 +19,9 @@ from edge_agent.core.providers import OCRProvider
 
 logger = logging.getLogger(__name__)
 
-_OCR_TIMEOUT = 120
+_OCR_TIMEOUT = 120  # seconds, configurable via config.yaml
+
+MAX_OCR_PAGES = 50  # max pages to OCR from a PDF
 
 _ARABIC_SCRIPT_RANGE = re.compile(r'[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]')
 _LATIN_RANGE = re.compile(r'[a-zA-Z0-9]')
@@ -188,7 +190,7 @@ class OCREngine(OCRProvider):
             doc = fitz.open(stream=pdf_content, filetype="pdf")
             lang = self._get_tesseract_lang(language_hint)
             all_text = []
-            for page_num in range(min(len(doc), 50)):
+            for page_num in range(min(len(doc), MAX_OCR_PAGES)):
                 page = doc[page_num]
                 pix = page.get_pixmap(dpi=200)
                 img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
@@ -206,8 +208,7 @@ class OCREngine(OCRProvider):
     def extract_text(
         self,
         content: bytes,
-        *,
-        content_type: str,
+        content_type: str = "application/octet-stream",
         language_hint: Language | None = None,
     ) -> str:
         if not content:
@@ -245,7 +246,7 @@ class OCREngine(OCRProvider):
                     char_counts["ko"] = char_counts.get("ko", 0) + 1
         if total == 0:
             return Language.UNKNOWN
-        lang_map = {"ar": Language.AR, "ru": Language.RU, "zh": Language.ZH, "ja": Language.JA, "ko": Language.KOR}
+        lang_map = {"ar": Language.AR, "ru": Language.RU, "zh": Language.ZH, "ja": Language.JA, "ko": Language.KO}
         for lang_code, count in char_counts.items():
             if count > total * 0.1:
                 return lang_map.get(lang_code, Language.EN)

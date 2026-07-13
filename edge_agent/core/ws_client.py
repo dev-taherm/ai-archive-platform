@@ -153,12 +153,14 @@ class SaaSWebSocketClient:
 
         # Convert HTTP(S) → WS(S)
         ws_url = server_url.replace("https://", "wss://").replace("http://", "ws://")
-        ws_url = f"{ws_url}/ws/agent/?api_key={api_key}"
+        ws_url = f"{ws_url}/ws/agent/"
+        extra_headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
 
-        logger.info("Connecting to SaaS WebSocket: %s", ws_url.split("?")[0])
+        logger.info("Connecting to SaaS WebSocket: %s", ws_url)
 
         async with websockets.connect(
             ws_url,
+            extra_headers=extra_headers,
             ping_interval=30,
             ping_timeout=10,
             close_timeout=5,
@@ -356,38 +358,9 @@ class SaaSWebSocketClient:
             if not pending:
                 return
 
-            from edge_agent.core.sync_engine import _sanitize_text, _to_epoch
+            from edge_agent.core.sync_engine import build_files_payload
 
-            files_payload = []
-            for f in pending:
-                raw_text = _sanitize_text(f.get("extracted_text") or "")
-                raw_md = _sanitize_text(f.get("markdown") or "")
-                if not (raw_text.strip() or raw_md.strip()):
-                    continue
-
-                entry = {
-                    "local_path": f["local_path"],
-                    "file_hash": f["file_hash"],
-                    "file_size": f["size_bytes"],
-                    "mime_type": f["mime_type"],
-                    "modified_at": _to_epoch(f["modified_at"]),
-                    "extracted_text": raw_text,
-                    "markdown": raw_md,
-                    "language": f["language"],
-                    "word_count": f["word_count"],
-                    "char_count": f["char_count"],
-                    "page_count": f["page_count"],
-                }
-                for key in ("content_blocks", "tables", "images"):
-                    val = f.get(key, "[]")
-                    if isinstance(val, str):
-                        try:
-                            entry[key] = json.loads(val)
-                        except json.JSONDecodeError:
-                            entry[key] = []
-                    else:
-                        entry[key] = val
-                files_payload.append(entry)
+            files_payload = build_files_payload(pending)
 
             if not files_payload:
                 return

@@ -301,11 +301,33 @@ class AgentConsumer(AsyncWebsocketConsumer):
         from apps.files.models import FileRecord
         from apps.documents.models import Document
 
+        from apps.agents.sanitize import sanitize_file_data, sanitize_json_recursive
+
         with transaction.atomic():
             for file_data in files:
                 try:
+                    sanitize_file_data(file_data)
                     local_path = file_data["local_path"]
                     file_hash = file_data["file_hash"]
+
+                    # Build FileRecord metadata — merge agent-provided metadata
+                    # with processing info. Apply a final sanitization pass on the
+                    # *constructed* dict to guarantee no control chars reach
+                    # PostgreSQL, regardless of edge agent version or data shape.
+                    file_record_metadata = sanitize_json_recursive({
+                        **file_data.get("metadata", {}),
+                        "agent_id": str(agent_pk),
+                        "agent_version": file_data.get("agent_version", ""),
+                        "processing_version": file_data.get("processing_version", ""),
+                        "parser_version": file_data.get("parser_version", ""),
+                        "ocr_engine": file_data.get("ocr_engine", ""),
+                        "ocr_used": file_data.get("ocr_used", False),
+                        "extracted_text": file_data.get("extracted_text", ""),
+                        "markdown": file_data.get("markdown", ""),
+                        "content_blocks": file_data.get("content_blocks", []),
+                        "tables": file_data.get("tables", []),
+                        "images": file_data.get("images", []),
+                    })
 
                     fr, _created = FileRecord.objects.update_or_create(
                         content_hash=file_hash,
@@ -316,21 +338,8 @@ class AgentConsumer(AsyncWebsocketConsumer):
                             "status": "completed",
                             "source": FileRecord.Source.AGENT,
                             "agent_id": agent_pk,
-                            "tags": file_data.get("metadata", {}).get("tags", []),
-                            "metadata": {
-                                **file_data.get("metadata", {}),
-                                "agent_id": str(agent_pk),
-                                "agent_version": file_data.get("agent_version", ""),
-                                "processing_version": file_data.get("processing_version", ""),
-                                "parser_version": file_data.get("parser_version", ""),
-                                "ocr_engine": file_data.get("ocr_engine", ""),
-                                "ocr_used": file_data.get("ocr_used", False),
-                                "extracted_text": file_data.get("extracted_text", ""),
-                                "markdown": file_data.get("markdown", ""),
-                                "content_blocks": file_data.get("content_blocks", []),
-                                "tables": file_data.get("tables", []),
-                                "images": file_data.get("images", []),
-                            },
+                            "tags": file_data.get("tags", []),
+                            "metadata": file_record_metadata,
                         },
                     )
 
@@ -354,7 +363,7 @@ class AgentConsumer(AsyncWebsocketConsumer):
                         processing_version=file_data.get("processing_version", ""),
                         parser_version=file_data.get("parser_version", ""),
                         ocr_engine=file_data.get("ocr_engine", ""),
-                        tags=file_data.get("metadata", {}).get("tags", []),
+                        tags=file_data.get("tags", []),
                     )
 
                     entities = file_data.get("entities", [])

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hmac
 import logging
 import os
 import time
@@ -25,7 +26,8 @@ from edge_agent.core.job_queue import JobQueue
 
 def _validate_path_safe(path: str) -> str:
     resolved = str(Path(path).resolve())
-    if ".." in path.split("/") or ".." in path.split("\\"):
+    # Validate resolved path components, not raw input
+    if ".." in resolved.split(os.sep) or ".." in resolved.split("/") or ".." in resolved.split("\\"):
         raise HTTPException(status_code=400, detail="Path traversal not allowed")
     return resolved
 
@@ -357,6 +359,7 @@ async def restart_agent():
 async def parse_file(req: ParseFileRequest):
     from edge_agent.parsers.router import ParserRouter
     from edge_agent.ocr.engine import OCREngine
+    from edge_agent.ocr.fallback import ocr_fallback
 
     path = Path(req.file_path)
     if not path.exists():
@@ -371,16 +374,7 @@ async def parse_file(req: ParseFileRequest):
     try:
         parsed = parser.parse(req.file_path)
         text = (parsed.markdown or "").replace("\0", "")
-        ocr_used = False
-
-        if not text or len(text.strip()) < 50:
-            suffix = path.suffix.lower()
-            if suffix in (".png", ".jpg", ".jpeg", ".tiff", ".bmp", ".gif", ".webp", ".pdf"):
-                content = path.read_bytes()
-                ocr_text = ocr.extract_text(content, content_type="application/octet-stream")
-                if ocr_text and len(ocr_text) > len(text):
-                    text = ocr_text
-                    ocr_used = True
+        text, ocr_used = ocr_fallback(text, path, ocr)
 
         return {
             "status": "ok",
@@ -716,5 +710,5 @@ def verify_api_key(auth: str | None = None) -> None:
     key = cfg.server.api_key
     if not key:
         return
-    if auth != key:
+    if not hmac.compare_digest(auth or "", key):
         raise HTTPException(status_code=403, detail="Invalid API key")

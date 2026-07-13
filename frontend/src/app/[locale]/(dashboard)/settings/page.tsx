@@ -21,14 +21,7 @@ import {
   EyeOff,
   Building2,
 } from "lucide-react";
-
-interface ApiKey {
-  id: string;
-  name: string;
-  key_preview: string;
-  created_at: string;
-  last_used: string | null;
-}
+import type { ApiKey } from "@/types/api";
 
 type Tab = "profile" | "appearance" | "api-keys" | "ai-providers" | "organization";
 

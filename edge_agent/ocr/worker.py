@@ -26,7 +26,8 @@ def run_ocr(temp_path: str, lang: str = "en") -> dict[str, str | None]:
             return {"text": "\n".join(lines), "error": None}
         return {"text": "", "error": None}
     except Exception:
-        pass
+        import logging
+        logging.getLogger(__name__).debug("PaddleOCR failed, falling back to Tesseract", exc_info=True)
 
     try:
         import pytesseract
@@ -47,7 +48,3 @@ if __name__ == "__main__":
     lang = sys.argv[2] if len(sys.argv) > 2 else "en"
     result = run_ocr(temp_path, lang)
     print(json.dumps(result))
-    try:
-        os.unlink(temp_path)
-    except OSError:
-        pass

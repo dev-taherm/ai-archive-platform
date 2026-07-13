@@ -16,6 +16,20 @@ from edge_agent.core.models import ExtractionResult
 logger = logging.getLogger(__name__)
 
 
+# Canonical encoding fallback order
+_ENCODINGS = ["utf-8", "utf-8-sig", "latin-1", "cp1252", "ascii"]
+
+
+def _decode_bytes(content: bytes) -> str:
+    """Decode bytes to string, trying common encodings."""
+    for enc in _ENCODATIONS:
+        try:
+            return content.decode(enc)
+        except (UnicodeDecodeError, LookupError):
+            continue
+    return content.decode("utf-8", errors="replace")
+
+
 class DocumentReader:
     """Extracts text from PDF, DOCX, XLSX, TXT, CSV, JSON, images."""
 
@@ -102,22 +116,11 @@ class DocumentReader:
         )
 
     def _read_text(self, content: bytes, suffix: str) -> ExtractionResult:
-        for enc in ["utf-8", "utf-8-sig", "latin-1", "cp1252", "ascii"]:
-            try:
-                return ExtractionResult(text=content.decode(enc), metadata={"format": suffix.lstrip(".")})
-            except (UnicodeDecodeError, LookupError):
-                continue
-        return ExtractionResult(text=content.decode("utf-8", errors="replace"), metadata={"format": suffix.lstrip(".")})
+        text = _decode_bytes(content)
+        return ExtractionResult(text=text, metadata={"format": suffix.lstrip(".")})
 
     def _read_csv(self, content: bytes, suffix: str) -> ExtractionResult:
-        for enc in ["utf-8", "utf-8-sig", "latin-1", "cp1252"]:
-            try:
-                text = content.decode(enc)
-                break
-            except (UnicodeDecodeError, LookupError):
-                continue
-        else:
-            text = content.decode("utf-8", errors="replace")
+        text = _decode_bytes(content)
         reader = csv.reader(io.StringIO(text))
         rows = [row for row in reader if any(cell.strip() for cell in row)]
         return ExtractionResult(
@@ -127,14 +130,7 @@ class DocumentReader:
         )
 
     def _read_json(self, content: bytes, suffix: str) -> ExtractionResult:
-        for enc in ["utf-8", "utf-8-sig", "latin-1"]:
-            try:
-                text = content.decode(enc)
-                break
-            except (UnicodeDecodeError, LookupError):
-                continue
-        else:
-            text = content.decode("utf-8", errors="replace")
+        text = _decode_bytes(content)
         try:
             data = json.loads(text)
             pretty = json.dumps(data, indent=2, ensure_ascii=False, default=str)
