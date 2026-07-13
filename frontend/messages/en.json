@@ -436,7 +436,10 @@
     "sendCommand": "Send Command",
     "removeFolder": "Remove Folder",
     "removeFolderConfirm": "Are you sure you want to remove this monitored folder? Files already processed will remain, but the agent will stop monitoring this folder.",
-    "remove": "Remove"
+    "remove": "Remove",
+    "commandQueued": "Command queued successfully",
+    "failedToSendCommand": "Failed to send command",
+    "failedToDeleteDevice": "Failed to delete device"
   },
   "downloadAgent": {
     "title": "Download Basirah Desktop",

@@ -91,6 +91,10 @@ def get_ws_client() -> Any:
     return _app_state.ws_client
 
 
+def get_start_time() -> float:
+    return _app_state.start_time
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     _app_state.config = load_config()

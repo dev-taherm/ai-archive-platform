@@ -410,7 +410,10 @@
     "sendCommand": "إرسال الأمر",
     "removeFolder": "إزالة المجلد",
     "removeFolderConfirm": "هل أنت متأكد من رغبتك في إزالة هذا المجلد المراقب؟ ستبقى الملفات التي تمت معالجتها، لكن الوكيل سيتوقف عن مراقبة هذا المجلد.",
-    "remove": "إزالة"
+    "remove": "إزالة",
+    "commandQueued": "تم جدولة الأمر بنجاح",
+    "failedToSendCommand": "فشل في إرسال الأمر",
+    "failedToDeleteDevice": "فشل في حذف الجهاز"
   },
   "downloadAgent": {
     "title": "تنزيل بصيرة سطح المكتب",

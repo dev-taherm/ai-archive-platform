@@ -18,7 +18,7 @@ from .server import (
     get_metrics,
     get_log_handler,
     get_event_bus,
-    _start_time,
+    get_start_time,
 )
 from edge_agent.core.capabilities import detect_capabilities
 from edge_agent.core.job_queue import JobQueue
@@ -119,7 +119,7 @@ async def status():
         "agent_name": cfg.agent_name,
         "agent_id": cfg.agent_id,
         "version": cfg.agent_version,
-        "uptime_seconds": int(time.time() - _start_time),
+        "uptime_seconds": int(time.time() - get_start_time()),
         "worker": {
             "running": worker.is_running,
             "paused": worker.is_paused,
