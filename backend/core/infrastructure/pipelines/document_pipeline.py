@@ -876,6 +876,7 @@ def run_document_pipeline(
     )
 
     # ---- Load active embedding provider from DB ----
+    embeddings = None
     emb_config = (
         ProviderConfig.objects.filter(
             is_active=True, capabilities__contains=["embedding"]
@@ -885,14 +886,34 @@ def run_document_pipeline(
     )
 
     if emb_config:
-        embeddings = LangChainEmbeddingProvider(
-            model_name=emb_config.model_name,
-            provider=emb_config.provider_type,
-            api_key=emb_config.api_key or None,
-            base_url=emb_config.base_url or None,
-        )
-    else:
-        embeddings = FastEmbedProvider()
+        try:
+            embeddings = LangChainEmbeddingProvider(
+                model_name=emb_config.model_name,
+                provider=emb_config.provider_type,
+                api_key=emb_config.api_key or None,
+                base_url=emb_config.base_url or None,
+            )
+            logger.info(
+                "Using embedding provider: %s/%s",
+                emb_config.provider_type, emb_config.model_name,
+            )
+        except Exception as e:
+            logger.warning(
+                "Failed to init embedding provider %s: %s, trying local fallback",
+                emb_config.provider_type, e,
+            )
+            embeddings = None
+
+    # Fallback to local fastembed model (no API key needed)
+    if embeddings is None:
+        try:
+            from core.infrastructure.services.embedding_service import FastEmbedProvider
+            embeddings = FastEmbedProvider()
+            logger.info("Using local embedding model: FastEmbed")
+        except Exception as e:
+            logger.warning("Local embedding model failed: %s, using stub", e)
+            from core.infrastructure.services.stub_providers import StubEmbeddingProvider
+            embeddings = StubEmbeddingProvider()
 
     # ---- Instantiate and run the pipeline ----
     pipeline = DocumentProcessingPipeline(

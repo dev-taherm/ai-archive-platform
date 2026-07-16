@@ -63,7 +63,7 @@ def _get_embedding_provider():
     """Get the default embedding provider for query embedding.
 
     Priority:
-    1. DB ProviderConfig with embedding capability
+    1. DB ProviderConfig with embedding capability (OpenAI/Google/Ollama)
     2. Local fastembed model (granite-embedding-97m-multilingual-r2)
     3. None (caller handles gracefully)
     """
@@ -82,16 +82,32 @@ def _get_embedding_provider():
         )
 
         if config:
-            return LangChainEmbeddingProvider(
-                model_name=config.model_name,
-                provider=config.provider_type,
-                api_key=config.api_key or None,
-            )
+            try:
+                provider = LangChainEmbeddingProvider(
+                    model_name=config.model_name,
+                    provider=config.provider_type,
+                    api_key=config.api_key or None,
+                )
+                logger.info(
+                    "Chat embedding: using %s/%s",
+                    config.provider_type, config.model_name,
+                )
+                return provider
+            except Exception as e:
+                logger.warning(
+                    "Chat embedding provider %s failed: %s, falling back to local",
+                    config.provider_type, e,
+                )
 
-        # Fallback to local multilingual embedding model
+        # Fallback to local multilingual embedding model (no API key needed)
         from core.infrastructure.services.embedding_service import FastEmbedProvider
-
-        return FastEmbedProvider()
+        try:
+            provider = FastEmbedProvider()
+            logger.info("Chat embedding: using local FastEmbed model")
+            return provider
+        except Exception as e:
+            logger.warning("Chat embedding local model failed: %s", e)
+            return None
     except Exception:
         logger.debug("Could not load embedding provider")
         return None
