@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import time
 import uuid
@@ -151,6 +152,80 @@ class DocumentProcessingPipeline:
             # Save extracted text to document (enables word_count, preview, keyword search)
             object.__setattr__(document, "extracted_text", parsed_text[:10000])
 
+            # Step 3.5: Detect topic boundaries for multi-document splitting
+            segments = await self._detect_topic_boundaries(
+                parsed_text, document.metadata.page_count or 0
+            )
+
+            if segments:
+                logger.info(
+                    "Detected %d topic segments in file %s",
+                    len(segments), file_record.id,
+                )
+                result.processing_log.append(
+                    f"SPLIT: detected {len(segments)} topics"
+                )
+
+                # Delete the placeholder index=0 document (we'll create proper sub-documents)
+                await self._sync_to_async(self._doc_repo.delete, document.id)
+
+                # Create and process each sub-document
+                for i, segment in enumerate(segments):
+                    start = segment.get("start_offset", 0)
+                    end = segment.get("end_offset", len(parsed_text))
+                    segment_text = parsed_text[start:end]
+
+                    sub_doc = await self._create_sub_document(
+                        file_record, i, segment, segment_text
+                    )
+
+                    # Classify
+                    classification, confidence = await self._classify(segment_text)
+                    doc_type = self._map_classification_to_type(classification)
+                    conf = Confidence(confidence)
+                    sub_doc.mark_classified(doc_type, conf)
+                    await self._save_document(sub_doc)
+
+                    # Extract entities
+                    entities = await self._extract_entities(segment_text)
+                    await self._save_entities(sub_doc.id, entities)
+
+                    # Summarize
+                    summary = await self._summarize(segment_text, classification)
+                    object.__setattr__(sub_doc, "summary", summary)
+
+                    # Chunk
+                    chunks = self._chunk_text(segment_text)
+
+                    # Embed and index
+                    embedding_ids: list[str] = []
+                    try:
+                        embedding_ids = await self._embed_and_index(
+                            document=sub_doc,
+                            chunks=chunks,
+                            file_id=file_id,
+                        )
+                    except Exception as emb_err:
+                        logger.warning(
+                            "Embedding failed for sub-doc %s chunk: %s",
+                            sub_doc.id, emb_err,
+                        )
+
+                    # Mark completed
+                    sub_doc.mark_indexed(chunk_count=len(chunks))
+                    await self._save_document(sub_doc)
+
+                    result.processing_log.append(
+                        f"SEGMENT {i}: completed "
+                        f"({sub_doc.metadata.title}, {len(chunks)} chunks)"
+                    )
+
+                result.status = "completed"
+                result.processing_log.append(
+                    f"COMPLETED: {len(segments)} documents created"
+                )
+                return result
+
             # Step 5: Classify document
             classification, confidence = await self._classify(parsed_text)
             result.classification = classification
@@ -259,6 +334,9 @@ class DocumentProcessingPipeline:
 
         document = Document(
             file_id=file_record.id,
+            document_index=0,
+            page_start=None,
+            page_end=None,
             doc_type=doc_type,
             processing_status=ProcessingStatus.QUEUED,
             metadata=DocumentMetadata(
@@ -352,6 +430,202 @@ class DocumentProcessingPipeline:
             )
 
         return await self._retry_async(_do_summarize, operation="summarize")
+
+    async def _detect_topic_boundaries(
+        self, text: str, page_count: int
+    ) -> list[dict[str, Any]]:
+        """Use LLM to detect if document contains multiple distinct topics.
+
+        Returns list of segment dicts with keys:
+            title, page_start, page_end, start_offset, end_offset.
+        Returns empty list if single topic or detection fails.
+        """
+        # Skip for short documents (unlikely to need splitting)
+        if (
+            not text
+            or len(text.strip()) < 2000
+            or (page_count and page_count <= 5)
+        ):
+            return []
+
+        system_prompt = (
+            "You are a document analysis expert. Analyze the following document "
+            "text and determine if it contains multiple distinct topics that "
+            "should be treated as separate documents.\n\n"
+            "A multi-topic document might contain unrelated contracts, different "
+            "subjects, or clearly separated sections about different matters.\n\n"
+            "Return a JSON object:\n"
+            "- If single topic: {\"single_topic\": true}\n"
+            "- If multiple topics: {\"single_topic\": false, \"segments\": [\n"
+            "    {\"title\": \"Topic A\", \"page_start\": 1, \"page_end\": 3, "
+            "\"start_offset\": 0, \"end_offset\": 5000},\n"
+            "    {\"title\": \"Topic B\", \"page_start\": 4, \"page_end\": 5, "
+            "\"start_offset\": 5000, \"end_offset\": 8000}\n"
+            "  ]}\n\n"
+            "Rules:\n"
+            "- Only split if clearly distinct topics (different contracts, "
+            "unrelated subjects)\n"
+            "- Minor sub-sections within the same topic should NOT be split\n"
+            "- Each segment should be substantial (at least 500 characters)\n"
+            "- page_start/page_end are 1-based; use null if unknown\n"
+            "- start_offset/end_offset are character positions in the "
+            "original text\n"
+            "- If unsure, return single_topic: true"
+        )
+
+        truncated = text[:8000]
+
+        async def _do_detect() -> list[dict[str, Any]]:
+            result = await self._llm.chat_with_tools(
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": truncated},
+                ],
+                tools=[
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": "set_topic_boundaries",
+                            "description": (
+                                "Set the topic boundaries for this document"
+                            ),
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "single_topic": {"type": "boolean"},
+                                    "segments": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "object",
+                                            "properties": {
+                                                "title": {"type": "string"},
+                                                "page_start": {
+                                                    "type": [
+                                                        "integer",
+                                                        "null",
+                                                    ]
+                                                },
+                                                "page_end": {
+                                                    "type": [
+                                                        "integer",
+                                                        "null",
+                                                    ]
+                                                },
+                                                "start_offset": {
+                                                    "type": "integer"
+                                                },
+                                                "end_offset": {
+                                                    "type": "integer"
+                                                },
+                                            },
+                                            "required": [
+                                                "title",
+                                                "start_offset",
+                                                "end_offset",
+                                            ],
+                                        },
+                                    },
+                                },
+                                "required": ["single_topic"],
+                            },
+                        },
+                    }
+                ],
+            )
+
+            # Parse tool call results
+            if result.tool_calls:
+                for tc in result.tool_calls:
+                    if tc.name == "set_topic_boundaries":
+                        args = tc.arguments
+                        if args.get("single_topic", True):
+                            return []
+                        segments = args.get("segments", [])
+                        # Validate segments
+                        valid = [
+                            s
+                            for s in segments
+                            if s.get("start_offset", 0)
+                            < s.get("end_offset", 0)
+                        ]
+                        if len(valid) >= 2:
+                            return valid
+                        return []
+
+            # Fallback: try parsing JSON from content
+            if result.content:
+                try:
+                    data = json.loads(result.content)
+                    if data.get("single_topic", True):
+                        return []
+                    segments = data.get("segments", [])
+                    valid = [
+                        s
+                        for s in segments
+                        if s.get("start_offset", 0)
+                        < s.get("end_offset", 0)
+                    ]
+                    if len(valid) >= 2:
+                        return valid
+                except (json.JSONDecodeError, KeyError):
+                    pass
+
+            return []
+
+        try:
+            return await self._retry_async(
+                _do_detect, operation="detect_topic_boundaries"
+            )
+        except Exception as e:
+            logger.warning(
+                "Topic boundary detection failed (non-fatal): %s", e
+            )
+            return []
+
+    async def _create_sub_document(
+        self,
+        file_record: FileRecord,
+        index: int,
+        segment: dict[str, Any],
+        text: str,
+    ) -> Document:
+        """Create a sub-document for a specific segment of a file."""
+        ext = Path(file_record.path.raw).suffix.lower()
+        doc_type = DocumentType.from_extension(ext)
+        title = segment.get(
+            "title",
+            f"{Path(file_record.path.raw).stem} - Part {index + 1}",
+        )
+
+        page_start = segment.get("page_start")
+        page_end = segment.get("page_end")
+        page_count = 0
+        if page_start is not None and page_end is not None:
+            page_count = page_end - page_start + 1
+
+        document = Document(
+            file_id=file_record.id,
+            document_index=index,
+            page_start=page_start,
+            page_end=page_end,
+            doc_type=doc_type,
+            processing_status=ProcessingStatus.QUEUED,
+            metadata=DocumentMetadata(
+                title=title,
+                language=Language.UNKNOWN,
+                page_count=page_count,
+            ),
+            extracted_text=text[:10000],
+        )
+        saved = await self._retry_async(
+            lambda: self._sync_to_async(self._doc_repo.save, document),
+            operation="create_sub_document",
+        )
+        logger.info(
+            "Sub-document created: %s (file=%s, index=%d)",
+            saved.id, file_record.id, index,
+        )
+        return saved
 
     def _chunk_text(self, text: str) -> list[dict[str, Any]]:
         """Split text into overlapping chunks for embedding."""

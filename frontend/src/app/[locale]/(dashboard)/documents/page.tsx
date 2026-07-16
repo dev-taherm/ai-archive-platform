@@ -13,6 +13,8 @@ import {
   List,
   ChevronLeft,
   ChevronRight,
+  Pause,
+  Play,
 } from "lucide-react";
 import api from "@/lib/api";
 import { formatDate } from "@/lib/utils";
@@ -53,6 +55,7 @@ export default function DocumentsPage() {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [scope, setScope] = useState<"personal" | "organization">("personal");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [isPaused, setIsPaused] = useState(false);
   const pageSize = 20;
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -67,6 +70,20 @@ export default function DocumentsPage() {
     },
   });
 
+  const { data: procStatus } = useQuery<{ paused: boolean }>({
+    queryKey: ["processing-status"],
+    queryFn: async () => {
+      const response = await api.get("/documents/processing-status");
+      return response.data;
+    },
+    refetchInterval: 5000, // Poll every 5 seconds when processing is active
+  });
+
+  // Sync pause state from server
+  useEffect(() => {
+    if (procStatus) setIsPaused(procStatus.paused);
+  }, [procStatus]);
+
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
       await api.delete(`/documents/${id}`);
@@ -78,6 +95,20 @@ export default function DocumentsPage() {
     },
     onError: () => {
       toast({ title: t("deleteFailedToast"), variant: "destructive" });
+    },
+  });
+
+  const pauseMutation = useMutation({
+    mutationFn: async (pause: boolean) => {
+      if (pause) {
+        await api.post("/documents/pause-processing");
+      } else {
+        await api.post("/documents/resume-processing");
+      }
+    },
+    onSuccess: (_, pause) => {
+      setIsPaused(pause);
+      queryClient.invalidateQueries({ queryKey: ["processing-status"] });
     },
   });
 
@@ -160,14 +191,44 @@ export default function DocumentsPage() {
 
       {aggregateStats && (
         <div className="rounded-lg border bg-muted/30 p-4">
-          <Progress
-            value={aggregateStats.pct}
-            indicatorClassName={aggregateStats.pct === 100 ? "bg-emerald-500" : undefined}
-            animated={aggregateStats.isActive}
-          />
+          <div className="flex items-center gap-3">
+            <div className="flex-1">
+              <Progress
+                value={aggregateStats.pct}
+                indicatorClassName={aggregateStats.pct === 100 ? "bg-emerald-500" : undefined}
+                animated={aggregateStats.isActive && !isPaused}
+              />
+            </div>
+            {aggregateStats.isActive && (
+              <Button
+                variant={isPaused ? "default" : "outline"}
+                size="sm"
+                className="h-8 shrink-0"
+                onClick={() => pauseMutation.mutate(!isPaused)}
+                disabled={pauseMutation.isPending}
+              >
+                {isPaused ? (
+                  <>
+                    <Play className="mr-1.5 h-3.5 w-3.5" />
+                    Resume
+                  </>
+                ) : (
+                  <>
+                    <Pause className="mr-1.5 h-3.5 w-3.5" />
+                    Pause
+                  </>
+                )}
+              </Button>
+            )}
+          </div>
           <div className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
-            <span>{aggregateStats.parts.join(" · ")}</span>
-            {aggregateStats.isActive && elapsed > 0 && (
+            <span>
+              {isPaused
+                ? aggregateStats.parts.join(" · ").replace(/processing|queued/g, (m) => `paused ${m}`)
+                : aggregateStats.parts.join(" · ")}
+            </span>
+            {isPaused && <Badge variant="warning" className="ml-1">Paused</Badge>}
+            {!isPaused && aggregateStats.isActive && elapsed > 0 && (
               <>
                 <span>·</span>
                 <span className="tabular-nums">
@@ -260,6 +321,7 @@ export default function DocumentsPage() {
                 <TableHead>{t("document")}</TableHead>
                 <TableHead>{t("type")}</TableHead>
                 <TableHead>{t("status")}</TableHead>
+                <TableHead>{t("pages")}</TableHead>
                 <TableHead>{t("language")}</TableHead>
                 <TableHead>{t("words")}</TableHead>
                 <TableHead>{t("chunks")}</TableHead>
@@ -270,7 +332,7 @@ export default function DocumentsPage() {
             <TableBody>
               {paginated.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
+                  <TableCell colSpan={9} className="h-24 text-center text-muted-foreground">
                     {t("noDocuments")}
                   </TableCell>
                 </TableRow>
@@ -300,6 +362,17 @@ export default function DocumentsPage() {
                       <div className="mt-1.5 max-w-[140px]">
                         <DocumentProgress status={doc.processing_status} createdAt={doc.created_at} compact />
                       </div>
+                    </TableCell>
+                    <TableCell>
+                      {doc.page_start && doc.page_end ? (
+                        <Badge variant="outline" className="text-xs">
+                          Pages {doc.page_start}–{doc.page_end}
+                        </Badge>
+                      ) : doc.total_documents_for_file > 1 ? (
+                        <Badge variant="outline" className="text-xs">
+                          {doc.total_documents_for_file} docs
+                        </Badge>
+                      ) : null}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
                       {doc.language || "—"}
@@ -351,6 +424,12 @@ export default function DocumentsPage() {
                     </Badge>
                   </div>
                   <DocumentProgress status={doc.processing_status} createdAt={doc.created_at} compact className="mb-3" />
+                  {doc.page_start && doc.page_end && (
+                    <p className="mb-1 text-xs text-muted-foreground">
+                      Pages {doc.page_start}–{doc.page_end}
+                      {doc.total_documents_for_file > 1 && ` of ${doc.total_documents_for_file} documents`}
+                    </p>
+                  )}
                   <p className="mb-1 line-clamp-1 font-medium">{doc.title || doc.doc_type}</p>
                   <p className="mb-3 line-clamp-2 text-xs text-muted-foreground">
                     {doc.extracted_text_preview || doc.subject || "—"}

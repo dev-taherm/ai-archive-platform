@@ -2,7 +2,7 @@
 
 import { use } from "react";
 import { useState } from "react";
-import { useTranslations } from "next-intl";
+import { useTranslations, useLocale } from "next-intl";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -18,9 +18,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, FileText, ChevronRight } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import type { Document, DocumentMetadata } from "@/types/api";
+import type { Document, DocumentMetadata, SiblingDocument } from "@/types/api";
 
 import DocumentHeader from "./components/document-header";
 import DocumentEditForm from "./components/document-edit-form";
@@ -46,6 +46,7 @@ export default function DocumentDetailPage({ params }: { params: Promise<{ id: s
   const t = useTranslations("documents");
   const { id } = use(params);
   const router = useRouter();
+  const locale = useLocale();
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -71,6 +72,15 @@ export default function DocumentDetailPage({ params }: { params: Promise<{ id: s
       return res.data;
     },
     enabled: !!doc,
+  });
+
+  const { data: siblings = [] } = useQuery<SiblingDocument[]>({
+    queryKey: ["document-siblings", id],
+    queryFn: async () => {
+      const res = await api.get<Document>(`/documents/${id}`);
+      return res.data.sibling_documents || [];
+    },
+    enabled: !!id,
   });
 
   const updateMutation = useMutation({
@@ -243,6 +253,50 @@ export default function DocumentDetailPage({ params }: { params: Promise<{ id: s
         onToggle={() => setExpanded(!expanded)}
         t={t}
       />
+
+      {siblings.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Related Documents</CardTitle>
+            <CardDescription>
+              This file contains {siblings.length + 1} documents
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {/* Current document */}
+              <div className="flex items-center gap-3 rounded-lg border bg-muted/30 p-3">
+                <FileText className="h-4 w-4 text-brand-teal" />
+                <div className="flex-1">
+                  <p className="text-sm font-medium">{doc.title}</p>
+                  <p className="text-xs text-muted-foreground">
+                    Document {doc.document_index + 1} of {doc.total_documents_for_file}
+                    {doc.page_start && doc.page_end && ` · Pages ${doc.page_start}–${doc.page_end}`}
+                  </p>
+                </div>
+                <Badge variant="success">Current</Badge>
+              </div>
+              {/* Sibling documents */}
+              {siblings.map((sibling) => (
+                <Link
+                  key={sibling.id}
+                  href={`/${locale}/documents/${sibling.id}`}
+                  className="flex items-center gap-3 rounded-lg border p-3 hover:bg-muted/50 transition-colors"
+                >
+                  <FileText className="h-4 w-4 text-muted-foreground" />
+                  <div className="flex-1">
+                    <p className="text-sm font-medium">{sibling.title}</p>
+                    <p className="text-xs text-muted-foreground">
+                      Document {sibling.document_index + 1} of {doc.total_documents_for_file}
+                    </p>
+                  </div>
+                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                </Link>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {doc.error_message && (
         <Card className="border-destructive">

@@ -87,6 +87,9 @@ class Document(BaseEntity):
     """Core document entity representing an indexed document."""
 
     file_id: uuid.UUID = field(default_factory=uuid.uuid4)
+    document_index: int = 0
+    page_start: int | None = None
+    page_end: int | None = None
     doc_type: DocumentType = DocumentType.UNKNOWN
     processing_status: ProcessingStatus = ProcessingStatus.QUEUED
     metadata: DocumentMetadata = field(default_factory=DocumentMetadata)

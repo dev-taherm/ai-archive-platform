@@ -86,6 +86,9 @@ class DjangoDocumentRepository(DocumentRepository):
         return Document(
             id=obj.id,
             file_id=obj.file_id,
+            document_index=getattr(obj, "document_index", 0),
+            page_start=getattr(obj, "page_start", None),
+            page_end=getattr(obj, "page_end", None),
             doc_type=DocumentType(obj.doc_type),
             processing_status=_STATUS_MAP.get(obj.processing_status) or ProcessingStatus.QUEUED,
             metadata=metadata,
@@ -123,10 +126,22 @@ class DjangoDocumentRepository(DocumentRepository):
             return None
         return self._to_domain(obj)
 
+    def get_documents_by_file_id(self, file_id: uuid.UUID) -> list[Document]:
+        """Return all documents for a given file_id, ordered by document_index."""
+        qs = self._qs().filter(file_id=file_id).order_by("document_index")
+        return [self._to_domain(obj) for obj in qs]
+
+    def get_file_document_count(self, file_id: uuid.UUID) -> int:
+        """Return the number of documents for a given file_id."""
+        return self._qs().filter(file_id=file_id).count()
+
     def save(self, document: Document) -> Document:
         data = {
             "id": document.id,
             "file_id": document.file_id,
+            "document_index": document.document_index,
+            "page_start": document.page_start,
+            "page_end": document.page_end,
             "doc_type": document.doc_type.value,
             "processing_status": document.processing_status.value,
             "classification_confidence": (

@@ -152,9 +152,19 @@ export interface DocumentMetadata {
   extra: Record<string, unknown>;
 }
 
+export interface SiblingDocument {
+  id: string;
+  document_index: number;
+  title: string;
+}
+
 export interface Document {
   id: string;
   file_id: string;
+  document_index: number;
+  page_start: number | null;
+  page_end: number | null;
+  total_documents_for_file: number;
   file_name: string;
   file_path: string;
   file_mime_type: string;
@@ -173,6 +183,7 @@ export interface Document {
   error_message: string | null;
   entities?: DocumentEntity[];
   summary?: string;
+  sibling_documents?: SiblingDocument[];
   created_at: string;
   updated_at: string;
 }

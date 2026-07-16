@@ -45,6 +45,11 @@ export default function DocumentHeader({
       <Badge variant={statusVariant[doc.processing_status] || "secondary"}>
         {doc.processing_status}
       </Badge>
+      {doc.page_start && doc.page_end && (
+        <Badge variant="outline" className="text-xs">
+          Pages {doc.page_start}–{doc.page_end}
+        </Badge>
+      )}
       <Button variant="outline" size="sm" onClick={onStartEdit} disabled={editing}>
         <Pencil className="mr-1 h-3 w-3" />
         {t("editButton")}

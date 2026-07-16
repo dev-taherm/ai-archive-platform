@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import json
 import logging
+import threading
 import uuid
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
@@ -41,9 +42,16 @@ logger = logging.getLogger(__name__)
 
 _PIPELINE_POOL = ThreadPoolExecutor(max_workers=4, thread_name_prefix="pipeline")
 
+# Pipeline pause control: when cleared, new pipeline jobs are skipped
+_PIPELINE_PAUSED = threading.Event()
+_PIPELINE_PAUSED.set()  # Set = running (not paused)
+
 
 def _run_pipeline_cleanup(file_id_str: str, source: str = "agent") -> None:
     """Run the document pipeline and ensure DB connections are cleaned up."""
+    if not _PIPELINE_PAUSED.is_set():
+        logger.info("Pipeline paused — skipping file %s", file_id_str)
+        return
     try:
         from core.infrastructure.pipelines.document_pipeline import run_document_pipeline
         run_document_pipeline(file_id_str, source=source)
@@ -763,6 +771,9 @@ class AgentViewSet(viewsets.ModelViewSet):
                     doc, doc_created = Document.objects.update_or_create(
                         file_id=fr.id,
                         defaults={
+                            "document_index": 0,
+                            "page_start": None,
+                            "page_end": None,
                             "doc_type": Document.DocType(
                                 DocumentType.from_extension(Path(local_path).suffix).value
                             ) if Path(local_path).suffix else Document.DocType.UNKNOWN,

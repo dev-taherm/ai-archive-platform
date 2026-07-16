@@ -55,6 +55,28 @@ class DocumentViewSet(OrgScopedMixin, viewsets.GenericViewSet):
         qs = self._org_qs(DocModel.objects.all())
         return qs | DocModel.objects.filter(owner__isnull=True, organization__isnull=True)
 
+    @action(detail=False, methods=["get"], url_path="processing-status")
+    def processing_status(self, request):
+        """Return current pipeline pause state."""
+        from apps.agents.views import _PIPELINE_PAUSED
+        return Response({"paused": not _PIPELINE_PAUSED.is_set()})
+
+    @action(detail=False, methods=["post"], url_path="pause-processing")
+    def pause_processing(self, request):
+        """Pause the document processing pipeline."""
+        from apps.agents.views import _PIPELINE_PAUSED
+        _PIPELINE_PAUSED.clear()
+        logger.info("Document processing pipeline paused by %s", request.user)
+        return Response({"status": "paused"})
+
+    @action(detail=False, methods=["post"], url_path="resume-processing")
+    def resume_processing(self, request):
+        """Resume the document processing pipeline."""
+        from apps.agents.views import _PIPELINE_PAUSED
+        _PIPELINE_PAUSED.set()
+        logger.info("Document processing pipeline resumed by %s", request.user)
+        return Response({"status": "resumed"})
+
     def list(self, request):
         try:
             from apps.documents.models import Document as DocModel
@@ -96,7 +118,21 @@ class DocumentViewSet(OrgScopedMixin, viewsets.GenericViewSet):
         try:
             document = self._document_service.get_document(document_id)
             serializer = DocumentSerializer(document)
-            return Response(serializer.data)
+            data = dict(serializer.data)
+
+            # Add sibling documents (other documents from same file)
+            from apps.documents.models import Document as DocModel
+            siblings = DocModel.objects.filter(
+                file_id=document.file_id
+            ).exclude(id=document.id).order_by("document_index").values_list("id", "document_index", "title")
+
+            sibling_data = [
+                {"id": str(s[0]), "document_index": s[1], "title": s[2]}
+                for s in siblings
+            ]
+            data["sibling_documents"] = sibling_data
+
+            return Response(data)
         except DomainException as e:
             return Response(
                 {"detail": e.message}, status=status.HTTP_404_NOT_FOUND

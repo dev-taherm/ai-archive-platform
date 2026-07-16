@@ -52,6 +52,9 @@ class Document(models.Model):
         related_name="owned_documents",
     )
     file_id = models.UUIDField(db_index=True)
+    document_index = models.PositiveIntegerField(default=0, help_text="Position within the file (0, 1, 2...)")
+    page_start = models.PositiveIntegerField(null=True, blank=True, help_text="First page number (1-based)")
+    page_end = models.PositiveIntegerField(null=True, blank=True, help_text="Last page number (1-based)")
     doc_type = models.CharField(
         max_length=20,
         choices=DocType.choices,
@@ -91,6 +94,9 @@ class Document(models.Model):
         db_table = "documents_document"
         verbose_name = "Document"
         verbose_name_plural = "Documents"
+        constraints = [
+            models.UniqueConstraint(fields=["file_id", "document_index"], name="unique_file_document_index"),
+        ]
         indexes = [
             models.Index(fields=["doc_type"], name="idx_document_type"),
             models.Index(fields=["processing_status"], name="idx_document_status"),

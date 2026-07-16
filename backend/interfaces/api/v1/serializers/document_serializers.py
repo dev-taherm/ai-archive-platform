@@ -26,6 +26,10 @@ class DocumentSerializer(serializers.Serializer):
 
     id = serializers.UUIDField(read_only=True)
     file_id = serializers.UUIDField(read_only=True)
+    document_index = serializers.IntegerField(read_only=True)
+    page_start = serializers.IntegerField(read_only=True, allow_null=True)
+    page_end = serializers.IntegerField(read_only=True, allow_null=True)
+    total_documents_for_file = serializers.SerializerMethodField()
     file_name = serializers.SerializerMethodField()
     file_path = serializers.SerializerMethodField()
     file_mime_type = serializers.SerializerMethodField()
@@ -87,6 +91,11 @@ class DocumentSerializer(serializers.Serializer):
             return fr.mime_type
         except Exception:
             return ""
+
+    def get_total_documents_for_file(self, obj):
+        """Return the number of documents that share the same file_id."""
+        from apps.documents.models import Document as DocModel
+        return DocModel.objects.filter(file_id=obj.file_id).count()
 
     def get_entities(self, obj):
         """Return extracted entities for this document."""

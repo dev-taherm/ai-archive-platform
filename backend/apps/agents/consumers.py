@@ -355,6 +355,9 @@ class AgentConsumer(AsyncWebsocketConsumer):
                     doc, doc_created = Document.objects.update_or_create(
                         file_id=fr.id,
                         defaults={
+                            "document_index": 0,
+                            "page_start": None,
+                            "page_end": None,
                             "doc_type": Document.DocType.UNKNOWN,
                             "processing_status": Document.Status.PENDING,
                             "title": Path(local_path).stem,
