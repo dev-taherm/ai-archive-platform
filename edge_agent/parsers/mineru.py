@@ -194,6 +194,9 @@ class MinerUParser:
                         if t:
                             parts.append(t)
                 text = "\n\n".join(parts)
+                # Check if extracted text is garbled (scanned PDF with no embedded text)
+                if text and sum(1 for c in text[:1000] if c.isprintable() or c in '\n\r\t') / max(len(text[:1000]), 1) < 0.5:
+                    text = ""  # Garbled — let OCR handle it
             elif suffix == ".docx":
                 import docx
                 doc = docx.Document(str(path))
@@ -207,6 +210,8 @@ class MinerUParser:
             elif suffix == ".json":
                 data = json.loads(path.read_text(encoding="utf-8"))
                 text = json.dumps(data, indent=2, ensure_ascii=False)
+            elif suffix in (".png", ".jpg", ".jpeg", ".tiff", ".tif", ".bmp", ".gif", ".webp"):
+                text = ""  # Images have no embedded text — let OCR handle it
             else:
                 text = path.read_text(encoding="utf-8", errors="replace")
         except Exception as e:

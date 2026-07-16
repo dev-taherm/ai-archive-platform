@@ -133,6 +133,7 @@ class AgentCommand(models.Model):
         RESTART = "restart", "Restart Agent"
         START_SCAN = "start_scan", "Start Continuous Scan"
         STOP_SCAN = "stop_scan", "Stop Continuous Scan"
+        DELETE = "delete", "Delete File"
 
     class CommandStatus(models.TextChoices):
         PENDING = "pending", "Pending"

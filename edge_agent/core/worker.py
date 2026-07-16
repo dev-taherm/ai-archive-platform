@@ -236,6 +236,12 @@ class Worker:
             self._metrics.add_parse_time(parse_time_ms)
         text, ocr_used = ocr_fallback(text, path_obj, ocr, language_hint=language)
 
+        # Re-detect language from OCR output if OCR was used
+        if ocr_used and text:
+            ocr_lang = ocr.detect_language(text)
+            if ocr_lang:
+                language = ocr_lang.value
+
         content_blocks = json.dumps(
             [b.to_dict() for b in parsed.content_blocks]
         )

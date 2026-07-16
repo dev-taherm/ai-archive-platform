@@ -27,6 +27,7 @@ import os
 import sys
 import threading
 import time
+from pathlib import Path
 from typing import Any, TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -288,6 +289,32 @@ class SaaSWebSocketClient:
             elif command_type in ("start_scan", "stop_scan"):
                 if self._command_handler:
                     self._command_handler(command_type, payload)
+            elif command_type == "delete":
+                file_ids = payload.get("file_ids", [])
+                results = []
+                for fid in file_ids:
+                    record = self._db.get_file_by_id(fid)
+                    if record is None:
+                        results.append({"file_id": fid, "status": "not_found"})
+                        continue
+                    src = Path(record["local_path"])
+                    if not src.exists():
+                        self._db.delete_file_record(fid)
+                        results.append({"file_id": fid, "status": "ok", "note": "already missing"})
+                        continue
+                    from edge_agent.config import get_config
+                    config = get_config()
+                    trash_dir = Path(config.data_dir) / "trash"
+                    trash_dir.mkdir(parents=True, exist_ok=True)
+                    size = src.stat().st_size
+                    trash_id = self._db.add_to_trash(str(src), fid, size)
+                    trash_subdir = trash_dir / trash_id
+                    trash_subdir.mkdir(parents=True, exist_ok=True)
+                    dest = trash_subdir / src.name
+                    os.rename(str(src), str(dest))
+                    self._db.delete_file_record(fid)
+                    results.append({"file_id": fid, "status": "ok", "trash_id": trash_id})
+                result = {"status": "completed", "results": results}
             else:
                 result = {"status": "failed", "error": f"Unknown command: {command_type}"}
         except Exception as e:

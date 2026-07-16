@@ -17,6 +17,15 @@ from core.domain.documents.value_objects import (
 
 logger = logging.getLogger(__name__)
 
+# Map legacy DB status values (apps.documents.models.Status) to domain ProcessingStatus values.
+_STATUS_MAP: dict[str, ProcessingStatus] = {
+    "pending": ProcessingStatus.QUEUED,
+    "processing": ProcessingStatus.EXTRACTING,
+    "indexing": ProcessingStatus.INDEXING,
+    "completed": ProcessingStatus.COMPLETED,
+    "failed": ProcessingStatus.FAILED,
+}
+
 
 class DjangoDocumentRepository(DocumentRepository):
     """Django ORM implementation of DocumentRepository ABC."""
@@ -78,7 +87,7 @@ class DjangoDocumentRepository(DocumentRepository):
             id=obj.id,
             file_id=obj.file_id,
             doc_type=DocumentType(obj.doc_type),
-            processing_status=ProcessingStatus(obj.processing_status),
+            processing_status=_STATUS_MAP.get(obj.processing_status) or ProcessingStatus.QUEUED,
             metadata=metadata,
             classification_confidence=(
                 Confidence(value=obj.classification_confidence)
@@ -103,11 +112,16 @@ class DjangoDocumentRepository(DocumentRepository):
             return None
 
     def get_by_file_id(self, file_id: uuid.UUID) -> Document | None:
-        try:
-            obj = self._qs().get(file_id=file_id)
-            return self._to_domain(obj)
-        except self._model.DoesNotExist:
+        qs = self._qs().filter(file_id=file_id).order_by("-created_at")
+        if qs.count() > 1:
+            logger.warning(
+                "Multiple documents found for file_id=%s, using most recent",
+                file_id,
+            )
+        obj = qs.first()
+        if obj is None:
             return None
+        return self._to_domain(obj)
 
     def save(self, document: Document) -> Document:
         data = {

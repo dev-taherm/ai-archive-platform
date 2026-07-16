@@ -298,6 +298,17 @@ class LocalDB:
         ).fetchone()
         return self._file_row_to_dict(row) if row else None
 
+    def get_file_by_path(self, local_path: str) -> dict[str, Any] | None:
+        """Look up a file record by its local filesystem path."""
+        row = self.conn.execute(
+            """SELECT id, local_path, filename, extension, file_hash, size_bytes,
+                mime_type, modified_at, processing_status, extracted_text, markdown,
+                content_blocks, tables, images, language, word_count, char_count, page_count,
+                synced, first_seen_at, updated_at FROM files WHERE local_path=?""",
+            (local_path,),
+        ).fetchone()
+        return self._file_row_to_dict(row) if row else None
+
     def mark_synced(self, file_hashes: list[str]) -> int:
         if not file_hashes:
             return 0

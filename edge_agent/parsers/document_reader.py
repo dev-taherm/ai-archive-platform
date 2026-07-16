@@ -74,8 +74,12 @@ class DocumentReader:
                 page_tables = page.extract_tables()
                 if page_tables:
                     tables_all.extend(page_tables)
+        text = "\n\n".join(t for t in pages_text if t.strip())
+        # Check for garbled output (scanned PDF)
+        if text and sum(1 for c in text[:1000] if c.isprintable() or c in '\n\r\t') / max(len(text[:1000]), 1) < 0.5:
+            text = ""  # Garbled — let OCR handle it
         return ExtractionResult(
-            text="\n\n".join(t for t in pages_text if t.strip()),
+            text=text,
             metadata={"format": "pdf", "page_count": len(pages_text)},
             page_count=len(pages_text), tables=tables_all,
         )

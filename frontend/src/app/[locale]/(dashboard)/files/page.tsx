@@ -46,7 +46,7 @@ export default function FilesPage() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: async (id: string) => { await api.delete(`/files/${id}/delete`); },
+    mutationFn: async (id: string) => { await api.delete(`/files/${id}`); },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["files"] }); setActionMenu(null); },
   });
 

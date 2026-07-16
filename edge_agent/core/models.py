@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import enum
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from typing import Any
 
 
@@ -62,6 +62,9 @@ class ContentBlock:
     bbox: list[float] | None = None
     level: int | None = None
 
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
 
 @dataclass(frozen=True)
 class ParsedTable:
@@ -71,6 +74,9 @@ class ParsedTable:
     caption: str = ""
     bbox: list[float] | None = None
 
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
 
 @dataclass(frozen=True)
 class ParsedImage:
@@ -79,6 +85,9 @@ class ParsedImage:
     bbox: list[float] | None = None
     width: int = 0
     height: int = 0
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
 
 
 @dataclass(frozen=True)

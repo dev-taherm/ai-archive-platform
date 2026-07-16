@@ -97,12 +97,15 @@ class FolderWatcher:
             return
         count = self.db.upsert_files([meta])
         if count > 0:
-            job_id = self.job_queue.create_job("scan_file", {"file_id": meta["id"]})
+            # Use the actual stored ID (may differ from meta["id"] on re-scan)
+            record = self.db.get_file_by_path(fpath)
+            file_id = record["id"] if record else meta["id"]
+            job_id = self.job_queue.create_job("scan_file", {"file_id": file_id})
             logger.debug("Enqueued scan for %s", fpath)
             self._publish_event({
                 "type": EVENT_FILE_CREATED,
                 "local_path": fpath,
-                "file_id": meta["id"],
+                "file_id": file_id,
                 "job_id": job_id,
             })
 

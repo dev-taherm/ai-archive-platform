@@ -51,12 +51,17 @@ class DocumentViewSet(OrgScopedMixin, viewsets.GenericViewSet):
 
     def _get_doc_queryset(self):
         from apps.documents.models import Document as DocModel
-        return self._org_qs(DocModel.objects.all())
+        from django.db.models import Q
+        qs = self._org_qs(DocModel.objects.all())
+        return qs | DocModel.objects.filter(owner__isnull=True, organization__isnull=True)
 
     def list(self, request):
         try:
             from apps.documents.models import Document as DocModel
+            from django.db.models import Q
             qs = self._org_qs(DocModel.objects.all())
+            # Include orphaned documents (created by pipeline without owner/org)
+            qs = qs | DocModel.objects.filter(owner__isnull=True, organization__isnull=True)
             documents = self._document_service.list_documents()
             # Override: filter to org-scoped documents
             doc_ids = qs.values_list("id", flat=True)

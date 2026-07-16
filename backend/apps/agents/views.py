@@ -19,6 +19,8 @@ from rest_framework.response import Response
 
 from rest_framework_simplejwt.tokens import RefreshToken
 
+from core.domain.documents.value_objects import DocumentType
+
 from apps.agents.models import Agent, AgentCommand, AgentFolder
 from apps.agents.serializers import (
     AgentCommandSerializer,
@@ -745,7 +747,9 @@ class AgentViewSet(viewsets.ModelViewSet):
                     # Create Document with pre-populated fields from agent
                     doc = Document.objects.create(
                         file_id=fr.id,
-                        doc_type=Document.DocType.UNKNOWN,
+                        doc_type=Document.DocType(
+                            DocumentType.from_extension(Path(local_path).suffix).value
+                        ) if Path(local_path).suffix else Document.DocType.UNKNOWN,
                         processing_status=Document.Status.PENDING,
                         title=Path(local_path).stem,
                         language=file_data.get("language", "unknown"),
@@ -784,6 +788,20 @@ class AgentViewSet(viewsets.ModelViewSet):
                             for e in entities
                             if e.get("name")
                         ])
+
+                    # Auto-trigger processing pipeline for documents with extracted text
+                    if file_data.get("extracted_text") or file_data.get("markdown"):
+                        try:
+                            from core.infrastructure.pipelines.document_pipeline import run_document_pipeline
+                            import threading
+                            threading.Thread(
+                                target=run_document_pipeline,
+                                args=(str(fr.id),),
+                                kwargs={"source": "agent"},
+                                daemon=True,
+                            ).start()
+                        except Exception as pipeline_err:
+                            logger.warning("Could not trigger pipeline for %s: %s", doc.id, pipeline_err)
 
                     document_ids.append(str(doc.id))
                     accepted += 1

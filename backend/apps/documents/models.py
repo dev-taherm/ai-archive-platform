@@ -16,6 +16,7 @@ class Document(models.Model):
         LETTER = "letter", "Letter"
         MEMO = "memo", "Memo"
         RECEIPT = "receipt", "Receipt"
+        IMAGE = "image", "Image"
         UNKNOWN = "unknown", "Unknown"
 
     class Status(models.TextChoices):

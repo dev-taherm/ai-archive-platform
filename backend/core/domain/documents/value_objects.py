@@ -17,6 +17,7 @@ class DocumentType(enum.Enum):
     EMAIL = "email"
     SPREADSHEET = "spreadsheet"
     PRESENTATION = "presentation"
+    IMAGE = "image"
     UNKNOWN = "unknown"
 
     @classmethod
@@ -48,6 +49,14 @@ class DocumentType(enum.Enum):
             ".xls": cls.SPREADSHEET,
             ".pptx": cls.PRESENTATION,
             ".ppt": cls.PRESENTATION,
+            ".png": cls.IMAGE,
+            ".jpg": cls.IMAGE,
+            ".jpeg": cls.IMAGE,
+            ".tiff": cls.IMAGE,
+            ".tif": cls.IMAGE,
+            ".bmp": cls.IMAGE,
+            ".gif": cls.IMAGE,
+            ".webp": cls.IMAGE,
         }
         return mapping.get(ext.lower(), cls.UNKNOWN)
 
