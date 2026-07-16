@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useTranslations } from "next-intl";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
@@ -42,6 +42,8 @@ import { useToast } from "@/hooks/use-toast";
 import type { Document } from "@/types/api";
 import { documentStatusVariant as statusVariant } from "@/lib/constants";
 import ScopeSelector from "@/components/features/shared/scope-selector";
+import DocumentProgress from "@/components/document-progress";
+import { Progress } from "@/components/ui/progress";
 
 export default function DocumentsPage() {
   const t = useTranslations("documents");
@@ -50,6 +52,7 @@ export default function DocumentsPage() {
   const [page, setPage] = useState(1);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [scope, setScope] = useState<"personal" | "organization">("personal");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
   const pageSize = 20;
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -78,12 +81,66 @@ export default function DocumentsPage() {
     },
   });
 
-  const filtered = documents.filter(
-    (d) =>
+  const filtered = documents.filter((d) => {
+    const matchesSearch =
       d.title?.toLowerCase().includes(search.toLowerCase()) ||
       d.doc_type?.toLowerCase().includes(search.toLowerCase()) ||
-      d.language?.toLowerCase().includes(search.toLowerCase())
-  );
+      d.language?.toLowerCase().includes(search.toLowerCase());
+    const matchesStatus = statusFilter === "all" || d.processing_status === statusFilter;
+    return matchesSearch && matchesStatus;
+  });
+
+  const aggregateStats = useMemo(() => {
+    if (documents.length === 0) return null;
+    // Deduplicate by file_id, keep most recent per file
+    const seen = new Map<string, Document>();
+    for (const d of documents) {
+      const existing = seen.get(d.file_id);
+      if (!existing || new Date(d.created_at) > new Date(existing.created_at)) {
+        seen.set(d.file_id, d);
+      }
+    }
+    const unique = Array.from(seen.values());
+    const total = unique.length;
+    const completed = unique.filter((d) => d.processing_status === "completed").length;
+    const processing = unique.filter((d) =>
+      ["extracting", "classifying", "indexing"].includes(d.processing_status)
+    ).length;
+    const queued = unique.filter((d) => d.processing_status === "queued").length;
+    const failed = unique.filter((d) => d.processing_status === "failed").length;
+    const retrying = unique.filter((d) => d.processing_status === "retrying").length;
+    const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
+    const remaining = total - completed - failed;
+    const isActive = pct < 100 && remaining > 0;
+    const parts = [`${completed} of ${total} completed`];
+    if (processing > 0) parts.push(`${processing} processing`);
+    if (queued > 0) parts.push(`${queued} queued`);
+    if (failed > 0) parts.push(`${failed} failed`);
+    if (retrying > 0) parts.push(`${retrying} retrying`);
+    return { pct, parts, isActive, completed, remaining, total };
+  }, [documents]);
+
+  function formatDuration(totalSeconds: number): string {
+    const s = Math.floor(totalSeconds);
+    if (s < 60) return `${s}s`;
+    const m = Math.floor(s / 60);
+    const sec = s % 60;
+    if (m < 60) return `${m}m ${sec}s`;
+    const h = Math.floor(m / 60);
+    const min = m % 60;
+    return `${h}h ${min}m`;
+  }
+
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    if (!aggregateStats?.isActive) return;
+    const start = Date.now();
+    const tick = () => setElapsed((Date.now() - start) / 1000);
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [aggregateStats?.isActive]);
 
   const totalPages = Math.ceil(filtered.length / pageSize);
   const paginated = filtered.slice((page - 1) * pageSize, page * pageSize);
@@ -100,6 +157,29 @@ export default function DocumentsPage() {
       </div>
 
       <ScopeSelector value={scope} onChange={setScope} />
+
+      {aggregateStats && (
+        <div className="rounded-lg border bg-muted/30 p-4">
+          <Progress
+            value={aggregateStats.pct}
+            indicatorClassName={aggregateStats.pct === 100 ? "bg-emerald-500" : undefined}
+            animated={aggregateStats.isActive}
+          />
+          <div className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
+            <span>{aggregateStats.parts.join(" · ")}</span>
+            {aggregateStats.isActive && elapsed > 0 && (
+              <>
+                <span>·</span>
+                <span className="tabular-nums">
+                  {"Elapsed: " + formatDuration(elapsed)}
+                  {aggregateStats.completed > 0 &&
+                    " · ~" + formatDuration((elapsed / aggregateStats.completed) * aggregateStats.remaining) + " remaining"}
+                </span>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="flex items-center gap-2">
         <Search className="h-4 w-4 text-muted-foreground" />
@@ -131,6 +211,42 @@ export default function DocumentsPage() {
           </Button>
         </div>
       </div>
+
+      {documents.length > 0 && (() => {
+  const seen = new Map<string, Document>();
+  for (const d of documents) {
+    const existing = seen.get(d.file_id);
+    if (!existing || new Date(d.created_at) > new Date(existing.created_at)) {
+      seen.set(d.file_id, d);
+    }
+  }
+  const unique = Array.from(seen.values());
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <Badge
+        variant={statusFilter === "all" ? "default" : "outline"}
+        className="cursor-pointer text-xs"
+        onClick={() => { setStatusFilter("all"); setPage(1); }}
+      >
+        All ({unique.length})
+      </Badge>
+      {(["queued", "extracting", "classifying", "indexing", "completed", "failed", "retrying"] as const).map((status) => {
+        const count = unique.filter((d) => d.processing_status === status).length;
+        if (count === 0) return null;
+        return (
+          <Badge
+            key={status}
+            variant={statusFilter === status ? statusVariant[status] : "outline"}
+            className="cursor-pointer text-xs"
+            onClick={() => { setStatusFilter(status); setPage(1); }}
+          >
+            {status.charAt(0).toUpperCase() + status.slice(1)} ({count})
+          </Badge>
+        );
+      })}
+    </div>
+  );
+})()}
 
       {isLoading ? (
         <div className="flex h-48 items-center justify-center">
@@ -181,6 +297,9 @@ export default function DocumentsPage() {
                       <Badge variant={statusVariant[doc.processing_status] || "secondary"}>
                         {doc.processing_status}
                       </Badge>
+                      <div className="mt-1.5 max-w-[140px]">
+                        <DocumentProgress status={doc.processing_status} createdAt={doc.created_at} compact />
+                      </div>
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
                       {doc.language || "—"}
@@ -231,6 +350,7 @@ export default function DocumentsPage() {
                       {doc.processing_status}
                     </Badge>
                   </div>
+                  <DocumentProgress status={doc.processing_status} createdAt={doc.created_at} compact className="mb-3" />
                   <p className="mb-1 line-clamp-1 font-medium">{doc.title || doc.doc_type}</p>
                   <p className="mb-3 line-clamp-2 text-xs text-muted-foreground">
                     {doc.extracted_text_preview || doc.subject || "—"}

@@ -130,6 +130,7 @@ class FolderWatcher:
         while self._running:
             try:
                 self._check_deleted()
+                dismissed = self.db.get_dismissed_paths()
                 folders = self.db.get_folders()
                 for folder in folders:
                     fpath = folder["path"]
@@ -141,6 +142,8 @@ class FolderWatcher:
                             if fname.startswith("."):
                                 continue
                             full = os.path.join(root, fname)
+                            if full in dismissed:
+                                continue
                             try:
                                 st = os.stat(full)
                                 mtime = str(st.st_mtime)

@@ -126,6 +126,13 @@ class DocumentProcessingPipeline:
             # Step 2: Create or fetch document entity
             document = await self._create_document(file_record)
             result.document_id = str(document.id)
+
+            # Skip if already completed
+            if document.processing_status == ProcessingStatus.COMPLETED:
+                result.processing_log.append(f"DOCUMENT: already completed {document.id}, skipping")
+                result.status = "completed"
+                return result
+
             result.processing_log.append(f"DOCUMENT: entity created {document.id}")
 
             # Step 3: Get extracted text from agent-synced document

@@ -7,10 +7,11 @@ interface ProgressProps extends React.HTMLAttributes<HTMLDivElement> {
   value?: number;
   max?: number;
   indicatorClassName?: string;
+  animated?: boolean;
 }
 
 const Progress = React.forwardRef<HTMLDivElement, ProgressProps>(
-  ({ className, value = 0, max = 100, indicatorClassName, ...props }, ref) => {
+  ({ className, value = 0, max = 100, indicatorClassName, animated = false, ...props }, ref) => {
     const percent = Math.min(Math.max((value / max) * 100, 0), 100);
     return (
       <div
@@ -32,7 +33,23 @@ const Progress = React.forwardRef<HTMLDivElement, ProgressProps>(
             indicatorClassName
           )}
           style={{ transform: `translateX(-${100 - percent}%)` }}
-        />
+        >
+          {animated && (
+            <div
+              className="absolute inset-0"
+              style={{
+                background: "linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.3) 50%, transparent 100%)",
+                animation: "shimmer 2s infinite",
+              }}
+            />
+          )}
+        </div>
+        <style>{`
+          @keyframes shimmer {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(200%); }
+          }
+        `}</style>
       </div>
     );
   }

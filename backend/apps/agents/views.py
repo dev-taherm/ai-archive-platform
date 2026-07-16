@@ -5,6 +5,7 @@ import json
 import logging
 import uuid
 import zipfile
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from asgiref.sync import async_to_sync
@@ -37,6 +38,20 @@ from apps.agents.serializers import (
 )
 
 logger = logging.getLogger(__name__)
+
+_PIPELINE_POOL = ThreadPoolExecutor(max_workers=4, thread_name_prefix="pipeline")
+
+
+def _run_pipeline_cleanup(file_id_str: str, source: str = "agent") -> None:
+    """Run the document pipeline and ensure DB connections are cleaned up."""
+    try:
+        from core.infrastructure.pipelines.document_pipeline import run_document_pipeline
+        run_document_pipeline(file_id_str, source=source)
+    except Exception:
+        logger.exception("Pipeline failed for file %s", file_id_str)
+    finally:
+        from django.db import connections
+        connections.close_all()
 
 
 class IsAgentOwner(permissions.BasePermission):
@@ -744,32 +759,34 @@ class AgentViewSet(viewsets.ModelViewSet):
                         },
                     )
 
-                    # Create Document with pre-populated fields from agent
-                    doc = Document.objects.create(
+                    # Create or update Document with pre-populated fields from agent
+                    doc, doc_created = Document.objects.update_or_create(
                         file_id=fr.id,
-                        doc_type=Document.DocType(
-                            DocumentType.from_extension(Path(local_path).suffix).value
-                        ) if Path(local_path).suffix else Document.DocType.UNKNOWN,
-                        processing_status=Document.Status.PENDING,
-                        title=Path(local_path).stem,
-                        language=file_data.get("language", "unknown"),
-                        word_count=file_data.get("word_count", 0),
-                        char_count=file_data.get("char_count", 0),
-                        page_count=file_data.get("page_count", 0),
-                        extracted_text=file_data.get("extracted_text", "")[:10000],
-                        summary=file_data.get("summary", ""),
-                        markdown=file_data.get("markdown", ""),
-                        content_blocks=file_data.get("content_blocks", []),
-                        tables=file_data.get("tables", []),
-                        images=file_data.get("images", []),
-                        ocr_used=file_data.get("ocr_used", False),
-                        agent_version=file_data.get("agent_version", ""),
-                        processing_version=file_data.get("processing_version", ""),
-                        parser_version=file_data.get("parser_version", ""),
-                        ocr_engine=file_data.get("ocr_engine", ""),
-                        tags=file_data.get("tags", []),
-                        owner=agent.user,
-                        organization=agent.organization if agent.sync_scope == "organization" else None,
+                        defaults={
+                            "doc_type": Document.DocType(
+                                DocumentType.from_extension(Path(local_path).suffix).value
+                            ) if Path(local_path).suffix else Document.DocType.UNKNOWN,
+                            "processing_status": Document.Status.PENDING,
+                            "title": Path(local_path).stem,
+                            "language": file_data.get("language", "unknown"),
+                            "word_count": file_data.get("word_count", 0),
+                            "char_count": file_data.get("char_count", 0),
+                            "page_count": file_data.get("page_count", 0),
+                            "extracted_text": file_data.get("extracted_text", "")[:10000],
+                            "summary": file_data.get("summary", ""),
+                            "markdown": file_data.get("markdown", ""),
+                            "content_blocks": file_data.get("content_blocks", []),
+                            "tables": file_data.get("tables", []),
+                            "images": file_data.get("images", []),
+                            "ocr_used": file_data.get("ocr_used", False),
+                            "agent_version": file_data.get("agent_version", ""),
+                            "processing_version": file_data.get("processing_version", ""),
+                            "parser_version": file_data.get("parser_version", ""),
+                            "ocr_engine": file_data.get("ocr_engine", ""),
+                            "tags": file_data.get("tags", []),
+                            "owner": agent.user,
+                            "organization": agent.organization if agent.sync_scope == "organization" else None,
+                        },
                     )
 
                     # Persist extracted entities
@@ -792,16 +809,13 @@ class AgentViewSet(viewsets.ModelViewSet):
                     # Auto-trigger processing pipeline for documents with extracted text
                     if file_data.get("extracted_text") or file_data.get("markdown"):
                         try:
-                            from core.infrastructure.pipelines.document_pipeline import run_document_pipeline
-                            import threading
-                            threading.Thread(
-                                target=run_document_pipeline,
-                                args=(str(fr.id),),
-                                kwargs={"source": "agent"},
-                                daemon=True,
-                            ).start()
+                            _PIPELINE_POOL.submit(
+                                _run_pipeline_cleanup,
+                                str(fr.id),
+                                "agent",
+                            )
                         except Exception as pipeline_err:
-                            logger.warning("Could not trigger pipeline for %s: %s", doc.id, pipeline_err)
+                            logger.warning("Could not trigger pipeline for %s: %s", fr.id, pipeline_err)
 
                     document_ids.append(str(doc.id))
                     accepted += 1

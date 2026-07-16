@@ -40,6 +40,39 @@ export const stepStatusIconName: Record<string, string> = {
   skipped: "Clock",
 };
 
+// Document processing status → progress percentage
+export const documentStatusProgress: Record<string, number> = {
+  queued: 0,
+  extracting: 25,
+  classifying: 50,
+  indexing: 75,
+  completed: 100,
+  failed: 100,
+  retrying: 50,
+};
+
+// Document processing status → step label
+export const documentStatusLabel: Record<string, string> = {
+  queued: "Queued",
+  extracting: "Extracting text...",
+  classifying: "Classifying...",
+  indexing: "Indexing...",
+  completed: "Completed",
+  failed: "Failed",
+  retrying: "Retrying...",
+};
+
+// Document processing status → progress bar Tailwind indicator class
+export const documentStatusColor: Record<string, string> = {
+  queued: "bg-gradient-to-r from-brand-teal to-brand-cyan",
+  extracting: "bg-gradient-to-r from-brand-teal to-brand-cyan",
+  classifying: "bg-gradient-to-r from-brand-teal to-brand-cyan",
+  indexing: "bg-gradient-to-r from-brand-teal to-brand-cyan",
+  completed: "bg-emerald-500",
+  failed: "bg-destructive",
+  retrying: "bg-amber-500",
+};
+
 // Entity type → badge variant
 export const entityTypeVariant: Record<string, "default" | "secondary" | "outline"> = {
   PERSON: "default",

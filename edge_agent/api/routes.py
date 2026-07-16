@@ -183,12 +183,19 @@ async def get_folders():
 
 @router.post("/folders")
 async def add_folder(body: FolderCreate):
+    from edge_agent.core.job_queue import JobQueue
     from edge_agent.core.scanner import scan_folder
 
     db = get_db()
     db.add_folder(body.path)
     files = scan_folder(body.path)
     count = db.upsert_files(files)
+    # Create scan jobs so files get processed immediately
+    job_queue = JobQueue(db)
+    for meta in files:
+        record = db.get_file_by_path(meta["local_path"])
+        file_id = record["id"] if record else meta["id"]
+        job_queue.create_job("scan_file", {"file_id": file_id})
     return {"status": "ok", "path": body.path, "discovered": count}
 
 
@@ -492,25 +499,9 @@ async def delete_file(body: DeleteFileRequest):
     record = db.get_file_by_id(body.file_id)
     if record is None:
         raise HTTPException(status_code=404, detail="File not found")
-
-    src = Path(record["local_path"])
-    if not src.exists():
-        db.delete_file_record(body.file_id)
-        return {"status": "ok", "note": "File already missing, record removed"}
-
-    config = get_config()
-    trash_dir = Path(config.data_dir) / "trash"
-    trash_dir.mkdir(parents=True, exist_ok=True)
-
-    size = src.stat().st_size
-    trash_id = db.add_to_trash(str(src), body.file_id, size)
-    trash_subdir = trash_dir / trash_id
-    trash_subdir.mkdir(parents=True, exist_ok=True)
-    dest = trash_subdir / src.name
-    os.rename(str(src), str(dest))
-
+    db.dismiss_file(body.file_id)
     db.delete_file_record(body.file_id)
-    return {"status": "ok", "trash_id": trash_id}
+    return {"status": "ok", "file_id": body.file_id}
 
 
 @router.post("/files/copy")

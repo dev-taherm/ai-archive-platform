@@ -95,6 +95,11 @@ CREATE TABLE IF NOT EXISTS trash (
     deleted_at TEXT NOT NULL,
     size_bytes INTEGER NOT NULL DEFAULT 0
 );
+
+CREATE TABLE IF NOT EXISTS dismissed_paths (
+    path TEXT PRIMARY KEY,
+    dismissed_at TEXT NOT NULL
+);
 """
 
 
@@ -498,6 +503,22 @@ class LocalDB:
     def delete_file_record(self, file_id: str) -> None:
         self.conn.execute("DELETE FROM files WHERE id=?", (file_id,))
         self.conn.commit()
+
+    def dismiss_file(self, file_id: str) -> None:
+        """Mark a file path as dismissed so the watcher won't re-index it."""
+        row = self.conn.execute("SELECT local_path FROM files WHERE id=?", (file_id,)).fetchone()
+        if row:
+            from datetime import datetime, timezone
+            self.conn.execute(
+                "INSERT OR REPLACE INTO dismissed_paths (path, dismissed_at) VALUES (?, ?)",
+                (row["local_path"], datetime.now(timezone.utc).isoformat()),
+            )
+            self.conn.commit()
+
+    def get_dismissed_paths(self) -> set[str]:
+        """Return all paths that have been dismissed by the user."""
+        rows = self.conn.execute("SELECT path FROM dismissed_paths").fetchall()
+        return {r["path"] for r in rows}
 
     def delete_file_records_by_ids(self, file_ids: list[str]) -> None:
         if not file_ids:

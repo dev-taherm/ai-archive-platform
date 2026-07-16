@@ -10,13 +10,23 @@ class Document(models.Model):
     """Django ORM model mirroring the Document domain entity for admin/queries."""
 
     class DocType(models.TextChoices):
+        PDF = "pdf", "Pdf"
+        TEXT = "text", "Text"
+        MARKDOWN = "markdown", "Markdown"
+        HTML = "html", "Html"
+        CSV = "csv", "Csv"
+        JSON = "json", "Json"
+        CODE = "code", "Code"
+        EMAIL = "email", "Email"
+        SPREADSHEET = "spreadsheet", "Spreadsheet"
+        PRESENTATION = "presentation", "Presentation"
+        IMAGE = "image", "Image"
         INVOICE = "invoice", "Invoice"
         CONTRACT = "contract", "Contract"
         REPORT = "report", "Report"
         LETTER = "letter", "Letter"
         MEMO = "memo", "Memo"
         RECEIPT = "receipt", "Receipt"
-        IMAGE = "image", "Image"
         UNKNOWN = "unknown", "Unknown"
 
     class Status(models.TextChoices):

@@ -27,7 +27,6 @@ import os
 import sys
 import threading
 import time
-from pathlib import Path
 from typing import Any, TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -297,23 +296,9 @@ class SaaSWebSocketClient:
                     if record is None:
                         results.append({"file_id": fid, "status": "not_found"})
                         continue
-                    src = Path(record["local_path"])
-                    if not src.exists():
-                        self._db.delete_file_record(fid)
-                        results.append({"file_id": fid, "status": "ok", "note": "already missing"})
-                        continue
-                    from edge_agent.config import get_config
-                    config = get_config()
-                    trash_dir = Path(config.data_dir) / "trash"
-                    trash_dir.mkdir(parents=True, exist_ok=True)
-                    size = src.stat().st_size
-                    trash_id = self._db.add_to_trash(str(src), fid, size)
-                    trash_subdir = trash_dir / trash_id
-                    trash_subdir.mkdir(parents=True, exist_ok=True)
-                    dest = trash_subdir / src.name
-                    os.rename(str(src), str(dest))
+                    self._db.dismiss_file(fid)
                     self._db.delete_file_record(fid)
-                    results.append({"file_id": fid, "status": "ok", "trash_id": trash_id})
+                    results.append({"file_id": fid, "status": "ok"})
                 result = {"status": "completed", "results": results}
             else:
                 result = {"status": "failed", "error": f"Unknown command: {command_type}"}

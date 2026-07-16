@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, Pencil, Trash2 } from "lucide-react";
 import { documentStatusVariant as statusVariant } from "@/lib/constants";
+import DocumentProgress from "@/components/document-progress";
 import type { Document } from "@/types/api";
 import type { TranslationFunction } from "./types";
 
@@ -24,8 +25,8 @@ export default function DocumentHeader({
   t,
 }: DocumentHeaderProps) {
   return (
-    <div className="flex items-center gap-4">
-      <Link href="/documents">
+    <div className="flex items-start gap-4">
+      <Link href="/documents" className="mt-1">
         <Button variant="ghost" size="icon">
           <ArrowLeft className="h-4 w-4" />
         </Button>
@@ -37,6 +38,9 @@ export default function DocumentHeader({
         <p className="text-muted-foreground">
           {doc.subject || doc.author || t("noDescription")}
         </p>
+        <div className="mt-2 max-w-xs">
+          <DocumentProgress status={doc.processing_status} createdAt={doc.created_at} />
+        </div>
       </div>
       <Badge variant={statusVariant[doc.processing_status] || "secondary"}>
         {doc.processing_status}
